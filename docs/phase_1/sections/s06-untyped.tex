@@ -1,0 +1,53 @@
+\subsection*{S6. Field never given a type}
+
+A path can be observed many times and still never supply a typed value: the
+key is present in every document, but its value is always \texttt{null}. The
+field plainly exists, yet nothing says whether it is an \texttt{int}, a
+\texttt{string}, or anything else.
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": null }
+{ "a": 2, "b": null }
+\end{lstlisting}
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Reject}, with an error naming the path. Honest, but brittle:
+        a single always-null field aborts an otherwise usable corpus, and real
+        corpora carry such fields routinely.
+  \item \textbf{\texttt{unit option}.} The column exists, is always
+        \texttt{None}, and its type states that no value was ever observed.
+        \selected
+  \item \textbf{Drop the field} from the schema entirely.
+  \item \textbf{An opaque raw-JSON column} (\texttt{Yojson.Safe.t}), leaving
+        the typing to the consumer.
+\end{enumerate}
+
+\decision{Emit \texttt{unit option}. The field is kept, and its type records
+that no value was ever observed at that path.}
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": null }
+{ "a": 2, "b": null }
+
+  -> a : int
+  -> b : unit option      (always None; no value was ever observed)
+\end{lstlisting}
+
+\rationale{Option (b) is the only one that records both facts that are true
+--- the field exists, and its type is unknown --- without rejecting the
+corpus. Option (c) is the one actively worth avoiding: dropping the field
+silently makes the generated modules disagree with the input about which
+fields exist, and does so with no diagnostic.
+
+This also keeps S6 inside the same widening machinery as S1. The unknown type
+is the least element of the lattice, below every scalar type, and any observed
+value replaces it. \texttt{unit option} is simply how that least element is
+spelled in generated code, just as an out-of-range integer literal (S1b) is
+another way of moving up the same lattice rather than a separate mechanism.}
+
+\limitation{The column carries no data. Under S4's collapse it can only ever
+hold \texttt{None}, so it exists purely to record that the field was present
+in the input. The type is also not polymorphic: if a later corpus supplies a
+typed value at that path, the schema changes and the generated module changes
+with it, rather than the existing type being instantiated.}

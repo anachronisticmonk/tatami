@@ -1,0 +1,185 @@
+\documentclass[11pt,a4paper]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{xcolor}
+\usepackage{listings}
+\usepackage{amsmath}
+\usepackage{enumitem}
+\usepackage[hidelinks]{hyperref}
+
+\definecolor{codebg}{gray}{0.96}
+\definecolor{decided}{RGB}{0,110,60}
+\definecolor{open}{RGB}{170,60,0}
+
+\lstdefinestyle{json}{%
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  columns=fullflexible,
+  breaklines=true,
+  showstringspaces=false,
+  frame=none,
+  xleftmargin=1em,
+  framexleftmargin=1em,
+  aboveskip=0.6em, belowskip=0.6em
+}
+
+\lstdefinestyle{ml}{%
+  language=[Objective]Caml,
+  basicstyle=\ttfamily\small,
+  backgroundcolor=\color{codebg},
+  keywordstyle=\color{blue!60!black},
+  commentstyle=\itshape\color{black!45},
+  columns=fullflexible,
+  breaklines=true,
+  showstringspaces=false,
+  frame=none,
+  xleftmargin=1em,
+  framexleftmargin=1em,
+  aboveskip=0.6em, belowskip=0.6em
+}
+
+\providecommand{\llbracket}{[\![}
+\providecommand{\rrbracket}{]\!]}
+
+\newcommand{\pending}{\textcolor{open}{\textsf{[pending]}}}
+\newcommand{\yes}{\textcolor{decided}{\textsf{decided}}}
+\newcommand{\selected}{\textcolor{decided}{$\leftarrow$ \textbf{selected}}}
+\newcommand{\decision}[1]{%
+  \par\medskip\noindent\textcolor{decided}{\textbf{Decision.}}\quad #1\par\medskip}
+\newcommand{\rationale}[1]{%
+  \par\noindent\textbf{Rationale.}\quad #1\par\medskip}
+\newcommand{\limitation}[1]{%
+  \par\noindent\textbf{Known limitation.}\quad #1\par\medskip}
+\newcommand{\implnote}[1]{%
+  \par\noindent\textbf{Implementation note.}\quad #1\par\medskip}
+\newcommand{\options}{\paragraph{Options considered.}}
+
+\setlist[itemize]{itemsep=0.15em, topsep=0.35em}
+\setlist[enumerate]{itemsep=0.5em, topsep=0.4em}
+
+\title{\textbf{Tatami --- Phase 1}\\[0.3em]
+       \large JSON to OCaml Modules: Lowering Scenarios}
+\author{Durwasa Chakraborty \and Vimala Soundarapandian \and Vishakh Desai}
+\date{Design document --- working draft}
+
+\begin{document}
+\maketitle
+
+\section{Purpose and scope}
+
+This document fixes the meaning of Phase~1: the translation from JSON input to
+a set of generated OCaml modules. It does not cover the Phase~2 effect
+lowering.
+
+The design note already fixes the relational-to-OCaml half of the
+translation: table becomes module, row becomes a value of type \texttt{t},
+column becomes a record field, primary key becomes an abstract \texttt{id},
+foreign key becomes a field holding another module's \texttt{id}, joining on
+it becomes an accessor function, and a nullable column becomes an
+\texttt{option} field. Nothing in that correspondence is open.
+
+What this document settles is the other half --- JSON to relational --- and
+the shape of the module surface that results. Each scenario below states the
+options that were considered, with an example of each, and then records which
+one was selected.
+
+\paragraph{Delivery.} The tool is intended to be used through a web
+interface: JSON is supplied directly, and the generated modules are presented
+in an editor-like view. Two consequences bear on the decisions below. Any
+configuration a decision depends on --- the path marking of S9, for instance
+--- must be a persisted, exportable input rather than interface state, so that
+the same input regenerates the same modules outside the interface. And the
+generated modules are read by people in an editor rather than consumed as a
+build artifact, which raises the weight of the naming decisions deferred to
+S22. An interface that invites a single pasted document will also routinely
+produce the weaker schema described in S0.
+
+\paragraph{The unit of inference is the path, across all documents.}
+Throughout, a scenario describes \emph{the set of values observed at a path
+across the whole input}, not the value at a path in one document. A path is a
+position in the schema, written \texttt{.price} or \texttt{.items[].qty}.
+Several scenarios are invisible at single-document granularity: a field that
+is an integer in one document and a string in another, or an array that
+happens to be empty everywhere.
+
+\section{Decision status}
+
+\begin{center}
+\begin{tabular}{@{}llp{5.4cm}@{}}
+\hline
+\textbf{Ref} & \textbf{Scenario} & \textbf{Status} \\
+\hline
+S0  & Unit of input                            & \yes \\
+S1a & Numbers: integer versus fractional       & \yes \\
+S1b & Integers outside native \texttt{int} range & \yes \\
+S2  & Strings                                  & \yes \\
+S3  & Booleans                                 & \yes \\
+S4  & Explicit \texttt{null} and absent fields & \yes \\
+S6  & Field never given a type                 & \yes \\
+S7  & Nested object, one-to-one                & \yes \\
+S8  & Empty object                             & \yes \\
+S9  & Map-shaped object (keys are data)        & \yes \\
+S10 & Duplicate keys                           & \yes \\
+S11 & Key names that are not OCaml identifiers & \yes \\
+S13 & Array of objects                         & \yes \\
+S14 & Array of scalars                         & \yes \\
+S15 & Empty arrays                             & \yes \\
+S16 & Heterogeneous array                      & \yes \\
+S16b & \quad Null elements in an array          & \yes \\
+S17 & Array of arrays                          & \yes \\
+S18 & Field with differing types across documents & \yes \\
+S19 & Recursive and mutually recursive shapes  & \yes \\
+S20 & Required versus optional inference       & \yes \\
+S21.1 & \quad Abstractness of \texttt{id}         & \yes \\
+S21.2 & \quad The store behind \texttt{get}       & \yes \\
+S21.3 & \quad Presence marker in the record type  & \yes \\
+S21.4 & \quad Foreign key field naming            & \yes \\
+S21.5 & \quad Entry point into the modules        & \yes \\
+S21.6 & \quad Child back-reference in the record  & \yes \\
+S22 & Name mangling and collisions             & \yes \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent
+(S12, ``root value that is not an object'', has been absorbed into S0;
+S5, ``field absent in some documents'', into S4.)
+
+\section{Input}
+\input{sections/s00-input}
+
+\section{Atoms}
+\input{sections/s01-numbers}
+\input{sections/s02-strings}
+\input{sections/s03-booleans}
+\input{sections/s04-null}
+\input{sections/s06-untyped}
+
+\section{Objects}
+\input{sections/s07-nested}
+\input{sections/s08-empty-object}
+\input{sections/s09-map-object}
+\input{sections/s10-dup-keys}
+\input{sections/s11-key-names}
+
+\section{Arrays}
+\input{sections/s13-array-objects}
+\input{sections/s14-array-scalars}
+\input{sections/s15-empty-arrays}
+\input{sections/s16-het-array}
+\input{sections/s17-array-arrays}
+
+\section{Corpus-level scenarios}
+\input{sections/s18-het-field}
+\input{sections/s19-recursive}
+\input{sections/s20-required-optional}
+
+\section{The generated module surface}
+\input{sections/s21-module-surface}
+\input{sections/s22-naming}
+
+\section{Accepted fragment}
+
+\input{sections/accepted}
+
+\end{document}

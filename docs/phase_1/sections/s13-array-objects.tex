@@ -1,0 +1,122 @@
+\subsection*{S13. Array of objects}
+
+A field whose value is an array of objects.
+
+\begin{lstlisting}[style=json]
+{ "id": 1, "items": [ { "sku": "a", "qty": 2 },
+                      { "sku": "b", "qty": 1 } ] }
+\end{lstlisting}
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Child table with a back-reference and an ordering index},
+        and a presence marker in the parent when the path is partial.
+        \selected
+  \item \textbf{Child table with a back-reference but no index.} The array
+        becomes a set rather than a sequence.
+  \item \textbf{Parent holds a list of child identifiers}, keeping the
+        direction of S7.
+  \item \textbf{A junction table} between parent and child, as for a
+        many-to-many relationship.
+  \item \textbf{Parent references a collection entity}, with the elements
+        referencing the same collection:
+        \texttt{root(id, items\_id)}, \texttt{item\_list(id)},
+        \texttt{items(id, list\_id, idx, ...)}.
+\end{enumerate}
+
+\decision{Child table carrying a foreign key back to the parent and an
+ordering index. The parent gains no column when the path is total, and a
+presence marker when it is partial.}
+
+\begin{center}
+\begin{tabular}{@{}l@{}}
+\textbf{Table root} \\
+\hline
+\texttt{id} \\
+\hline
+1 \\
+\hline
+\end{tabular}
+\qquad
+\begin{tabular}{@{}lllll@{}}
+\multicolumn{5}{@{}l}{\textbf{Table items}} \\
+\hline
+\texttt{id} & \texttt{root\_id} & \texttt{idx} & \texttt{sku} & \texttt{qty} \\
+\hline
+1 & 1 & 0 & a & 2 \\
+2 & 1 & 1 & b & 1 \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[style=ml]
+module Item : sig
+  type id
+  type t = { id : id; root_id : Root.id; idx : int;
+             sku : string; qty : int }
+  val get : db -> id -> t
+end
+
+module Root : sig
+  type id
+  type t = { id : id }
+  val get : db -> id -> t
+  val items : db -> t -> Item.t list
+end
+\end{lstlisting}
+
+\paragraph{The presence marker.}
+An empty array is a \emph{present} value, so it must not be confused with an
+absent field. Both produce zero rows in the child table, and the parent is
+therefore where the difference has to be recorded. This is not new machinery:
+S4 already makes a path that is sometimes absent partial, and producing an
+\texttt{option} at all requires the parent to record presence.
+
+\begin{lstlisting}[style=json]
+{ "id": 1, "items": [ { "sku": "a" } ] }
+{ "id": 2, "items": [] }
+{ "id": 3 }
+\end{lstlisting}
+
+\begin{lstlisting}[style=ml]
+type t = { id : id; items_present : bool }
+val items : db -> t -> Item.t list option
+
+  root 1 -> Some [ {sku = "a"} ]
+  root 2 -> Some []                (* present, empty *)
+  root 3 -> None                   (* absent *)
+\end{lstlisting}
+
+Under S4, \texttt{"items": null} collapses with the absent case and yields
+\texttt{None}. The marker also appears as a record field, since the record is
+the row (S21.3).
+
+\rationale{The ordering index is required rather than optional. JSON array
+order is significant, so without it \texttt{["a","b"]} and \texttt{["b","a"]}
+shred identically, reconstruction recovers a multiset rather than a list, and
+a query asking for the first element has an answer on the JSON side that the
+database cannot reproduce. Option (b) is excluded on exactly that ground.
+
+Option (c) is not relational --- a list-valued column is not a column --- and
+would still need an index to order it. Option (e) was considered seriously,
+since it is more uniform: parent-holds-reference would then be the single rule
+for both nested objects and arrays, instead of the direction flipping with
+cardinality. It was declined because, absent any sharing of arrays between
+documents, \texttt{item\_list} holds exactly one row per parent row. It
+carries no information beyond ``this array exists'', which is what the
+presence marker records directly, and it costs an extra join on every access.
+Option (e) becomes worthwhile only if arrays are given identity so that equal
+arrays can be shared, which would make shredding depend on structural
+hashing.}
+
+\limitation{A normalization treating \texttt{[]}, \texttt{null} and absence as
+equivalent at array-typed paths was considered. It would remove the presence
+marker entirely and make array accessors total, at the cost of stating the
+equivalence in the specification and accepting that the resulting theorem is
+relative to that semantics rather than to the ones implemented by jq, JSONPath
+or SQL/JSON, all of which distinguish \texttt{null} from \texttt{[]}. It is
+recorded here as an available simplification, not adopted.
+
+As with nullability generally, the parent table's shape depends on what was
+observed: a path that is total in the corpus has no presence marker, and one
+that is partial has one.}

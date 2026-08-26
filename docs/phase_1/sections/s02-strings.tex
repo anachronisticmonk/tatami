@@ -1,0 +1,36 @@
+\subsection*{S2. Strings}
+
+A path holding JSON strings.
+
+\begin{lstlisting}[style=json]
+{ "name": "tatami" }
+\end{lstlisting}
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{OCaml \texttt{string}}, holding the decoded UTF-8 bytes.
+        \selected
+  \item \textbf{A validated Unicode type}, rejecting or normalising
+        ill-formed sequences at ingest.
+  \item \textbf{Refine string-encoded scalars} --- recognise dates, UUIDs or
+        numbers written as strings and give them narrower types.
+\end{enumerate}
+
+\decision{OCaml \texttt{string}. No refinement, no validation beyond what the
+parser performs.}
+
+\begin{lstlisting}[style=json]
+{ "name": "tatami" }
+
+  -> name : string
+\end{lstlisting}
+
+\rationale{Nothing in Phase~1 depends on a finer classification of strings.
+The one refinement the project does want --- collapsing a string-encoded
+enumeration into an OCaml variant --- is assigned to Phase~2 by the design
+note (\S3.3), so introducing it here would duplicate that pass.}
+
+\limitation{OCaml's \texttt{string} is a byte sequence, so nothing guarantees
+the contents are well-formed UTF-8 beyond what yojson's decoder enforces on
+escape sequences. Option (c) remains available later and is independent of
+every other decision here.}

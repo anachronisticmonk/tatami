@@ -1,0 +1,178 @@
+This section states in one place what the twenty-two decisions above amount
+to: exactly which inputs Phase~1 accepts, and what it reports for each input
+it does not. It is the specification the implementation is written against,
+and the acceptance condition is also the ingest-time validator.
+
+Acceptance is a property of a \emph{pair}: an input and a configuration.
+Nothing here is a property of the input alone.
+
+\subsection*{A1. Inputs and configuration}
+
+The input is a single JSON value, and must be either
+
+\begin{itemize}
+  \item an \textbf{object}, read as a corpus of one document; or
+  \item an \textbf{array}, read as a corpus of its elements, every one of
+        which must be an object.
+\end{itemize}
+
+\noindent
+Any other top-level value is rejected, as is an array containing a non-object
+element. A document's root is therefore always an object (S0). An empty array
+is accepted and yields an empty schema.
+
+The configuration supplies two path-directed markings, both optional:
+
+\begin{lstlisting}[style=json]
+maps      = [".users", ".index.by_id"]
+recursive = [ { path = ".children[]", folds_into = "." } ]
+\end{lstlisting}
+
+\noindent
+\texttt{maps} names object-valued paths whose members are data rather than
+schema (S9). \texttt{recursive} identifies a path with an ancestor path it
+folds into (S19).
+
+\subsection*{A2. The type lattice}
+
+Inference assigns each path a type drawn from
+
+\[
+  \tau \;::=\; \bot \mid \texttt{int} \mid \texttt{float} \mid \texttt{string}
+       \mid \texttt{bool} \mid \mathrm{obj} \mid \mathrm{arr}(\tau)
+\]
+
+\noindent
+ordered by $\bot \sqsubseteq \tau$ for every $\tau$; $\texttt{int}
+\sqsubseteq \texttt{float}$; $\mathrm{arr}(\tau) \sqsubseteq
+\mathrm{arr}(\tau')$ whenever $\tau \sqsubseteq \tau'$; and two object types
+comparable when their members are, absent members becoming partial. All other
+pairs are incomparable.
+
+Nullability is not a point in this lattice. It is a separate flag on the path,
+raised by an explicit \texttt{null} or by the member being absent (S4), and by
+a null in element position (S16b).
+
+\subsection*{A3. Conditions for acceptance}
+
+An input is accepted, under a configuration, exactly when all of the following
+hold.
+
+\begin{enumerate}[label=\textbf{C\arabic*.}]
+  \item \textbf{Shape.} The input is an object, or an array all of whose
+        elements are objects. \hfill (S0)
+  \item \textbf{Unique members.} No object, at any depth, carries the same
+        member name twice. \hfill (S10)
+  \item \textbf{No directly nested arrays.} No array has an element that is
+        itself an array. An array inside an object inside an array is
+        permitted. \hfill (S17)
+  \item \textbf{Type compatibility.} The types observed at every path have a
+        least upper bound in the lattice of A2. \hfill (S16, S18)
+  \item \textbf{Map markings are well placed.} Every path named in
+        \texttt{maps} exists in the input and is object-valued.
+        \hfill (S9)
+  \item \textbf{Recursion markings are valid.} For every entry in
+        \texttt{recursive}, both paths exist, the second is an ancestor of the
+        first, and after inference their shapes are compatible.
+        \hfill (S19)
+\end{enumerate}
+
+\noindent
+C4 is the only condition that requires inference to have run; the rest are
+checkable on the input directly.
+
+\subsection*{A4. What is accepted without complaint}
+
+Several inputs that might be expected to fail do not. Each is resolved by
+widening or by a collapse rather than by rejection, and the list is worth
+stating explicitly because it marks the boundary of C4.
+
+\begin{itemize}
+  \item \texttt{\{"a":1\}} and \texttt{\{"a":2.5\}} --- integers and floats
+        join at \texttt{float}. \hfill (S1a)
+  \item An integer literal too large for OCaml's native \texttt{int} --- the
+        column widens to \texttt{float}, with the precision loss recorded in
+        S1b rather than raised as an error. \hfill (S1b)
+  \item A member present in some documents and absent or \texttt{null} in
+        others --- the path becomes partial. \hfill (S4)
+  \item A member that is \texttt{null} in every document ---
+        \texttt{unit option}. \hfill (S6)
+  \item An object that is empty in every document --- a table of bare
+        identifiers. \hfill (S8)
+  \item An array that is empty in every document --- a table with no value
+        column. \hfill (S15)
+  \item Objects at one path with different members --- one table whose columns
+        are partial. \hfill (S4)
+  \item \texttt{[1, null, 2]} --- a nullable element column, not a type
+        conflict. \hfill (S16b)
+  \item A member name that is not a legal OCaml identifier --- mangled, never
+        rejected. \hfill (S11)
+\end{itemize}
+
+\subsection*{A5. Rejections}
+
+\begin{center}
+\begin{tabular}{@{}llp{6.1cm}@{}}
+\hline
+\textbf{Condition} & \textbf{Ref} & \textbf{Reported as} \\
+\hline
+C1 & S0  & The top-level value is not an object or array, or an array element
+            is not an object. Names the offending element. \\
+C2 & S10 & A repeated member name. Names the path and the key. Per document,
+            so one malformed document rejects the input. \\
+C3 & S17 & An array element that is an array. Names the path. \\
+C4 & S16 & Element types at one array path with no upper bound. Names the path
+            and the types. \\
+C4 & S18 & Value types at one member path with no upper bound. Names the path,
+            the types, and the pair of documents that contributed them. \\
+C5 & S9  & A \texttt{maps} entry naming a path that does not exist or is not
+            object-valued. \\
+C6 & S19 & A \texttt{recursive} entry whose paths do not exist, are not in an
+            ancestor relation, or whose shapes are incompatible after
+            inference. Names both paths and the mismatch. \\
+\hline
+\end{tabular}
+\end{center}
+
+\subsection*{A6. Status of the condition}
+
+\paragraph{It is decidable, and it is the validator.}
+Every condition is decidable on a finite input. C1--C3, C5 and part of C6 are
+checkable in a single traversal; C4 and the remainder of C6 require the
+per-path type observations that inference computes anyway. The check is
+therefore not an additional pass but a reading of inference's own
+intermediate state, which is what makes the same condition serviceable as the
+ingest-time validator for documents arriving after the schema is fixed.
+
+\paragraph{It is deterministic and structural.}
+Given an input and a configuration, acceptance and the resulting schema are
+fully determined. No condition depends on a threshold, a sample statistic, or a
+heuristic; the two places where such a rule would have been natural --- map
+detection (S9) and recursion detection (S19) --- were made configuration
+instead, precisely so this holds.
+
+\paragraph{It is not monotone.}
+Adding documents to an accepted corpus can make it unacceptable. Everywhere
+else in this document, further observations only loosen an inferred type ---
+a column widens from \texttt{int} to \texttt{float}, or from total to partial,
+and a schema inferred from less data stays valid. C4 is the exception: a
+single new document can introduce a type conflict at a path that was uniform
+before, and C2 can be violated by one malformed document among many. This is
+the practical cost of S16 and S18, and it is recorded here rather than left to
+be discovered.
+
+\subsection*{A7. Output}
+
+For an accepted input, Phase~1 produces
+
+\begin{itemize}
+  \item a relational schema, with foreign-key constraints materialized and
+        nullability recorded per column;
+  \item the shredded data;
+  \item the generated OCaml modules, one per table, following the two
+        principles of S21 --- the record is the row, and the store is
+        explicit;
+  \item the observation report of S20, giving for every path the counts of
+        present-with-value, explicitly-null and absent, which is where the
+        distinction S4 collapses out of the type remains visible.
+\end{itemize}

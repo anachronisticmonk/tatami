@@ -1,0 +1,80 @@
+\subsection*{S14. Array of scalars}
+
+A field whose value is an array of scalars rather than of objects.
+
+\begin{lstlisting}[style=json]
+{ "id": 1, "tags": ["red", "blue"] }
+\end{lstlisting}
+
+Relationally this is S13 with a scalar element in place of an object: a child
+table carrying a foreign key to the parent, an ordering index, and a single
+value column. What is open is the module surface, since a record wrapping one
+string is an awkward thing to hand a consumer.
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{A full child module}, exactly symmetric with S13. Uniform, but
+        the consumer unwraps a one-field record to reach a string.
+  \item \textbf{Table without a module.} The accessor returns the scalars
+        directly and no child module is generated. \selected
+  \item \textbf{Both} --- generate the module, and add a convenience accessor
+        returning the scalars.
+  \item \textbf{Reject} arrays of scalars, requiring them to be wrapped as
+        objects.
+\end{enumerate}
+
+\decision{The child table exists relationally, but generates no module. The
+parent exposes a single accessor returning the scalars themselves.}
+
+\begin{center}
+\begin{tabular}{@{}l@{}}
+\textbf{Table root} \\
+\hline
+\texttt{id} \\
+\hline
+1 \\
+\hline
+\end{tabular}
+\qquad
+\begin{tabular}{@{}llll@{}}
+\multicolumn{4}{@{}l}{\textbf{Table tags}} \\
+\hline
+\texttt{id} & \texttt{root\_id} & \texttt{idx} & \texttt{value} \\
+\hline
+1 & 1 & 0 & red \\
+2 & 1 & 1 & blue \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[style=ml]
+module Root : sig
+  type id
+  type t = { id : id }
+  val get : db -> id -> t
+  val all : db -> t list
+  val tags : db -> t -> string list
+end
+\end{lstlisting}
+
+\paragraph{Presence.} The presence marker of S13 applies unchanged. A partial
+path yields \texttt{val tags : db -> t -> string list option}, with the parent
+record carrying the presence marker of S21.3, and \texttt{Some []}
+for a present empty array and \texttt{None} for an absent or null one.
+
+\rationale{One construct rather than two. The consumer receives the
+\texttt{string list} they actually want, with no one-field record to unwrap
+and no second accessor to choose between, and the specification has a single
+accessor per scalar-array path to describe rather than a pair whose
+relationship must also be stated.
+
+The relational layer is untouched: the table, its foreign key and its ordering
+index all exist exactly as in S13. What is dropped is only the module that
+would have wrapped them.}
+
+\limitation{This breaks the design note's table-to-module correspondence: a
+table exists with no module, so the correspondence holds in one direction
+only. The rows of that table are also not addressable --- there is no
+\texttt{Tags.id} and no way to name an individual element --- so if element
+identity is ever needed, option (c) is the way back, and adopting it would be
+additive rather than breaking.}

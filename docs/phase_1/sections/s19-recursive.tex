@@ -1,0 +1,119 @@
+\subsection*{S19. Recursive and mutually recursive shapes}
+
+A corpus whose structure refers to itself: trees, comment threads, file
+systems, organisation charts.
+
+\begin{lstlisting}[style=json]
+{ "value": 1,
+  "children": [ { "value": 2, "children": [] },
+                { "value": 3, "children": [ { "value": 4,
+                                             "children": [] } ] } ] }
+\end{lstlisting}
+
+\paragraph{Doing nothing is not rejection.}
+JSON documents are finite trees, so any corpus has bounded depth and naive
+inference emits one table per level observed --- \texttt{node},
+\texttt{node\_children}, \texttt{node\_children\_children}. Nothing fails. But
+the number of tables then depends on how deep the sample happened to go, and a
+document arriving later that is deeper than the sample has nowhere to be put:
+shredding becomes partial. This is the same defect that ruled out treating
+maps as records in S9.
+
+\paragraph{Self-recursion and mutual recursion differ in cost.}
+A single self-referential table needs no special machinery: \texttt{val
+children : t -> t list} refers to \texttt{t} within its own signature, which is
+ordinary OCaml. Recursion running through two or more tables requires
+\texttt{module rec}, which carries real restrictions.
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Detect and reject.} Note this still requires the detection
+        machinery of (b); it merely errors rather than using it.
+  \item \textbf{Detect and emit a recursive schema.}
+  \item \textbf{No detection} --- one table per observed depth, as above.
+  \item \textbf{Explicit annotation}, as in S9: the configuration names the
+        recursive paths. \selected
+\end{enumerate}
+
+\decision{Explicit annotation. The configuration file identifies a path with
+an ancestor path it folds into; inference then unifies the two rather than
+generating a fresh table per level.}
+
+\begin{lstlisting}[style=json]
+recursive = [ { path = ".children[]", folds_into = "." } ]
+\end{lstlisting}
+
+The annotation identifies a \emph{pair} of paths, unlike S9's marking which
+names a single path. Naming only the recursive path would require inferring
+which ancestor it folds into, reintroducing the detection this option exists
+to avoid.
+
+The two paths unify into one table with a self-referencing foreign key. Root
+rows have no parent, so the parent reference and the index are both partial:
+
+\begin{center}
+\begin{tabular}{@{}llll@{}}
+\multicolumn{4}{@{}l}{\textbf{Table node}} \\
+\hline
+\texttt{id} & \texttt{parent\_id} & \texttt{idx} & \texttt{value} \\
+\hline
+1 & --- & --- & 1 \\
+2 & 1 & 0 & 2 \\
+3 & 1 & 1 & 3 \\
+4 & 3 & 0 & 4 \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[style=ml]
+module Node : sig
+  type id
+  type t = { id : id; parent_id : id option; idx : int option;
+             value : int }
+  val get : db -> id -> t
+  val children : db -> t -> t list
+end
+\end{lstlisting}
+
+Where the recursion runs through more than one table, the generated modules
+become mutually recursive:
+
+\begin{lstlisting}[style=ml]
+module rec Post : sig
+  type id
+  type t = { id : id; title : string }
+  val get : db -> id -> t
+  val comments : db -> t -> Comment.t list
+end
+and Comment : sig
+  type id
+  type t = { id : id; post_id : Post.id; idx : int; body : string }
+  val get : db -> id -> t
+  val post : db -> t -> Post.t
+end
+\end{lstlisting}
+
+\paragraph{The annotation is validated, not trusted.}
+After inference, the two paths named must actually have compatible shapes. If
+they do not, the annotation is an error naming both paths and the mismatch.
+Otherwise a mistaken annotation would produce a schema the data does not fit.
+
+\rationale{Detection is sample-dependent, which is what rules out (b) and (a).
+Whether \texttt{.children[]} has the same inferred shape as the root depends on
+what was observed: if no child in the sample has grandchildren, then
+\texttt{.children[].children} was only ever empty, its element type is unknown
+under S15, and it need not compare equal to the root's shape. The schema would
+then be recursive or not according to how deep the corpus happened to go ---
+the data-dependence problem of S9.
+
+Annotation avoids this the same way S9 does, and reuses the configuration
+mechanism already introduced there. It also keeps shredding total: once a path
+is known to be recursive, a document deeper than anything in the corpus still
+has a table to go in.}
+
+\limitation{As in S9, this gives determinism rather than protection. Recursive
+data that is not annotated still lowers as one table per observed depth, and
+is still partial on deeper documents; the user only finds out by inspecting
+the generated modules. A detector could be added later as an advisory hint,
+subject to the same constraint as S9's: it may suggest an annotation for a
+person to accept, and must never change what is generated on its own.}

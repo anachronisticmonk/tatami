@@ -1,0 +1,66 @@
+\subsection*{S20. Required versus optional inference}
+
+S4 fixed how a partial path is encoded. This scenario asks when a path counts
+as partial in the first place.
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": 2 }     x999
+{ "a": 1 }             x1
+\end{lstlisting}
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Any absence makes the path partial.} One document out of a
+        thousand missing \texttt{b} gives \texttt{b : int option}.
+  \item \textbf{A threshold} --- partial only when absent in more than some
+        fraction of documents.
+  \item \textbf{Any absence makes the path partial, and the observation counts
+        are reported} so that a single anomalous document can be found.
+        \selected
+  \item \textbf{The user declares it} in the configuration, with the corpus
+        checked against the declaration.
+\end{enumerate}
+
+\decision{A path is partial exactly when it is absent or null in at least one
+observation. Inference additionally records, and the interface reports, how
+many observations of each kind were seen at every path. The counts are
+diagnostic only and never affect what is generated.}
+
+\begin{lstlisting}[style=json]
+.a    present with a value  1000 / 1000    -> a : int
+.b    present with a value   999 / 1000
+      absent                   1 / 1000    -> b : int option
+\end{lstlisting}
+
+\paragraph{The report is the natural place for what S4 discards.}
+S4 collapses \texttt{null} with absence, so the generated type cannot say
+which occurred. The diagnostic can, and should: reporting
+present-with-value, explicitly-null and absent as three separate counts
+surfaces exactly the information the collapse removes from the type, at no
+semantic cost.
+
+\paragraph{Denominators differ by depth.}
+The counts are per path, and a path's denominator is the number of
+\emph{observations} at that path, not the number of documents. For a root
+member that is one per document; for \texttt{.items[].qty} it is one per array
+element across the whole input. A ratio of $999/1000$ therefore means
+different things at different depths, and the report should say what it is
+counting.
+
+\rationale{Option (b) is a threshold on data values, which is the shape of
+rule excluded in S9: a field would flip between \texttt{int} and \texttt{int
+option} as the corpus grew, making the generated type depend on how much data
+happened to be supplied. Option (c) keeps generation purely structural --- it
+is (a) semantically, and the generated code is identical --- while supplying
+the information a user needs to notice that a field was missing exactly once
+and go and look at that document. Given that the tool is used through an
+interface where the schema is inspected before the modules are taken away,
+that information is worth surfacing next to each field.}
+
+\limitation{A single malformed document makes an otherwise total field
+optional for every consumer of the generated module, and the report says so
+without fixing it. The only remedy is to remove the document from the input.
+
+The counts are metadata rather than schema, so if they are to be useful
+outside the interface they must be exported alongside it, in the same way the
+configuration of S9 and S19 must be.}

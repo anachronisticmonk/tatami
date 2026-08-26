@@ -1,0 +1,72 @@
+\subsection*{S0. Unit of input}
+
+JSON reaches the tool in more than one shape, and the shapes disagree about
+what counts as one document. The distinction matters because inference is over
+the set of values at a path: a root field is observed once per document, so
+how many documents there are determines how much can be inferred.
+
+Two groups of input form must be separated. The first group changes what
+counts as a document and therefore needs a decision:
+
+\begin{itemize}
+  \item \textbf{Single document} --- one JSON value.
+  \item \textbf{Top-level array} --- \texttt{[\{...\},\{...\}]}. Ambiguous:
+        either a corpus of several documents, or one document whose root
+        happens to be an array.
+  \item \textbf{JSON Lines / NDJSON} --- one JSON value per line.
+        Unambiguously a corpus.
+  \item \textbf{Concatenated JSON} --- \texttt{\{...\}\{...\}} with no
+        delimiter. A corpus, but requires a streaming parser.
+  \item \textbf{Wrapped corpus} --- \texttt{\{"meta":\{...\},"records":[...]\}},
+        where the documents live at a nested path rather than at the root.
+\end{itemize}
+
+The second group is plumbing: a directory of files, several files on the
+command line, standard input, compression, character encoding. These change
+how bytes reach the parser and nothing about inference, so they carry no
+design decision and can be added at any point.
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item Single document only. Inference from one JSON value.
+  \item Corpus only. The input is always many documents.
+  \item Both, with a top-level array always read as a corpus. \selected
+  \item Both, disambiguated by an explicit \texttt{-{}-corpus} /
+        \texttt{-{}-single} flag.
+\end{enumerate}
+
+\decision{Accept a single document and a top-level array. A top-level array is
+always read as a \emph{corpus of its elements}, never as one document whose
+root is an array. JSON Lines, concatenated JSON and wrapped corpora are
+deferred; they extend the input reader without disturbing any other decision
+in this document.}
+
+Given a single document, the corpus is that one document:
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": { "c": 2 } }
+
+  -> corpus of 1 document
+\end{lstlisting}
+
+Given a top-level array, the corpus is its elements:
+
+\begin{lstlisting}[style=json]
+[ { "a": 1 }, { "a": 2 } ]
+
+  -> corpus of 2 documents
+  -> NOT one document whose root is an array
+\end{lstlisting}
+
+\rationale{Reading a top-level array as a corpus removes the ambiguity without
+a flag, and matches how JSON corpora are actually distributed. It also implies
+that the root of a document is always an object, which is why S12 no longer
+needs to exist as a separate scenario.}
+
+\limitation{A document whose root is genuinely an array cannot be expressed;
+it must be wrapped, as \texttt{\{"items": [...]\}}. Separately, a single
+document cannot support optionality inference: every field present in it is
+total and no field is ever partial, so single-document input yields a strictly
+weaker schema than corpus input. Arrays \emph{inside} a single document still
+supply many observations, so widening and optionality behave normally within
+them.}

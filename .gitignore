@@ -1,0 +1,13 @@
+# LaTeX build products
+*.aux
+*.fdb_latexmk
+*.fls
+*.log
+*.out
+*.synctex.gz
+*.toc
+
+# OCaml / dune
+_build/
+_opam/
+*.install

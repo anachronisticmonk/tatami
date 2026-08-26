@@ -1,0 +1,67 @@
+\subsection*{S4. Explicit \texttt{null} and absent fields}
+
+JSON distinguishes three states where OCaml's \texttt{option} offers two: a
+key present holding a value, a key present holding \texttt{null}, and a key
+absent altogether.
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": 2 }        -- b present with a value
+{ "a": 1, "b": null }     -- b present, explicitly null
+{ "a": 1 }                -- b absent
+\end{lstlisting}
+
+Two independent facts are observable per path: whether the key is ever absent,
+and whether the value is ever \texttt{null}. Preserving both would require a
+three-state type; collapsing them fits \texttt{option} directly.
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Collapse.} \texttt{null} and absence both mean ``no value''.
+        A path that is ever absent or ever null becomes \texttt{option}, and
+        \texttt{None} covers both. \selected
+  \item \textbf{Keep them apart} in the type, as \texttt{int option option} or
+        as a generated three-state variant
+        \texttt{type 'a field = Absent | Null | Value of 'a}. Exact, but
+        heavier to consume and it propagates into the Phase~2 effect
+        signatures.
+  \item \textbf{Distinguish in the schema only.} Record both facts during
+        inference but generate a single \texttt{option}, so the distinction
+        survives in the schema and the documentation but not in the type.
+  \item \textbf{Reject explicit \texttt{null}.} Only absence means ``no
+        value''; a corpus containing \texttt{null} is an error.
+\end{enumerate}
+
+\decision{Collapse. A path whose key is absent in some document, or whose
+value is \texttt{null} in some document, becomes \texttt{option}; a path
+always present and never null carries no \texttt{option} at all.}
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": 2 }
+{ "a": 1, "b": null }
+{ "a": 1 }
+
+  -> a : int              (always present, never null)
+  -> b : int option       (None covers both null and absent)
+\end{lstlisting}
+
+A path needs only one document to make it partial; the rest may all supply
+values:
+
+\begin{lstlisting}[style=json]
+{ "x": 1 }   { "x": 2 }   { "x": 3 }   { }
+
+  -> x : int option       (absent once, so partial everywhere)
+\end{lstlisting}
+
+\rationale{This is the two-state framing the design note already uses when it
+says fields are classified as total or partial, and it is what comparable
+tools do. It keeps the generated modules directly consumable, and it keeps the
+Phase~2 effect signatures as simple as the underlying scalar allows.}
+
+\limitation{The two absent-value cases become indistinguishable once shredded.
+A document carrying \texttt{"b": null} and a document omitting \texttt{b}
+produce identical rows, so the original cannot be recovered exactly: any
+round-trip property will hold only up to this collapse. A related consequence
+is that reconstruction must pick a canonical form when it emits a
+\texttt{None} --- either \texttt{"b": null} or omitting the key --- and that
+choice is not made here.}

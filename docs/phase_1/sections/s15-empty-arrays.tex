@@ -1,0 +1,69 @@
+\subsection*{S15. Empty arrays}
+
+A path that is an array in every document, but where no document ever supplies
+an element, so no element type is ever observed. If some document does supply
+elements, ordinary inference applies and this scenario does not arise: the
+element type comes from wherever it was seen.
+
+\begin{lstlisting}[style=json]
+{ "id": 1, "tags": [] }
+{ "id": 2, "tags": [] }
+\end{lstlisting}
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Reject}, with an error naming the path.
+  \item \textbf{A child table with an identifier, a parent reference and an
+        index, but no value column.} The array exists and is always empty.
+        \selected
+  \item \textbf{Drop the field.}
+  \item \textbf{An opaque raw-JSON element column}, deferring the element type
+        to the consumer.
+\end{enumerate}
+
+\decision{Emit the child table with no value column, and follow S14: the table
+generates no module, and the parent exposes a single accessor.}
+
+\begin{center}
+\begin{tabular}{@{}l@{}}
+\textbf{Table root} \\
+\hline
+\texttt{id} \\
+\hline
+1 \\
+\hline
+\end{tabular}
+\qquad
+\begin{tabular}{@{}lll@{}}
+\multicolumn{3}{@{}l}{\textbf{Table tags}} \\
+\hline
+\texttt{id} & \texttt{root\_id} & \texttt{idx} \\
+\hline
+\multicolumn{3}{@{}l}{\emph{(no rows)}} \\
+\hline
+\end{tabular}
+\end{center}
+
+\begin{lstlisting}[style=ml]
+module Root : sig
+  type id
+  type t = { id : id }
+  val get : db -> id -> t
+  val all : db -> t list
+  val tags : db -> t -> unit list
+end
+\end{lstlisting}
+
+\rationale{The same principle as S6: keep the field, and let its generated
+form state exactly what is known --- here, that the path is an array and that
+its element type was never observed. This is again the least element of the
+type lattice, and if a later corpus supplies an element the value column
+appears and the element type is inferred, exactly as an always-null scalar
+path would gain a type.}
+
+\limitation{The table is more degenerate than S6's always-\texttt{None}
+column: it has no value column and, in a corpus of this shape, no rows either.
+It nonetheless carries one bit of information, because the presence marker
+retained in S13 still distinguishes \texttt{\{"tags": []\}} from \texttt{\{\}}
+--- \texttt{Some []} against \texttt{None} --- so the table records that the
+field was present even though it never records a value.}

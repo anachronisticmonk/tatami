@@ -1,0 +1,50 @@
+\subsection*{S10. Duplicate keys}
+
+An object carrying the same key more than once.
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "a": 2 }
+\end{lstlisting}
+
+RFC~8259 says member names \emph{should} be unique and declares the behaviour
+undefined when they are not. Implementations genuinely disagree: some keep the
+last binding, some the first, some raise an error.
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Reject}, with an error naming the path and the repeated key.
+        \selected
+  \item \textbf{Last binding wins}, as JavaScript's \texttt{JSON.parse} does.
+  \item \textbf{First binding wins.}
+  \item \textbf{Treat the key as repeated}, lowering the path to a collection
+        as though the document had supplied an array.
+\end{enumerate}
+
+\decision{Reject. A document containing a repeated key within any object, at
+any depth, is an error naming the path and the key.}
+
+\rationale{The goal is agreement between querying the JSON and querying the
+database built from it. Here the JSON side has no defined answer: two
+conforming JSON query engines may legitimately disagree about the value of
+\texttt{.a} in the document above. Agreement cannot be proved against a
+reference semantics that is itself undefined, so admitting duplicates would
+leave a hole in the statement at precisely the point where the statement is
+the product.
+
+Options (b) and (c) discard data silently. Option (d) preserves it but invents
+a collection the document did not ask for, and makes the schema depend on
+whether a key happened to repeat. Rejection also costs little in practice:
+duplicates are rare, and when they occur they usually indicate a fault in
+whatever generated the document --- something the user would rather be told
+about than have quietly resolved.}
+
+\implnote{The parser will not perform this check for us. Yojson represents an
+object as an association list and preserves both members: \texttt{\{"a":1,
+"a":2\}} parses to a two-element list and re-serializes with both, verified
+against yojson 3.0.0. The check must therefore be explicit, and applied to
+every object at every depth. It is a per-document check, not a corpus-level
+one.}
+
+\limitation{Documents that other tools accept will be rejected. Since the
+check is per-document, one malformed document rejects the whole input unless
+the interface offers to skip it.}

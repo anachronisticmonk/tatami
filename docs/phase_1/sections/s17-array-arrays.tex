@@ -1,0 +1,66 @@
+\subsection*{S17. Array of arrays}
+
+An array whose elements are themselves arrays.
+
+\begin{lstlisting}[style=json]
+{ "id": 1, "matrix": [ [1, 2], [3] ] }
+\end{lstlisting}
+
+The outer array is handled by S13, but its elements are neither scalars nor
+objects, and an array has no relational form of its own. The element has
+nowhere to go.
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Reject}, with an error naming the path. \selected
+  \item \textbf{One table per level.} The outer array's table holds an
+        identifier and an index; the inner array's table references it and
+        carries its own index and the value. Two tables and two index columns,
+        generalising to arbitrary depth.
+  \item \textbf{A single table with one index column per level} ---
+        \texttt{matrix(id, parent\_id, idx0, idx1, value)}. Flatter, but the
+        number of index columns then depends on the nesting depth found in the
+        data.
+  \item \textbf{An opaque raw-JSON column} holding the inner arrays.
+\end{enumerate}
+
+\decision{Reject. An array whose elements are arrays is an error naming the
+path.}
+
+\paragraph{What is rejected is narrow.}
+Only a \emph{direct} array-inside-array is refused. An array nested inside an
+object which is itself inside an array is ordinary and remains accepted,
+because each level is then mediated by a named member:
+
+\begin{lstlisting}[style=json]
+{ "matrix": [ [1, 2], [3] ] }                      -- rejected
+
+{ "matrix": [ { "row": [1, 2] }, { "row": [3] } ] }  -- accepted
+\end{lstlisting}
+
+\noindent
+The second form is the escape hatch for data of this shape, and it costs the
+user one wrapper object per level.
+
+\rationale{The decisive objection is naming. Every table takes its name from
+the field whose value it holds, but an inner array sits in \emph{element}
+position, which has no key. There is nothing to name its table after, so
+option (b) does not merely generate an ugly module --- it generates one that
+nothing can sensibly name, and it generates a fresh one for every level of
+nesting. Since arrays may nest to any depth, that is an unbounded family of
+anonymous tables, each contributing a join.
+
+Requiring the wrapper object restores a name at every level, which is why the
+accepted form above is not an arbitrary restriction: it asks the document to
+supply the one piece of information the relational form needs and the bare
+nested array withholds.
+
+Option (c) additionally makes the table's shape depend on the nesting depth
+observed in the data, which is the data-dependence problem of S9 once more.}
+
+\limitation{Legitimate data is rejected --- matrices and other numeric
+structures are naturally written as nested arrays, and their producers cannot
+usually be asked to insert wrapper objects. Option (b) remains the natural
+extension if this proves too restrictive, and adopting it would not disturb
+any other decision here, though it would first require S22 to settle how an
+unnamed table is named.}

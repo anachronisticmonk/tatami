@@ -1,0 +1,54 @@
+\subsection*{S8. Empty object}
+
+A field whose value is an object with no members, at every document in the
+corpus. If some documents supply members and others do not, ordinary inference
+applies and the members are simply partial under S4; this scenario is only the
+case where the object is empty everywhere.
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": {} }
+\end{lstlisting}
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{A table with only an identifier column}, and a module whose
+        row type carries nothing but that identifier. \selected
+  \item \textbf{Reject}, with an error naming the path.
+  \item \textbf{Drop the field} from the schema.
+  \item \textbf{\texttt{b : unit}} --- a marker in the parent, with no table
+        and no module.
+\end{enumerate}
+
+\decision{Emit a table with only an identifier column. The parent holds a
+foreign key to it exactly as in S7.}
+
+\begin{lstlisting}[style=ml]
+module B : sig
+  type id
+  type t = { id : id }
+  val get : db -> id -> t
+end
+
+module Root : sig
+  type id
+  type t = { id : id; a : int; b_id : B.id }
+  val get : db -> id -> t
+  val b : db -> t -> B.t
+end
+\end{lstlisting}
+
+\rationale{The same principle as S6: keep the field, and let its generated
+form state exactly what is known about it. Option (a) also preserves a
+distinction the others lose. \texttt{\{"b": \{\}\}} and \texttt{\{\}} are
+different inputs: the first yields a non-null foreign key to an empty row,
+while the second makes \texttt{b} partial under S4. Under (c) and (d) that
+difference disappears.
+
+Option (d) is the tempting shortcut, and it holds only until some document in
+the corpus gives \texttt{b} a member --- at which point the representation has
+to change from \texttt{unit} to a module, rather than the existing table
+merely gaining a column.}
+
+\limitation{The table carries no data. Like the \texttt{unit option} of S6, it
+exists to record structure that was present in the input, and every row in it
+is a bare generated identifier.}

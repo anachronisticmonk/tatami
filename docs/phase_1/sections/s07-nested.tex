@@ -1,0 +1,105 @@
+\subsection*{S7. Nested object, one-to-one}
+
+A field whose value is an object, with the same shape across the corpus. This
+is the worked example of the design note, \S2.1.
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": { "c": 1, "d": 2 } }
+\end{lstlisting}
+
+\options
+\begin{enumerate}[label=\textbf{(\alph*)}]
+  \item \textbf{Separate table with a foreign key.} The nested object becomes
+        its own table and module; the parent holds a foreign-key column and
+        gains an accessor that follows it. \selected
+  \item \textbf{Flatten into the parent} with prefixed columns
+        (\texttt{b\_c}, \texttt{b\_d}). No child module and no join. This is
+        what Prisma and Airbyte's basic normalization do for one-to-one
+        nesting.
+  \item \textbf{An inline record type} in the parent module, with no separate
+        table and no identifier.
+  \item \textbf{Hybrid} --- flatten when the nested object is total, split it
+        into a table when it is nullable.
+\end{enumerate}
+
+\decision{Separate table with a foreign key. Every nested object becomes its
+own table and its own module, the parent carries a foreign-key column holding
+the child's \texttt{id}, and the parent module exposes an accessor that
+follows it.}
+
+The two tables that come out, with the identifier columns that shredding
+invents:
+
+\begin{center}
+\begin{tabular}{@{}lll@{}}
+\multicolumn{3}{@{}l}{\textbf{Table root}} \\
+\hline
+\texttt{id} & \texttt{a} & \texttt{b\_id} \\
+\hline
+1 & 1 & 1 \\
+\hline
+\end{tabular}
+\qquad
+\begin{tabular}{@{}lll@{}}
+\multicolumn{3}{@{}l}{\textbf{Table b}} \\
+\hline
+\texttt{id} & \texttt{c} & \texttt{d} \\
+\hline
+1 & 1 & 2 \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent and the modules they generate:
+
+\begin{lstlisting}[style=ml]
+module B : sig
+  type id
+  type t = { id : id; c : int; d : int }
+  val get : db -> id -> t
+end
+
+module Root : sig
+  type id
+  type t = { id : id; a : int; b_id : B.id }
+  val get : db -> id -> t
+  val b : db -> t -> B.t   (* follows the foreign key into table b *)
+end
+\end{lstlisting}
+
+Under S4, a nested object that is sometimes absent or null makes the
+foreign-key column partial, and the accessor partial with it:
+
+\begin{lstlisting}[style=json]
+{ "a": 1, "b": { "c": 1, "d": 2 } }
+{ "a": 2 }
+\end{lstlisting}
+
+\begin{lstlisting}[style=ml]
+type t = { id : id; a : int; b_id : B.id option }
+val b : db -> t -> B.t option
+\end{lstlisting}
+
+\rationale{This is what the design note specifies --- nested and repeated
+substructures are normalized into separate relations linked by generated keys,
+with foreign-key constraints materialized rather than left implicit --- and
+what its \S2.1 code emits. It is also what Phase~2 needs: the whole effect
+lowering is a rewrite of these accessors into generators, and a flattened
+field would present nothing to rewrite.}
+
+\limitation{Every nested field costs a join. Option (b) avoids it, and matters
+for Phase~3 where a flattened column can be reached without one; option (d)
+remains available later as an optimization for the total case, since it
+changes only how a total nested object is realized and nothing else in this
+document. Note also that flattening degrades badly under S4: if the nested
+object is sometimes absent, every flattened column becomes optional and
+\texttt{\{"b": \{"c": null, "d": null\}\}} is no longer distinguishable from
+\texttt{\{\}}, whereas a single nullable foreign key records exactly that
+fact.}
+
+\implnote{The child table takes its name from the field, so two different
+parents each holding a field named \texttt{b} would collide. Naming and
+collision resolution are S22. Note also that the generated signature uses
+\texttt{b} both as a record field and as a value; OCaml keeps record fields
+and values in separate namespaces so this compiles, but it reads poorly and
+S22 may choose to disambiguate.}
