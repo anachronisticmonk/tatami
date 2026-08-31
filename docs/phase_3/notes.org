@@ -1,0 +1,171 @@
+#+TITLE: Phase 3 — query lowering and heterogeneous execution
+#+SUBTITLE: Working notes. Nothing here is decided.
+
+Raw material for a document that does not exist yet. When these questions start
+having answers, they should be written up the way ~phase_1/lowering.tex~ writes
+them up — scenario, options considered, one selected, rationale, known
+limitation — because that form is what makes a decision survivable later.
+
+The design note gives Phase 3 two short subsections and one sharp question. The
+subsections are thin on purpose; the question is the project.
+
+* The question
+
+#+begin_quote
+Can the dispatch criterion be derived from the effect signature of the generated
+accessors, rather than from a cost model?
+#+end_quote
+
+Worth being precise about what is being claimed, because §4.2 of the design note
+also says plans are enumerated and *costed*, and a cost model is therefore not
+absent. Three readings, and they are not equally ambitious:
+
+1. *Legality only.* The effect signature says which targets a fragment /may/ be
+   lowered to; the cost model picks among them. Weakest, and closest to what
+   §4.1 literally says ("annotated with the execution target it can legally be
+   lowered to").
+2. *Placement, with costing left for the rest.* The signature decides CPU or
+   GPU outright; costing only chooses among join implementations and physical
+   operators once the device is fixed.
+3. *Placement instead of costing.* No cost model participates in placement at
+   all, and the differential evaluation of §5 is the evidence that it did not
+   need to.
+
+Which one is being asserted determines what §5 actually measures. Settling this
+is probably prior to everything below.
+
+* Open questions
+
+** Q1. What is the query language
+
+"Our OCaml-embedded query language" is all the design note says. The fork that
+matters is whether a query is /written in a DSL/ or /recovered from ordinary
+OCaml/ that consumes the Phase 2 generators.
+
+- A combinator library over the generated modules — queries are values, and
+  distillation is an interpretation of them. Easiest to analyse.
+- A PPX quotation, giving syntax at the cost of a syntactic extension.
+- MetaOCaml-style staging.
+- No language at all: analyse ordinary consumer code, recovering the query from
+  the effects it performs. Most faithful to the effect-signature framing, and
+  by far the hardest.
+
+Note that the last option makes Q3 easier and Q1 much harder, and the first does
+the reverse.
+
+** Q2. What is a fragment
+
+The unit of dispatch. BOSS's answer is the kernel boundary, and Phase 3 adopts
+that. But what delimits a fragment /here/ — one handler installation, one
+generator pipeline stage, one physical operator, one relation's traversal?
+
+The design note's §3.2 already gestures at an answer: "a fragment that is
+expressed as polling is an independently dispatchable unit of work". If that is
+the definition rather than a consequence, then fragment boundaries are handler
+boundaries, and Phase 2's rewrite is what creates them.
+
+** Q3. What makes a fragment legally GPU-lowerable
+
+The centre of the whole thing. If the criterion is to be read off an effect
+signature, then two things need defining and neither exists yet:
+
+- *The vocabulary.* Phase 2 emits one effect per field, ~Yield_a : int ->
+  unit Effect.t~. A fragment's signature is presumably the set of effects it
+  performs. Is that set enough? Plausible additional discriminants: the payload
+  types (primitive and fixed-width vs. not), whether any effect crosses a
+  foreign key (a join, hence a dependent traversal), whether control is bounded.
+- *The predicate.* Given the signature, what says GPU. A first guess worth
+  writing down and then attacking: all payloads are fixed-width scalars, no
+  effect follows a foreign key, and the fragment performs no effect it does not
+  itself handle.
+
+** Q4. Where the effect signature comes from
+
+Load-bearing, and worth checking early: *OCaml 5 does not track effects in the
+type system.* The PLDI 2021 retrofit shipped handlers without effect types, so
+~Effect.perform~ is invisible in a function's type and nothing can be read off
+the ~.mli~ that the compiler checked. "Effect-typed OCaml" in the project title
+is therefore a thing we build, not a thing OCaml gives us.
+
+Two ways to get one, and they differ enormously in cost:
+
+- *Infer it.* A separate effect analysis over the generated code. General, and
+  a real piece of work.
+- *Generate it.* We emitted the accessors from the schema, so we already know
+  what each performs — the signature can be emitted alongside the module rather
+  than recovered from it. This is what §4 means by "the provenance of every
+  relation is known": for each file we can determine which code populates which
+  part of the database.
+
+The second is much more tractable and probably right for a first version, but it
+only covers generated code. A query that computes anything of its own is outside
+it, which pushes back on Q1.
+
+** Q5. Storage
+
+Phase 1 declares ~type db~ abstract and says how one is obtained is "a question
+about storage rather than about lowering". Phase 3 cannot inherit that silence:
+physical layout is precisely what makes GPU execution possible or impossible. A
+row-per-record store cannot feed a GPU kernel; a columnar one can.
+
+BOSS composes Apache Arrow for exactly this reason. Deciding the store may be
+the first Phase 3 decision rather than a late one, and it belongs to ~toko/~
+since ~omote/~ has explicitly declined it.
+
+** Q6. What runs on the GPU
+
+Whether we write kernels or compose existing ones. BOSS uses ArrayFire for GPU
+and Velox for CPU and does not write either. Voodoo emits OpenCL for both from
+one vector algebra. Composing is the cheaper path and matches the acknowledged
+debt; writing our own is only justified if the effect-derived dispatch needs
+kernels shaped differently than existing ones are.
+
+** Q7. What the baseline is
+
+§5 is differential: the plan as written against the plan under optimized
+lowering and placement. "As written" needs a definition sharp enough to be
+implemented and honest enough to be a fair baseline — CPU-only with no
+reordering is the obvious reading, but a baseline chosen to lose is not
+evidence. The correctness half of §5 is unambiguous and easier: the two must
+agree.
+
+* Inherited from Phase 1
+
+Decisions already taken that Phase 3 either depends on or has to push back on.
+Several are flagged in ~lowering.tex~ itself as being Phase 3's problem.
+
+| Ref   | What                            | Consequence here                                                                                                                   |
+|-------+---------------------------------+------------------------------------------------------------------------------------------------------------------------------------|
+| S21.5 | ~val all : db -> t list~        | Materializes the whole table, which is what the design note's §3.2 argues against. ~Seq.t~ or the effectful form is the revision, and it breaks consumers rather than extending them. |
+| S21.2 | store is an explicit ~db~ handle | Its own known limitation names option (d) — the store /is/ the effect handler, supplying rows in response to a performed effect — as the eventual destination. That is a Phase 3 decision. |
+| S7    | nested object → table + FK       | "Every nested field costs a join. Option (b) [flattening] avoids it, and matters for Phase 3 where a flattened column can be reached without one." An optimization Phase 3 may want to ask for. |
+| S14   | scalar arrays: table, no module  | A scalar array is already a column of fixed-width values with an ordering index. That is the GPU-shaped case, and it arrives without a module in the way. |
+| S20   | per-path observation counts      | Declared diagnostic-only, but they are selectivity statistics. If costing wants them, they must be exported, not left in the interface. |
+| S1b   | out-of-range ints widen to float | Precision already lost at ingest. Relevant if GPU kernels reduce in single precision — that would be a second, independent loss on the same column. |
+| S16b  | nullable element columns         | Nullability is a per-value mask. Masks are cheap on a GPU and awkward in a row store; another argument that Q5 comes early. |
+
+* The invariant
+
+Almost every Phase 1 decision turns out to be defending one property: *the
+schema is a function of document structure, not of data values.* It is what
+rules out heuristic map detection, thresholds on optionality, recursion
+detection, and collision-suffix naming. Having one such property is why that
+document holds together.
+
+Phase 3 has no equivalent yet, and finding it is probably the first real task.
+The candidate, stated to be argued with rather than adopted: *placement is a
+function of the effect signature, not of the data.* If that holds, a plan does
+not change because the corpus grew — which is the same shape of claim, and would
+make the two documents rhyme.
+
+* Reading
+
+- *BOSS* — Mohr-Daurat, Sun, Pirk. /BOSS: An Architecture for Database Kernel
+  Composition./ PVLDB 17(4):877–890, 2023. The architecture Phase 3 adopts.
+  Partial query evaluation over a unified exchange format for plans and data;
+  Arrow for storage, ArrayFire for GPU, Velox for CPU.
+- *Voodoo* — Pirk, Moll, Zaharia, Madden. PVLDB 9(14), 2016. The vector algebra
+  abstracting over cache, SIMD and core count, emitting OpenCL for both devices.
+- *Compiling PL/SQL Away* — Hirn, Grust. CIDR 2021.
+- *OCaml 5 effects* — Sivaramakrishnan et al. /Retrofitting Effect Handlers
+  onto OCaml./ PLDI 2021. Read for what it says about effect /types/, per Q4.

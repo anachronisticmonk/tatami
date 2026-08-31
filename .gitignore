@@ -11,3 +11,6 @@
 _build/
 _opam/
 *.install
+
+# Personal scratchpad, not shared
+scratch.org

@@ -1,0 +1,35 @@
+#+TITLE: omote — 表, the face
+
+The front end. JSON in, OCaml modules out.
+
+* Scope
+
+- *Phase 1* — corpus reading, schema inference, shredding, and generation of the
+  typed OCaml modules. Fully specified by [[file:../docs/phase_1/lowering.pdf][docs/phase_1/lowering.pdf]]; every
+  scenario there is decided, and that document is the specification the
+  implementation is written against.
+- *Phase 2* — the source-to-source pass that rewrites each generated getter from
+  ~let a r = r.a~ into ~let a r = Effect.perform (Yield_a r.a)~, turning the
+  modules into generator objects.
+
+* Suggested internal shape
+
+Not binding; adjust freely, it is all inside this directory.
+
+| Module        | Responsibility                                            |
+|---------------+-----------------------------------------------------------|
+| ~Input~       | S0: corpus reading, single document vs. top-level array   |
+| ~Config~      | S9/S19: the ~maps~ and ~recursive~ path markings          |
+| ~Validate~    | A3: conditions C1–C6, also the ingest-time validator      |
+| ~Lattice~     | A2: the type lattice, least upper bounds, widening        |
+| ~Infer~       | per-path observation, nullability, the S20 counts         |
+| ~Mangle~      | S11/S22: injective key mangling, path-qualified names     |
+| ~Schema~      | the inferred relational schema — but see ~heri/~          |
+| ~Shred~       | documents into rows                                       |
+| ~Emit~        | schema into ~.ml~ / ~.mli~ text                           |
+| ~Effectify~   | Phase 2, the accessor rewrite                             |
+
+* What belongs in heri/ instead
+
+The schema representation itself, and the effect signatures ~Effectify~ emits.
+The back end reads both, so they are the interface rather than internals.
