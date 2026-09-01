@@ -2,15 +2,19 @@
 
 * What is here
 
-| Path             | Document                                | Status                  |
-|------------------+-----------------------------------------+-------------------------|
-| ~design-note/~   | The project design note. Motivation,    | fixed                   |
-|                  | the three phases, evaluation strategy,  |                         |
-|                  | the debt to BOSS.                       |                         |
-| ~phase_1/~       | JSON to OCaml modules: the lowering     | complete, all decided   |
-|                  | scenarios. The specification the front  |                         |
-|                  | end is written against.                 |                         |
-| ~phase_3/~       | Query lowering and device placement.    | notes only, nothing set |
+| Path           | Document                                     | Status                  |
+|----------------+----------------------------------------------+-------------------------|
+| ~design-note/~ | The project design note. Motivation, the     | fixed                   |
+|                | three phases, evaluation strategy, the debt  |                         |
+|                | to BOSS.                                     |                         |
+| ~phase_1/~     | JSON to OCaml modules: the lowering          | complete, all decided   |
+|                | scenarios. The specification the front end   |                         |
+|                | is written against.                          |                         |
+| ~phase_3/~     | Composable kernels: what a kernel is, what   | first draft, nothing    |
+|                | crosses the boundary, what makes one legal   | decided                 |
+|                | on a device. ~kernels.tex~ is the            |                         |
+|                | specification; ~notes.org~ is the question   |                         |
+|                | list it came out of.                         |                         |
 
 The design note is a PDF without its source; the others are LaTeX, built with
 ~make~ from this directory.

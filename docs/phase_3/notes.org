@@ -1,10 +1,16 @@
 #+TITLE: Phase 3 — query lowering and heterogeneous execution
 #+SUBTITLE: Working notes. Nothing here is decided.
 
-Raw material for a document that does not exist yet. When these questions start
-having answers, they should be written up the way ~phase_1/lowering.tex~ writes
-them up — scenario, options considered, one selected, rationale, known
-limitation — because that form is what makes a decision survivable later.
+Raw material. Several of these questions now have proposed answers in
+[[file:kernels.tex][kernels.tex]] --- K1 through K7 there correspond to Q2, Q3, Q4 and the
+invariant below. What remains in this file is what that document does not yet
+address: the query language (Q1), storage (Q5), which kernels (Q6), and the
+baseline (Q7).
+
+The original framing follows, kept because the questions outlived the first
+attempt at answering them. As the rest acquire answers they should leave here
+the same way — written up as ~phase_1/lowering.tex~ writes things up, with the
+options considered, the one selected, and the cost of having selected it.
 
 The design note gives Phase 3 two short subsections and one sharp question. The
 subsections are thin on purpose; the question is the project.
