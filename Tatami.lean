@@ -1,5 +1,6 @@
 import Tatami.Path
 import Tatami.Doc
+import Tatami.Config
 import Tatami.Error
 import Tatami.Ty
 import Tatami.Infer

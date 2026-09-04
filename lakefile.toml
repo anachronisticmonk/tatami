@@ -1,5 +1,5 @@
 name = "tatami"
-defaultTargets = ["tatami"]
+defaultTargets = ["tatami", "Proofs"]
 
 [[lean_lib]]
 name = "Tatami"
@@ -7,3 +7,6 @@ name = "Tatami"
 [[lean_exe]]
 name = "tatami"
 root = "Main"
+
+[[lean_lib]]
+name = "Proofs"

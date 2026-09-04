@@ -10,9 +10,11 @@ JavaScript fallback.
 
 import http.server
 import json
+import os
 import pathlib
 import subprocess
 import sys
+import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
 BINARY = ROOT / ".lake" / "build" / "bin" / "tatami"
@@ -39,11 +41,29 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path != "/translate":
             return self.send_error(404)
         length = int(self.headers.get("Content-Length") or 0)
-        payload = self.rfile.read(length)
+        body = self.rfile.read(length)
+
+        # The page sends {"input": <json text>, "config": {...}}. The config is
+        # written to a temp file because that is the interface the binary has:
+        # a config is a file, exactly as a user would keep one.
+        config_path = None
+        try:
+            envelope = json.loads(body)
+            payload = envelope.get("input", "").encode()
+            config = envelope.get("config") or {}
+        except (ValueError, AttributeError):
+            payload, config = body, {}
+
+        argv = [str(BINARY), "--json"]
+        if config:
+            fd, config_path = tempfile.mkstemp(suffix=".json")
+            with os.fdopen(fd, "w") as f:
+                json.dump(config, f)
+            argv += ["--config", config_path]
+
         try:
             run = subprocess.run(
-                [str(BINARY), "--json"], input=payload,
-                capture_output=True, timeout=15)
+                argv, input=payload, capture_output=True, timeout=15)
             out = run.stdout.strip()
             if not out:
                 out = json.dumps({
@@ -58,6 +78,9 @@ class Handler(http.server.BaseHTTPRequestHandler):
             }).encode()
         except subprocess.TimeoutExpired:
             out = json.dumps({"ok": False, "error": "the generator timed out"}).encode()
+        finally:
+            if config_path:
+                os.unlink(config_path)
         self._send(out, "application/json")
 
     def log_message(self, *args):

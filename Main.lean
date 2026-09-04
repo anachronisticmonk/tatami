@@ -9,14 +9,14 @@ structure Outcome where
   documents : Nat
 
 /-- JSON text to OCaml module signatures, plus what was observed on the way. -/
-def pipeline (input : String) : Except String Outcome :=
+def pipeline (cfg : Config) (input : String) : Except String Outcome :=
   match Doc.parse input with
   | .error e => .error s!"parse error: {e}"
   | .ok j =>
       match
         (do
           let docs ← documents j
-          let tables ← inferCorpus docs
+          let tables ← inferCorpus cfg docs
           let file ← gen (toSchema tables)
           return { ocaml := file.print, tables := tables, documents := docs.length }
           : Except Error Outcome)
@@ -62,13 +62,25 @@ def reportJson : Except String Outcome → Json
         , ("documents", nat o.documents)
         , ("tables", .arr (ordered.map tableJson).toArray) ]
 
+/-- `tatami [--json] [--config FILE] [INPUT]` -/
 def main (args : List String) : IO UInt32 := do
   let jsonMode := args.contains "--json"
-  let files := args.filter (fun a => a != "--json")
+  let rest := args.filter (fun a => a != "--json")
+  let rec split : List String → Option String × List String
+    | "--config" :: f :: tl => let (_, r) := split tl; (some f, r)
+    | a :: tl => let (c, r) := split tl; (c, a :: r)
+    | [] => (none, [])
+  let (configFile, files) := split rest
+  let configText ← match configFile with
+    | some f => IO.FS.readFile f
+    | none => pure ""
   let input ← match files with
     | [] => (← IO.getStdin).readToEnd
     | p :: _ => IO.FS.readFile p
-  let result := pipeline input
+  let result :=
+    match Config.parse configText with
+    | .error e => .error s!"configuration error: {e}"
+    | .ok cfg => pipeline cfg input
   if jsonMode then
     IO.println (reportJson result).compress
     return 0

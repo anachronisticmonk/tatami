@@ -1,3 +1,4 @@
+import Tatami.Config
 import Tatami.Doc
 import Tatami.Error
 import Tatami.Path
@@ -61,9 +62,17 @@ def Obs.widened (o : Obs) : Bool := o.sawInt && o.sawFloat
     visited once per document, a nested table once per parent that had it. -/
 structure TableObs where
   visits : Nat := 0
+  /-- of those visits, how many were as a member of a collection -- an array
+      element or a map entry. A folded recursive table is reached both ways,
+      which is what makes its back-reference optional. -/
+  collVisits : Nat := 0
+  /-- the table those rows point back to -/
+  parent : Option Path := none
+  /-- rows are keyed by a string rather than positioned by an index -/
+  keyed : Bool := false
   members : List (String × Obs) := []
-  /-- for an element table, whether its elements were objects or scalars.
-      An array whose elements are some of each has no single table shape. -/
+  /-- whether a collection's members were objects or scalars. One that is some
+      of each has no single table shape. -/
   elemObject : Bool := false
   elemScalar : Bool := false
   deriving Inhabited
@@ -125,46 +134,75 @@ def recordMember (ts : Tables) (p : Path) (k : String) (s : Seen)
   return ts.upsert p fun t =>
     { t with members := t.members.filter (fun q => q.1 != k) ++ [(k, next)] }
 
-/-- Walk one object, recording its members, and descend into any nested
-    object -- which becomes a table of its own, referred to by its path.
+/-- Walk one object, recording its members and descending into whatever they
+    hold.
+
+    `target` is the table this object belongs to, which is not always the path
+    it sits at: a path marked recursive folds into an ancestor, and both are
+    then the same table. `from?` is set when the object is a member of a
+    collection, carrying the table its row points back to and whether it is
+    keyed by a string.
 
     Marked `partial`: the recursion is on the document, and Lean cannot see
     that a member is smaller than the object holding it without a size measure
     and the lemma that goes with it. Now that `Doc` is an ordinary inductive
     type this is expressible, which it was not while the parser handed us a
     tree map; it must be done before anything about inference can be proved. -/
-partial def observeObject (ts : Tables) (p : Path) (j : Doc)
-    : Except Error Tables := do
+partial def observeObject (cfg : Config) (ts : Tables) (target : Path)
+    (from? : Option (Path × Bool)) (j : Doc) : Except Error Tables := do
   let ms ← members j
-  checkDistinct p ms
-  let mut ts := ts.upsert p fun t =>
-    { t with visits := t.visits + 1
-           , elemObject := t.elemObject || Path.isElement p }
+  checkDistinct target ms
+  let mut ts := ts.upsert target fun t =>
+    { t with
+      visits := t.visits + 1
+      collVisits := t.collVisits + (if from?.isSome then 1 else 0)
+      parent := match from? with | some (pp, _) => some pp | none => t.parent
+      keyed := match from? with | some (_, k) => t.keyed || k | none => t.keyed
+      elemObject := t.elemObject || from?.isSome }
+
   for (k, v) in ms do
-    let here := Path.member p k
+    let here := Path.member target k
     match v with
-    | .obj _ =>
-        -- a nested object: a table of its own, and a key to it here
-        ts ← recordMember ts p k (.value (.ref here) false)
-        ts ← observeObject ts here v
+    | .obj entries =>
+        if cfg.isMap here then
+          -- the members are data: each becomes a row keyed by its name
+          let raw := Path.entry here
+          let entryTable := cfg.resolve raw
+          ts ← recordMember ts target k (.value (.coll entryTable) false)
+          ts := ts.upsert entryTable id
+          checkDistinct here entries
+          for (_, ev) in entries do
+            match ev with
+            | .obj _ => ts ← observeObject cfg ts entryTable (some (target, true)) ev
+            | .arr _ => throw (.mapEntryNotSupported (Path.toString raw) "an array")
+            | _ =>
+                ts := ts.upsert entryTable fun t =>
+                  { t with visits := t.visits + 1, collVisits := t.collVisits + 1
+                         , parent := some target, keyed := true, elemScalar := true }
+                let s ← seeScalar (Path.toString raw) ev
+                ts ← recordMember ts entryTable "value" s
+        else
+          let child := cfg.resolve here
+          ts ← recordMember ts target k (.value (.ref child) false)
+          ts ← observeObject cfg ts child none v
     | .arr els =>
-        -- a repeated substructure: a table of its own, whose rows point back
-        -- here. This member contributes no column, only the relationship.
-        let ep := Path.elem here
-        ts ← recordMember ts p k (.value (.coll ep) false)
-        ts := ts.upsert ep id            -- the table exists even if empty
+        let raw := Path.elem here
+        let elemTable := cfg.resolve raw
+        ts ← recordMember ts target k (.value (.coll elemTable) false)
+        ts := ts.upsert elemTable id
         for e in els do
           match e with
-          | .obj _ => ts ← observeObject ts ep e
-          | .arr _ => throw (.nestedArray (Path.toString ep))
+          | .obj _ => ts ← observeObject cfg ts elemTable (some (target, false)) e
+          | .arr _ => throw (.nestedArray (Path.toString raw))
           | _ =>
-              ts := ts.upsert ep fun t =>
-                { t with visits := t.visits + 1, elemScalar := true }
-              let s ← seeScalar (Path.toString ep) e
-              ts ← recordMember ts ep "value" s
+              ts := ts.upsert elemTable fun t =>
+                { t with visits := t.visits + 1, collVisits := t.collVisits + 1
+                       , parent := some target, elemScalar := true }
+              let s ← seeScalar (Path.toString raw) e
+              ts ← recordMember ts elemTable "value" s
     | _ =>
         let s ← seeScalar (Path.toString here) v
-        ts ← recordMember ts p k s
+        ts ← recordMember ts target k s
   return ts
 
 /-- Fold every document into one picture of every table.
@@ -172,12 +210,16 @@ partial def observeObject (ts : Tables) (p : Path) (j : Doc)
     Absence is counted once at the end, against each table's own visit count,
     rather than per document as we go: a member first seen late would
     otherwise never record the visits that lacked it. -/
-def inferCorpus (docs : List Doc) : Except Error Tables := do
+def inferCorpus (cfg : Config) (docs : List Doc) : Except Error Tables := do
   let mut ts : Tables := []
   for d in docs do
-    ts ← observeObject ts [] d
+    ts ← observeObject cfg ts (cfg.resolve []) none d
   for (p, t) in ts do
     if t.elemObject && t.elemScalar then throw (.mixedElements (Path.toString p))
+  -- a marking that matched nothing is a typo, not a no-op
+  for m in cfg.maps do
+    if (ts.lookup (cfg.resolve (Path.entry m))).isNone then
+      throw (.markingMatchedNothing (Path.toString m))
   return ts.map fun (p, t) =>
     (p, { t with members := t.members.map fun (k, o) =>
             (k, { o with absent := t.visits - o.values - o.nulls }) })
@@ -194,7 +236,9 @@ def toSchema (ts : Tables) : Schema :=
       a.1.length > b.1.length
   ordered.toList.map fun (p, t) =>
     { path := p
-    , parent := Path.parentOfElement p
+    , parent := if t.collVisits == 0 then none else t.parent
+    , parentOptional := t.collVisits > 0 && t.collVisits < t.visits
+    , keyed := t.keyed
     , columns := (t.members.toArray.qsort (fun a b => a.1 < b.1)).toList.map
         fun (k, o) => { name := k, field := o.field } }
 

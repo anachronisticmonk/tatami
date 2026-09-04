@@ -203,6 +203,40 @@
     white-space: pre-wrap;
   }
 
+  /* ---------------- shape ---------------- */
+  .shape { margin-top: 26px; }
+  .shape h2 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted); font-weight: 500;
+    margin: 0 0 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  .shape p.hint { color: var(--muted); font-size: 13.5px; margin: 10px 0 14px; max-width: 74ch; }
+  .shaperow {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 7px 0; border-bottom: 1px solid var(--line);
+  }
+  .shaperow code {
+    font-family: var(--mono); font-size: 13px; color: var(--ink); min-width: 16ch;
+  }
+  .shaperow label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--muted); cursor: pointer;
+  }
+  .shaperow select {
+    font-family: var(--mono); font-size: 12.5px; background: var(--surface);
+    color: var(--ink); border: 1px solid var(--line); padding: 2px 6px;
+  }
+  .cfgline { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .cfglabel {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .cfgline code {
+    font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+    background: var(--sunk); border: 1px solid var(--line); padding: 3px 8px;
+    overflow-x: auto; max-width: 100%;
+  }
+
   /* ---------------- observations ---------------- */
   .trace { margin-top: 26px; }
   .trace h2 {
@@ -265,6 +299,8 @@
       <button class="chip" data-ex="nulls">Nulls and absence</button>
       <button class="chip" data-ex="conflict">A type conflict</button>
       <button class="chip" data-ex="dup">Duplicate keys</button>
+      <button class="chip" data-ex="map">A map-shaped object</button>
+      <button class="chip" data-ex="tree">A comment thread</button>
       <button class="chip" data-ex="nestedArray">Nested arrays</button>
     </div>
   </header>
@@ -304,6 +340,17 @@
       </div>
     </div>
   </div>
+
+  <section class="shape">
+    <h2>Shape</h2>
+    <p class="hint">Two shapes cannot be read off the data. An object whose keys are values looks exactly like a record, and a self-referential shape looks like a fixed number of nested ones &mdash; how many depends on how deep the sample goes. Mark them here; the markings are an input, not a guess.</p>
+    <div id="shape"></div>
+    <div class="cfgline">
+      <span class="cfglabel">config</span>
+      <code id="cfgjson">{}</code>
+      <button class="act" id="copycfg">Copy</button>
+    </div>
+  </section>
 
   <section class="trace">
     <h2>Observations</h2>
@@ -447,24 +494,38 @@
      Paths and module names.
 
      A path is a list of steps from the root: {m:"name"} into a member,
-     {e:1} into the elements of an array. It identifies a table, and the
-     member names along it are what the module is called. The element marker
-     contributes no name -- an array's element table is named for the member
-     holding it.
+     {e:1} into the elements of an array, {y:1} into the entries of an object
+     marked as a map. It identifies a table, and the member names along it are
+     what the module is called.
      ------------------------------------------------------------------ */
 
   function seg(k) { return { m: k }; }
-  var ELEM = { e: 1 };
+  var ELEM = { e: 1 }, ENTRY = { y: 1 };
 
-  function pathString(p) {
-    if (!p.length) return ".";
-    return p.map(function (s) { return s.m !== undefined ? "." + s.m : "[]"; }).join("");
-  }
+  function segString(s) { return s.m !== undefined ? "." + s.m : s.e ? "[]" : "{}"; }
+  function pathString(p) { return p.length ? p.map(segString).join("") : "."; }
   function pathNames(p) {
-    return p.filter(function (s) { return s.m !== undefined; })
-            .map(function (s) { return s.m; });
+    return p.filter(function (s) { return s.m !== undefined; }).map(function (s) { return s.m; });
   }
-  function isElement(p) { return p.length > 0 && p[p.length - 1].e === 1; }
+  function inCollection(p) {
+    return p.length > 0 && (p[p.length - 1].e === 1 || p[p.length - 1].y === 1);
+  }
+
+  function parsePath(str) {
+    if (str === ".") return [];
+    var out = [], i = 0;
+    while (i < str.length) {
+      if (str[i] === "[" && str[i + 1] === "]") { out.push(ELEM); i += 2; }
+      else if (str[i] === "{" && str[i + 1] === "}") { out.push(ENTRY); i += 2; }
+      else if (str[i] === ".") {
+        var j = i + 1;
+        while (j < str.length && ".[{".indexOf(str[j]) < 0) j++;
+        out.push(seg(str.slice(i + 1, j)));
+        i = j;
+      } else throw { msg: "unexpected '" + str[i] + "' in path " + str };
+    }
+    return out;
+  }
 
   function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
@@ -474,12 +535,28 @@
   }
 
   /* ------------------------------------------------------------------
-     Types.
+     Markings the user supplies. Neither an object whose keys are data nor a
+     self-referential shape can be told from the data, so both are marked.
+     ------------------------------------------------------------------ */
 
-     Neither a nested object nor an array has a type of its own. A nested
-     object becomes a table and the parent holds a key into it (`ref`). An
-     array becomes a table whose rows point back, so the parent holds no
-     column at all, only the relationship (`coll`).
+  function markings(cfg) {
+    cfg = cfg || {};
+    var maps = cfg.maps || [];
+    var rec = cfg.recursive || [];
+    return {
+      isMap: function (p) { return maps.indexOf(pathString(p)) >= 0; },
+      resolve: function (p) {
+        var s = pathString(p);
+        for (var i = 0; i < rec.length; i++)
+          if (rec[i].path === s) return parsePath(rec[i].folds_into);
+        return p;
+      },
+      maps: maps
+    };
+  }
+
+  /* ------------------------------------------------------------------
+     Types.
      ------------------------------------------------------------------ */
 
   var MAX_NATIVE_INT = 4611686018427387903n;
@@ -499,16 +576,8 @@
 
   function tyName(t) {
     if (t.ty === "ref") return "the object at " + pathString(t.ref);
-    if (t.ty === "coll") return "the array at " + pathString(t.ref);
-    return t.ty === "bot" ? "unknown" : t.ty;
-  }
-
-  function ocamlType(col) {
-    var base = col.ty === "ref" ? moduleName(col.ref) + ".id"
-             : col.ty === "coll" ? moduleName(col.ref) + ".t list"
-             : col.ty === "bot" ? "unit"
-             : col.ty === "str" ? "string" : col.ty;
-    return col.ty === "coll" ? base : base + (col.nullable ? " option" : "");
+    if (t.ty === "coll") return "the collection at " + pathString(t.ref);
+    return t.ty === "bot" ? "unknown" : t.ty === "str" ? "string" : t.ty;
   }
 
   function describe(v) {
@@ -545,14 +614,15 @@
                  "; expected an object, or an array of objects." };
   }
 
-  function infer(docs) {
+  function infer(docs, cfg) {
+    var C = markings(cfg);
     var tables = [];
 
     function tableAt(path) {
       var key = pathString(path);
       for (var i = 0; i < tables.length; i++) if (tables[i].key === key) return tables[i];
-      var t = { key: key, path: path, visits: 0, members: [],
-                elemObject: false, elemScalar: false };
+      var t = { key: key, path: path, visits: 0, collVisits: 0, parent: null,
+                keyed: false, members: [], elemObject: false, elemScalar: false };
       tables.push(t);
       return t;
     }
@@ -573,43 +643,78 @@
         throw { msg: "the member " + pathString(where) + " holds both " +
                      tyName({ ty: m.ty, ref: m.ref }) + " and " + tyName(seen) +
                      ", which have no common type." };
-      m.ty = joined.ty;
-      m.ref = joined.ref || null;
-      m.values++;
+      m.ty = joined.ty; m.ref = joined.ref || null; m.values++;
       if (seen.big) m.big = true;
       if (seen.ty === "int") m.sawInt = true;
       if (seen.ty === "float") m.sawFloat = true;
     }
 
-    function observe(path, obj) {
-      var t = tableAt(path);
-      t.visits++;
-      if (isElement(path)) t.elemObject = true;
-      var seenHere = Object.create(null);
-      obj.members.forEach(function (pair) {
-        var k = pair[0], v = pair[1], here = path.concat([seg(k)]);
-        if (seenHere[k])
-          throw { msg: "the object at " + pathString(path) + " carries the member " +
-                       k + " more than once." };
-        seenHere[k] = true;
-        if (v.k === "obj") { record(t, k, { ty: "ref", ref: here }, here); observe(here, v); }
-        else if (v.k === "arr") {
-          var ep = here.concat([ELEM]);
-          record(t, k, { ty: "coll", ref: ep }, here);
-          var et = tableAt(ep);                       // exists even when empty
-          v.items.forEach(function (e) {
-            if (e.k === "obj") observe(ep, e);
-            else if (e.k === "arr")
-              throw { msg: "the array at " + pathString(ep) + " has an element that is " +
-                           "itself an array. Wrap the inner array in an object to give it a name." };
-            else { et.visits++; et.elemScalar = true; record(et, "value", scalarSeen(e), ep); }
-          });
-        }
-        else record(t, k, scalarSeen(v), here);
+    function distinct(ms, at) {
+      var seen = Object.create(null);
+      ms.forEach(function (pair) {
+        if (seen[pair[0]])
+          throw { msg: "the object at " + pathString(at) + " carries the member " +
+                       pair[0] + " more than once." };
+        seen[pair[0]] = true;
       });
     }
 
-    docs.forEach(function (d) { observe([], d); });
+    function scalarRow(table, parent, keyed, value, at) {
+      var e = tableAt(table);
+      e.visits++; e.collVisits++; e.parent = parent;
+      if (keyed) e.keyed = true;
+      e.elemScalar = true;
+      record(e, "value", scalarSeen(value), at);
+    }
+
+    function observe(target, from, obj) {
+      var t = tableAt(target);
+      t.visits++;
+      if (from) {
+        t.collVisits++; t.parent = from.parent;
+        if (from.keyed) t.keyed = true;
+        t.elemObject = true;
+      }
+      distinct(obj.members, target);
+
+      obj.members.forEach(function (pair) {
+        var k = pair[0], v = pair[1], here = target.concat([seg(k)]);
+
+        if (v.k === "obj") {
+          if (C.isMap(here)) {
+            var raw = here.concat([ENTRY]), et = C.resolve(raw);
+            record(t, k, { ty: "coll", ref: et }, here);
+            tableAt(et);
+            distinct(v.members, here);
+            v.members.forEach(function (ep) {
+              var ev = ep[1];
+              if (ev.k === "obj") observe(et, { parent: target, keyed: true }, ev);
+              else if (ev.k === "arr")
+                throw { msg: "the member at " + pathString(raw) + " is an array. " +
+                             "Map entries may be objects or scalars." };
+              else scalarRow(et, target, true, ev, raw);
+            });
+          } else {
+            var child = C.resolve(here);
+            record(t, k, { ty: "ref", ref: child }, here);
+            observe(child, null, v);
+          }
+        } else if (v.k === "arr") {
+          var rawE = here.concat([ELEM]), lt = C.resolve(rawE);
+          record(t, k, { ty: "coll", ref: lt }, here);
+          tableAt(lt);
+          v.items.forEach(function (e) {
+            if (e.k === "obj") observe(lt, { parent: target, keyed: false }, e);
+            else if (e.k === "arr")
+              throw { msg: "the array at " + pathString(rawE) + " has an element that is " +
+                           "itself an array. Wrap the inner array in an object to give it a name." };
+            else scalarRow(lt, target, false, e, rawE);
+          });
+        } else record(t, k, scalarSeen(v), here);
+      });
+    }
+
+    docs.forEach(function (d) { observe(C.resolve([]), null, d); });
 
     tables.forEach(function (t) {
       if (t.elemObject && t.elemScalar)
@@ -619,6 +724,14 @@
         m.nullable = m.nulls > 0 || m.absent > 0;
       });
       t.members.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
+      t.parentOptional = t.collVisits > 0 && t.collVisits < t.visits;
+      if (t.collVisits === 0) t.parent = null;
+    });
+
+    C.maps.forEach(function (m) {
+      var want = pathString(C.resolve(parsePath(m).concat([ENTRY])));
+      if (!tables.some(function (t) { return t.key === want; }))
+        throw { msg: "the configuration marks " + m + " as a map, but no object was found there." };
     });
 
     tables.sort(function (a, b) {
@@ -628,10 +741,15 @@
     return tables;
   }
 
-  function parentOfElement(p) {
-    if (p.length >= 2 && p[p.length - 1].e === 1 && p[p.length - 2].m !== undefined)
-      return p.slice(0, p.length - 2);
-    return null;
+  function ocamlType(col, self) {
+    function ref(p, n) {
+      return moduleName(p) === self ? (n === "id" ? "id" : n) : moduleName(p) + "." + n;
+    }
+    var base = col.ty === "ref" ? ref(col.ref, "id")
+             : col.ty === "coll" ? ref(col.ref, "t") + " list"
+             : col.ty === "bot" ? "unit"
+             : col.ty === "str" ? "string" : col.ty;
+    return col.ty === "coll" ? base : base + (col.nullable ? " option" : "");
   }
 
   function render(tables) {
@@ -640,33 +758,41 @@
       if (names.indexOf(n) !== i) throw { msg: "two tables would both be called " + n + "." };
     });
 
-    // an array makes the references cyclic: the parent reaches the elements,
-    // the elements carry a key back to the parent
-    var recursive = tables.some(function (t) { return isElement(t.path); });
+    // a reference between two different modules that runs both ways makes the
+    // group cyclic; a table that only points at itself does not
+    var recursive = tables.some(function (t) {
+      return t.parent && moduleName(t.parent) !== moduleName(t.path);
+    });
 
     var mods = tables.map(function (t, i) {
-      var fields = ["id : id"];
-      var pp = parentOfElement(t.path);
-      if (pp) fields.push("parent_id : " + moduleName(pp) + ".id", "idx : int");
-      var accessors = [];
+      var self = moduleName(t.path);
+      function ref(p, n) {
+        return moduleName(p) === self ? (n === "id" ? "id" : n) : moduleName(p) + "." + n;
+      }
+      var fields = ["id : id"], accessors = [];
+      var posName = t.keyed ? "key" : "idx";
+      if (t.parent) {
+        var idTy = ref(t.parent, "id"), posTy = t.keyed ? "string" : "int";
+        fields.push("parent_id : " + idTy + (t.parentOptional ? " option" : ""));
+        fields.push(posName + " : " + posTy + (t.parentOptional ? " option" : ""));
+      }
       t.members.forEach(function (m) {
         var name = mangle(m.key);
-        if (name === "id" || (pp && (name === "parent_id" || name === "idx")))
-          throw { msg: "the member " + m.key + " collides with the generated " +
-                       name + " column." };
+        if (name === "id" || (t.parent && (name === "parent_id" || name === posName)))
+          throw { msg: "the member " + m.key + " collides with the generated " + name + " column." };
         if (m.ty === "coll") {
           if (name === "get")
             throw { msg: "the member " + m.key + " holds an object, so it needs an accessor of " +
                          "that name, which collides with the generated get." };
-          accessors.push("  val " + name + " : t -> " + moduleName(m.ref) + ".t list");
-          return;                                    // no column in the parent
+          accessors.push("  val " + name + " : t -> " + ref(m.ref, "t") + " list");
+          return;
         }
-        fields.push(name + " : " + ocamlType(m));
+        fields.push(name + " : " + ocamlType(m, self));
         if (m.ty === "ref") {
           if (name === "get")
             throw { msg: "the member " + m.key + " holds an object, so it needs an accessor of " +
                          "that name, which collides with the generated get." };
-          accessors.push("  val " + name + " : t -> " + moduleName(m.ref) + ".t" +
+          accessors.push("  val " + name + " : t -> " + ref(m.ref, "t") +
                          (m.nullable ? " option" : ""));
         }
       });
@@ -703,6 +829,8 @@
   var engineEl = document.getElementById("engine");
   var openName = document.getElementById("openName");
   var noticeEl = document.getElementById("notice");
+  var shapeEl  = document.getElementById("shape");
+  var cfgJsonEl = document.getElementById("cfgjson");
   var revertBtn   = document.getElementById("revert");
   var copyBtn     = document.getElementById("copy");
   var downloadBtn = document.getElementById("download");
@@ -716,6 +844,17 @@
 
   function esc(s) {
     return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  /* The markings. Sent with every request, and shown as the config file the
+     binary would read. */
+  var config = { maps: [], recursive: [] };
+
+  function configForWire() {
+    var c = {};
+    if (config.maps.length) c.maps = config.maps;
+    if (config.recursive.length) c.recursive = config.recursive;
+    return c;
   }
 
   function highlight(src) {
@@ -861,7 +1000,7 @@
   function localReport(src) {
     try {
       var docs = documents(readJson(src));
-      var tables = infer(docs);
+      var tables = infer(docs, configForWire());
       return {
         ok: true, ocaml: render(tables), documents: docs.length,
         tables: tables.map(function (t) {
@@ -888,7 +1027,10 @@
   function translate(src) {
     if (serverUp === false)
       return Promise.resolve({ via: "browser", report: localReport(src) });
-    return fetch("/translate", { method: "POST", body: src })
+    return fetch("/translate", {
+        method: "POST",
+        body: JSON.stringify({ input: src, config: configForWire() })
+      })
       .then(function (r) { if (!r.ok) throw 0; return r.json(); })
       .then(function (j) { serverUp = true; return { via: "lean", report: j }; })
       .catch(function () {
@@ -905,6 +1047,84 @@
       ? "Produced by the Lean binary, through the local dev server."
       : "No dev server reachable, so the page used its own implementation of the same rules.";
   }
+
+  /* ---------------- the shape panel ---------------- */
+
+  /* Every path a marking could apply to: the tables that exist, plus the
+     paths already marked -- a marked path stops being a table of its own, so
+     it would otherwise vanish from the list the moment you ticked it. */
+  function markablePaths(tables) {
+    var seen = [], out = [];
+    function add(p) { if (seen.indexOf(p) < 0) { seen.push(p); out.push(p); } }
+    (tables || []).forEach(function (t) { if (t.path !== ".") add(t.path); });
+    config.maps.forEach(add);
+    config.recursive.forEach(function (r) { add(r.path); });
+    return out.sort();
+  }
+
+  function ancestorsOf(path) {
+    var p = parsePath(path), out = ["."];
+    for (var i = 1; i < p.length; i++)
+      if (p[i - 1].m !== undefined) out.push(pathString(p.slice(0, i)));
+    return out;
+  }
+
+  function foldTargetOf(path) {
+    for (var i = 0; i < config.recursive.length; i++)
+      if (config.recursive[i].path === path) return config.recursive[i].folds_into;
+    return "";
+  }
+
+  function renderShape(tables) {
+    var paths = markablePaths(tables);
+    if (!paths.length) {
+      shapeEl.innerHTML = '<p class="empty">Nothing to mark: the document has no nested objects or collections.</p>';
+    } else {
+      shapeEl.innerHTML = paths.map(function (path) {
+        var collection = /\[\]$|\{\}$/.test(path);
+        var control;
+        if (collection) {
+          var chosen = foldTargetOf(path);
+          control = '<label>folds into <select data-fold="' + esc(path) + '">' +
+            '<option value="">nothing</option>' +
+            ancestorsOf(path).map(function (a) {
+              return '<option value="' + esc(a) + '"' + (a === chosen ? " selected" : "") + ">" +
+                     esc(a) + "</option>";
+            }).join("") + "</select></label>";
+        } else {
+          var on = config.maps.indexOf(path) >= 0;
+          control = '<label><input type="checkbox" data-map="' + esc(path) + '"' +
+                    (on ? " checked" : "") + "> its keys are data</label>";
+        }
+        return '<div class="shaperow"><code>' + esc(path) + "</code>" + control + "</div>";
+      }).join("");
+    }
+    cfgJsonEl.textContent = JSON.stringify(configForWire());
+  }
+
+  shapeEl.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.dataset.map !== undefined) {
+      var i = config.maps.indexOf(t.dataset.map);
+      if (t.checked && i < 0) config.maps.push(t.dataset.map);
+      if (!t.checked && i >= 0) config.maps.splice(i, 1);
+    } else if (t.dataset.fold !== undefined) {
+      config.recursive = config.recursive.filter(function (r) { return r.path !== t.dataset.fold; });
+      if (t.value) config.recursive.push({ path: t.dataset.fold, folds_into: t.value });
+    } else return;
+    files.forEach(function (f) { f.edited = false; });
+    run();
+  });
+
+  document.getElementById("copycfg").addEventListener("click", function () {
+    var btn = this, text = JSON.stringify(configForWire(), null, 2);
+    var done = function () {
+      btn.textContent = "Copied";
+      setTimeout(function () { btn.textContent = "Copy"; }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(text).then(done, function () {});
+  });
 
   /* ---------------- observations ---------------- */
 
@@ -962,6 +1182,7 @@
       traceEl.innerHTML = '<p class="empty">No schema &mdash; the input was rejected.</p>';
       filesEl.innerHTML = "<h4>Files</h4>";
       openName.textContent = "";
+      renderShape([]);
       return;
     }
 
@@ -975,6 +1196,7 @@
     paint();
     renderFiles();
     traceEl.innerHTML = (rep.tables || []).map(renderTable).join("");
+    renderShape(rep.tables);
   }
 
   var pending = null;
@@ -1005,11 +1227,16 @@
     nulls: '[ { "x": 1, "y": 2,    "z": null },\n  { "x": 2, "y": null, "z": null },\n  { "x": 3 } ]',
     conflict: '[ { "b": { "c": 1 } },\n  { "b": 5 } ]',
     dup: '{ "a": 1, "a": 2 }',
-    nestedArray: '{ "matrix": [ [1, 2], [3] ] }'
+    nestedArray: '{ "matrix": [ [1, 2], [3] ] }',
+    map: '{ "users": { "u_1001": { "name": "ada",   "age": 36 },\n              "u_1002": { "name": "grace", "age": 45 } } }',
+    tree: '{ "text": "top",\n  "replies": [ { "text": "a reply", "replies": [] },\n               { "text": "another",  "replies": [ { "text": "deeper", "replies": [] } ] } ] }'
   };
 
   document.querySelectorAll("button.chip").forEach(function (b) {
     b.addEventListener("click", function () {
+      // an example is a fresh start: markings from the previous document
+      // would otherwise be carried onto one they do not fit
+      config = { maps: [], recursive: [] };
       files.forEach(function (f) { f.edited = false; });
       inEl.value = EXAMPLES[b.dataset.ex];
       run();

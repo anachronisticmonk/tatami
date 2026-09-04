@@ -16,6 +16,8 @@ inductive Error where
   | nestedArray (path : String)
   | mixedElements (path : String)
   | duplicateMember (path : String) (key : String)
+  | markingMatchedNothing (path : String)
+  | mapEntryNotSupported (path : String) (found : String)
 
 def Error.toString : Error → String
   | .notObjectOrArray found =>
@@ -38,6 +40,10 @@ def Error.toString : Error → String
       s!"the array at {path} has both objects and scalars among its elements."
   | .duplicateMember path key =>
       s!"the object at {path} carries the member {key} more than once."
+  | .markingMatchedNothing path =>
+      s!"the configuration marks {path} as a map, but no object was found there."
+  | .mapEntryNotSupported path found =>
+      s!"the member at {path} is {found}. Map entries may be objects or scalars."
 
 instance : ToString Error := ⟨Error.toString⟩
 

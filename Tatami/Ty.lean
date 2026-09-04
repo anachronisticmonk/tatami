@@ -55,8 +55,8 @@ def Ty.join : Ty → Ty → Option Ty
   | .float, .float => some .float
   | .str, .str => some .str
   | .bool, .bool => some .bool
-  | .ref p, .ref q => if p == q then some (.ref p) else none
-  | .coll p, .coll q => if p == q then some (.coll p) else none
+  | .ref p, .ref q => if p = q then some (.ref p) else none
+  | .coll p, .coll q => if p = q then some (.coll p) else none
   | _, _ => none
 
 def Field.join (a b : Field) : Option Field :=

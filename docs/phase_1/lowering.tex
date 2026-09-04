@@ -313,6 +313,63 @@ that the member was missing rather than empty. Both give an empty list. This
 is a deliberate collapse, and the alternative --- a presence column in the
 parent --- would invent a column the note does not sanction.
 
+\section{Markings}
+
+Two shapes cannot be read off the data, and both are supplied by the user
+rather than guessed. \ourcall{}
+
+\paragraph{An object whose keys are data} looks exactly like a record. Left
+unmarked, \texttt{\{"users": \{"u\_1001": \{...\}, "u\_1002": \{...\}\}\}}
+produces one module per user, and a third user adds a third module. Marked, it
+produces one table whose rows are keyed by the member name:
+
+\begin{lstlisting}[style=ml]
+module rec Users : sig
+  type id
+  type t = { id : id; parent_id : Root.id; key : string; name : string }
+  val get : id -> t
+end
+and Root : sig ... val users : t -> Users.t list end
+\end{lstlisting}
+
+\paragraph{A self-referential shape} looks like a fixed number of nested ones
+--- how many depends on how deep the sample went. A comment thread two levels
+deep yields three modules; three levels yields four; and a document deeper
+than the sample has no table to go in. Marked, the path folds into the
+ancestor it repeats, and both become one table:
+
+\begin{lstlisting}[style=ml]
+module Root : sig
+  type id
+  type t = { id : id; parent_id : id option; idx : int option; text : string }
+  val get : id -> t
+  val replies : t -> t list
+end
+\end{lstlisting}
+
+The back-reference and the index are optional here because the same table is
+reached two ways: as a document root, which has no parent, and as a reply,
+which does. That is the general rule --- a table reached both inside and
+outside a collection has an optional back-reference.
+
+\paragraph{The markings are a file.}
+
+\begin{lstlisting}[style=json]
+{ "maps": [".users"],
+  "recursive": [ { "path": ".replies[]", "folds_into": "." } ] }
+\end{lstlisting}
+
+\noindent
+passed as \texttt{tatami -{}-config FILE}. Inference then reads
+$\mathit{Corpus} \times \mathit{Markings} \rightarrow \mathit{Schema}$: still
+deterministic, still a function of structure once the markings are given. A
+threshold rule --- treat an object with more than $N$ members as a map --- was
+considered and excluded, because member counts grow with the corpus, so it
+would make the schema a function of how much data happened to be supplied.
+
+A marking that matches nothing is an error rather than a no-op, so a typo in a
+path is reported.
+
 \section{What is refused}
 
 Everything below is our decision; the note does not discuss rejection at all.
@@ -333,6 +390,12 @@ An array with an element that is an array &
   inner array in an object to give it a name.} \\
 An array mixing objects and scalars &
   \emph{the array at .xs[] has both objects and scalars among its elements.} \\
+A map entry that is an array &
+  \emph{the member at .users\{\} is an array. Map entries may be objects or
+  scalars.} \\
+A marking that matches nothing &
+  \emph{the configuration marks .users as a map, but no object was found
+  there.} \\
 A repeated member name &
   \emph{the object at .b carries the member c more than once.} \\
 A member colliding with a generated column (\texttt{id}, \texttt{parent\_id},
@@ -398,6 +461,7 @@ since the generated \texttt{option} cannot carry it.
 \textbf{File} & \textbf{Holds} \\
 \hline
 \texttt{Tatami/Doc.lean} & the document type and the JSON reader \\
+\texttt{Tatami/Config.lean} & the markings, and reading them from a file \\
 \texttt{Tatami/Path.lean} & positions in the document; a path identifies a
   table \\
 \texttt{Tatami/Ty.lean} & the types a member can have, and how two
@@ -474,11 +538,6 @@ round-trip statement can only hold up to those.
         \texttt{Doc} and the lemma that members are smaller. This is now
         expressible, which it was not while the parser handed back a tree map.
         The reader is a trusted boundary either way, like the printer.
-  \item \textbf{Maps and recursive shapes are not handled.} An object whose
-        keys are data rather than schema (\texttt{\{"u\_1001": \{...\}\}})
-        currently becomes a column per key. A self-referential shape becomes
-        one table per observed depth. The note discusses neither; both need a
-        decision before they need an implementation.
   \item \textbf{Only one input form.} A single document, or a top-level array
         of them. JSON Lines and concatenated JSON are not read.
 \end{enumerate}

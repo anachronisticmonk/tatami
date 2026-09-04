@@ -37,6 +37,7 @@ def moduleName (p : Path) : String :=
 /-- Generated columns, which a document member must not collide with. -/
 def parentColumn : String := "parent_id"
 def indexColumn : String := "idx"
+def keyColumn : String := "key"
 
 def tyExprOf : Ty → TyExpr
   | .bot => .unit
@@ -52,30 +53,38 @@ def fieldTyExpr (f : Field) : TyExpr :=
   if f.nullable then .option base else base
 
 def genModule (t : Table) : Except Error Module := do
+  let self := moduleName t.path
+  -- a type from another module needs qualifying; one from this module does not
+  let ref (p : Path) (n : String) : TyExpr :=
+    if moduleName p == self then (if n == "id" then .id else .named n)
+    else .qualified (moduleName p) n
+  let positionColumn := if t.keyed then keyColumn else indexColumn
   let mut fields : List RecField := [{ name := "id", ty := .id }]
-  -- an element table's rows carry a key back to the parent and their position
+  -- rows that sit in a collection carry a key back and their position in it
   match t.parent with
   | some pp =>
+      let idTy := ref pp "id"
+      let posTy : TyExpr := if t.keyed then .string else .int
       fields := fields ++
-        [ { name := parentColumn, ty := .qualified (moduleName pp) "id" }
-        , { name := indexColumn, ty := .int } ]
+        [ { name := parentColumn, ty := if t.parentOptional then .option idTy else idTy }
+        , { name := positionColumn, ty := if t.parentOptional then .option posTy else posTy } ]
   | none => pure ()
   let mut accessors : List Decl := []
   for c in t.columns do
     let name := mangle c.name
     if name == "id" then throw (.reservedColumnName c.name "id")
-    if t.parent.isSome && (name == parentColumn || name == indexColumn) then
+    if t.parent.isSome && (name == parentColumn || name == positionColumn) then
       throw (.reservedColumnName c.name name)
     match c.field.ty with
     | .coll p =>
         -- no column: the elements point back here, so the parent holds nothing
         if name == "get" then throw (.reservedAccessorName c.name)
         accessors := accessors ++
-          [ .value name (.arrow (.named "t") (.list (.qualified (moduleName p) "t"))) ]
+          [ .value name (.arrow (.named "t") (.list (ref p "t"))) ]
     | .ref p =>
         if name == "get" then throw (.reservedAccessorName c.name)
-        fields := fields ++ [{ name := name, ty := fieldTyExpr c.field }]
-        let target : TyExpr := .qualified (moduleName p) "t"
+        fields := fields ++ [{ name := name, ty := if c.field.nullable then .option (ref p "id") else ref p "id" }]
+        let target : TyExpr := ref p "t"
         accessors := accessors ++
           [ .value name (.arrow (.named "t")
               (if c.field.nullable then .option target else target)) ]
@@ -96,7 +105,12 @@ def gen (s : Schema) : Except Error File := do
   let names := mods.map (·.name)
   for n in names do
     if (names.filter (· == n)).length > 1 then throw (.moduleNameClash n)
-  -- any element table makes the references cyclic
-  return { recursive := s.any (fun t => t.parent.isSome), modules := mods }
+  -- a reference between two different modules that runs both ways makes the
+  -- group cyclic; a table that only points at itself does not
+  let crossModule := s.any fun t =>
+    match t.parent with
+    | some pp => moduleName pp != moduleName t.path
+    | none => false
+  return { recursive := crossModule, modules := mods }
 
 end Tatami
