@@ -7,7 +7,5 @@
 *.synctex.gz
 *.toc
 
-# OCaml / dune
-_build/
-_opam/
-*.install
+# Lean / lake
+/.lake/

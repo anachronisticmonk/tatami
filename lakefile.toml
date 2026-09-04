@@ -1,0 +1,9 @@
+name = "tatami"
+defaultTargets = ["tatami"]
+
+[[lean_lib]]
+name = "Tatami"
+
+[[lean_exe]]
+name = "tatami"
+root = "Main"
