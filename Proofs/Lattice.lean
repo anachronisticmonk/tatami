@@ -44,8 +44,8 @@ theorem le_join_left {a b c : Ty} (h : Ty.join a b = some c) : a ⊑ c := by
   all_goals
     first
       | (cases h; simp)
-      | (split at h <;> first | (cases h; simp [Ty.join]) | simp_all [Ty.join])
-      | simp_all [Ty.join]
+      | (split at h <;> first | (cases h; simp []) | simp_all [])
+      | simp_all []
 
 theorem le_join_right {a b c : Ty} (h : Ty.join a b = some c) : b ⊑ c := by
   rw [join_comm] at h
@@ -57,13 +57,22 @@ theorem le_join_right {a b c : Ty} (h : Ty.join a b = some c) : b ⊑ c := by
     admits, rather than merely one that fits. -/
 theorem join_least {a b c d : Ty} (h : Ty.join a b = some c) (ha : a ⊑ d) (hb : b ⊑ d) :
     c ⊑ d := by
-  sorry
+  -- In every case where the join is defined, it *is* one of its arguments,
+  -- so the conclusion is one of the two hypotheses. The `ref`/`coll` cases
+  -- need the path equality substituted first.
+  unfold Ty.le at *
+  cases a <;> cases b <;>
+    simp only [Ty.join, Option.some.injEq, reduceCtorEq] at h <;>
+    first
+      | (subst h; assumption)
+      | (split at h <;> subst_eqs <;> assumption)
 
 /-- The join is associative where both sides are defined, so folding a list of
     observations gives the same answer whatever order it is folded in. -/
 theorem join_assoc (a b c : Ty) :
     (Ty.join a b).bind (fun ab => Ty.join ab c)
       = (Ty.join b c).bind (fun bc => Ty.join a bc) := by
-  sorry
+  cases a <;> cases b <;> cases c <;> simp [Ty.join] <;>
+    (try split) <;> (try split) <;> simp_all
 
 end Tatami

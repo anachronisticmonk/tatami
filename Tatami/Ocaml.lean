@@ -50,4 +50,37 @@ structure File where
   modules : List Module
   deriving Repr
 
+/-- Distinctness of a list of names, as a `Bool` so the generator can test it.
+
+    `Proofs.Wellformed` states well-formedness as a proposition and proves
+    this implies it; the two must be read together. -/
+def nodupNames : List String → Bool
+  | [] => true
+  | n :: ns => !ns.contains n && nodupNames ns
+
+/-- The field names of each record type in a module, one list per record. -/
+def Module.recordFieldNames (m : Module) : List (List String) :=
+  m.decls.filterMap fun d => match d with
+    | .recordType _ fs => some (fs.map RecField.name)
+    | _ => none
+
+/-- The names of the values a module declares. -/
+def Module.valueNames (m : Module) : List String :=
+  m.decls.filterMap fun d => match d with
+    | .value n _ => some n
+    | _ => none
+
+def Module.okB (m : Module) : Bool :=
+  m.recordFieldNames.all nodupNames && nodupNames m.valueNames
+
+/-- Every record field, value and module name is distinct. The generator
+    checks this of its own output before returning it, so that the guarantee
+    holds of any schema rather than only of the ones inference produces. -/
+def File.okB (f : File) : Bool :=
+  nodupNames (f.modules.map Module.name) && f.modules.all Module.okB
+
+/-- The first module that fails the check, for the diagnostic. -/
+def File.badModule (f : File) : Option String :=
+  (f.modules.find? fun m => !m.okB).map Module.name
+
 end Tatami

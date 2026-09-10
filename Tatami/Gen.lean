@@ -98,7 +98,8 @@ def genModule (t : Table) : Except Error Module := do
       , .value "get" (.arrow .id (.named "t")) ] ++ accessors
   }
 
-def gen (s : Schema) : Except Error File := do
+/-- Exposed, with `certify`, so `Proofs.Wellformed` can invert `gen`. -/
+def genRaw (s : Schema) : Except Error File := do
   let mut mods : List Module := []
   for t in s do
     mods := mods ++ [← genModule t]
@@ -112,5 +113,23 @@ def gen (s : Schema) : Except Error File := do
     | some pp => moduleName pp != moduleName t.path
     | none => false
   return { recursive := crossModule, modules := mods }
+
+/-- The generator checks its own output before handing it back, and refuses a
+    file that repeats a name rather than emitting one that will not compile.
+
+    The checks in `genModule` catch a member colliding with a *generated*
+    name and say so plainly; this catches two members colliding with each
+    other. Inference cannot produce that -- `checkDistinct` rejects a repeated
+    member and `mangle` is injective -- but `gen` is total on `Schema`, so
+    without the check the guarantee would hold only of schemas inference
+    happens to build. It is also what lets `gen_wellFormed` be proved without
+    appealing to `mangle_injective`. -/
+def certify (f : File) : Except Error File :=
+  if f.okB then .ok f else .error (.illFormedSignature (f.badModule.getD "the file"))
+
+def gen (s : Schema) : Except Error File :=
+  match genRaw s with
+  | .error e => .error e
+  | .ok f => certify f
 
 end Tatami

@@ -85,6 +85,10 @@ def Tables.upsert (ts : Tables) (p : Path) (f : TableObs → TableObs) : Tables 
   else
     ts ++ [(p, f {})]
 
+/-- No longer used by the walk, which matches on `j` itself so that the
+    termination argument can see the members are smaller. Kept because it is
+    the declarative statement of what an object is, and the specification
+    work will want it. -/
 def members (j : Doc) : Except Error (List (String × Doc)) :=
   match j with
   | .obj ms => .ok ms
@@ -134,6 +138,22 @@ def recordMember (ts : Tables) (p : Path) (k : String) (s : Seen)
   return ts.upsert p fun t =>
     { t with members := t.members.filter (fun q => q.1 != k) ++ [(k, next)] }
 
+/-- The table a collection's rows point back to.
+
+    A row carries a single `parent_id`, so rows reached from two different
+    tables cannot be expressed and are refused. This is also what keeps the
+    schema a function of the corpus rather than of document order: `parent` is
+    the one field that overwrites rather than merges, so without the check the
+    answer depends on which document arrived last. -/
+def setParent (p : Path) (pp : Path) (t : TableObs) : Except Error (Option Path) :=
+  match t.parent with
+  | none => .ok (some pp)
+  | some q =>
+      if q == pp then .ok (some q)
+      else .error (.ambiguousParent (Path.toString p) (Path.toString q) (Path.toString pp))
+
+mutual
+
 /-- Walk one object, recording its members and descending into whatever they
     hold.
 
@@ -143,67 +163,133 @@ def recordMember (ts : Tables) (p : Path) (k : String) (s : Seen)
     collection, carrying the table its row points back to and whether it is
     keyed by a string.
 
-    Marked `partial`: the recursion is on the document, and Lean cannot see
-    that a member is smaller than the object holding it without a size measure
-    and the lemma that goes with it. Now that `Doc` is an ordinary inductive
-    type this is expressible, which it was not while the parser handed us a
-    tree map; it must be done before anything about inference can be proved. -/
-partial def observeObject (cfg : Config) (ts : Tables) (target : Path)
-    (from? : Option (Path × Bool)) (j : Doc) : Except Error Tables := do
-  let ms ← members j
-  checkDistinct target ms
-  let mut ts := ts.upsert target fun t =>
-    { t with
-      visits := t.visits + 1
-      collVisits := t.collVisits + (if from?.isSome then 1 else 0)
-      parent := match from? with | some (pp, _) => some pp | none => t.parent
-      keyed := match from? with | some (_, k) => t.keyed || k | none => t.keyed
-      elemObject := t.elemObject || from?.isSome }
+    Total, on the measure `Doc.size`. The recursion is on a member of the
+    object rather than on the object, so it is not structural, and the four
+    functions here replace what were nested `for` loops -- a loop body gives
+    the termination checker nothing to attach to. `members` is inlined as the
+    match on `j`, because `let ms <- members j` would hide `j = .obj ms` and
+    with it the fact that the members are smaller. -/
+def observeObject (cfg : Config) (ts : Tables) (target : Path)
+    (from? : Option (Path × Bool)) (j : Doc) : Except Error Tables :=
+  match j with
+  | .obj ms => do
+      checkDistinct target ms
+      let parent' ← match from? with
+        | some (pp, _) => setParent target pp ((ts.lookup target).getD {})
+        | none => .ok ((ts.lookup target).getD {}).parent
+      let ts := ts.upsert target fun t =>
+        { t with
+          visits := t.visits + 1
+          collVisits := t.collVisits + (if from?.isSome then 1 else 0)
+          parent := parent'
+          keyed := match from? with | some (_, k) => t.keyed || k | none => t.keyed
+          elemObject := t.elemObject || from?.isSome }
+      observeMembers cfg ts target ms
+  | other => .error (.notObjectOrArray (Doc.describe other))
+termination_by (j.size, 1)
 
-  for (k, v) in ms do
-    let here := Path.member target k
-    match v with
-    | .obj entries =>
-        if cfg.isMap here then
-          -- the members are data: each becomes a row keyed by its name
-          let raw := Path.entry here
-          let entryTable := cfg.resolve raw
-          ts ← recordMember ts target k (.value (.coll entryTable) false)
-          ts := ts.upsert entryTable id
-          checkDistinct here entries
-          for (_, ev) in entries do
-            match ev with
-            | .obj _ => ts ← observeObject cfg ts entryTable (some (target, true)) ev
-            | .arr _ => throw (.mapEntryNotSupported (Path.toString raw) "an array")
-            | _ =>
-                ts := ts.upsert entryTable fun t =>
-                  { t with visits := t.visits + 1, collVisits := t.collVisits + 1
-                         , parent := some target, keyed := true, elemScalar := true }
-                let s ← seeScalar (Path.toString raw) ev
-                ts ← recordMember ts entryTable "value" s
-        else
-          let child := cfg.resolve here
-          ts ← recordMember ts target k (.value (.ref child) false)
-          ts ← observeObject cfg ts child none v
-    | .arr els =>
-        let raw := Path.elem here
-        let elemTable := cfg.resolve raw
-        ts ← recordMember ts target k (.value (.coll elemTable) false)
-        ts := ts.upsert elemTable id
-        for e in els do
-          match e with
-          | .obj _ => ts ← observeObject cfg ts elemTable (some (target, false)) e
-          | .arr _ => throw (.nestedArray (Path.toString raw))
-          | _ =>
-              ts := ts.upsert elemTable fun t =>
+/-- The members of one object, in the order they were written. -/
+def observeMembers (cfg : Config) (ts : Tables) (target : Path)
+    (ms : List (String × Doc)) : Except Error Tables :=
+  match ms with
+  | [] => .ok ts
+  | (k, v) :: tl => do
+      let here := Path.member target k
+      let ts ←
+        match v with
+        | .obj entries =>
+            if cfg.isMap here then
+              -- the members are data: each becomes a row keyed by its name
+              let raw := Path.entry here
+              let entryTable := cfg.resolve raw
+              (do
+                let ts ← recordMember ts target k (.value (.coll entryTable) false)
+                let ts := ts.upsert entryTable id
+                checkDistinct here entries
+                have : Doc.sizeVals entries < Doc.sizeVals ((k, Doc.obj entries) :: tl) :=
+                  Doc.sizeVals_lt_obj k entries tl
+                observeEntries cfg ts target entryTable (Path.toString raw) entries)
+            else
+              (do
+                let child := cfg.resolve here
+                let ts ← recordMember ts target k (.value (.ref child) false)
+                -- `Doc.obj entries` rather than `v`: the match refines the list
+                -- element but not the occurrence of `v`, and the two forms have
+                -- to agree for the decrease to be stated
+                have : Doc.size (Doc.obj entries)
+                     < 1 + Doc.sizeVals ((k, Doc.obj entries) :: tl) :=
+                  Doc.size_lt_cons k (Doc.obj entries) tl
+                observeObject cfg ts child none (Doc.obj entries))
+        | .arr els =>
+            (do
+              let raw := Path.elem here
+              let elemTable := cfg.resolve raw
+              let ts ← recordMember ts target k (.value (.coll elemTable) false)
+              let ts := ts.upsert elemTable id
+              have : Doc.sizeList els < Doc.sizeVals ((k, Doc.arr els) :: tl) :=
+                Doc.sizeList_lt_arr k els tl
+              observeElems cfg ts target elemTable (Path.toString raw) els)
+        | _ =>
+            (do
+              let s ← seeScalar (Path.toString here) v
+              recordMember ts target k s)
+      have : Doc.sizeVals tl < Doc.sizeVals ((k, v) :: tl) := Doc.sizeVals_lt (k, v) tl
+      observeMembers cfg ts target tl
+termination_by (1 + Doc.sizeVals ms, 0)
+
+/-- The elements of one array. An element that is itself an array is refused;
+    a scalar element becomes a row with a single `value` column. -/
+def observeElems (cfg : Config) (ts : Tables) (target : Path) (elemTable : Path)
+    (raw : String) (els : List Doc) : Except Error Tables :=
+  match els with
+  | [] => .ok ts
+  | e :: tl => do
+      let ts ←
+        match e with
+        | .obj ms =>
+            have : Doc.size (Doc.obj ms) < 1 + Doc.sizeList (Doc.obj ms :: tl) :=
+              Doc.size_lt_consList (Doc.obj ms) tl
+            observeObject cfg ts elemTable (some (target, false)) (Doc.obj ms)
+        | .arr _ => .error (.nestedArray raw)
+        | _ =>
+            (do
+              let parent' ← setParent elemTable target ((ts.lookup elemTable).getD {})
+              let ts := ts.upsert elemTable fun t =>
                 { t with visits := t.visits + 1, collVisits := t.collVisits + 1
-                       , parent := some target, elemScalar := true }
-              let s ← seeScalar (Path.toString raw) e
-              ts ← recordMember ts elemTable "value" s
-    | _ =>
-        let s ← seeScalar (Path.toString here) v
-        ts ← recordMember ts target k s
-  return ts
+                       , parent := parent', elemScalar := true }
+              let s ← seeScalar raw e
+              recordMember ts elemTable "value" s)
+      have : Doc.sizeList tl < Doc.sizeList (e :: tl) := Doc.sizeList_lt e tl
+      observeElems cfg ts target elemTable raw tl
+termination_by (1 + Doc.sizeList els, 0)
+
+/-- The entries of an object marked as a map. Each entry becomes a row keyed
+    by its name, so the key itself carries no type. -/
+def observeEntries (cfg : Config) (ts : Tables) (target : Path) (entryTable : Path)
+    (raw : String) (entries : List (String × Doc)) : Except Error Tables :=
+  match entries with
+  | [] => .ok ts
+  | (k, ev) :: tl => do
+      let ts ←
+        match ev with
+        | .obj ms =>
+            have : Doc.size (Doc.obj ms) < 1 + Doc.sizeVals ((k, Doc.obj ms) :: tl) :=
+              Doc.size_lt_cons k (Doc.obj ms) tl
+            observeObject cfg ts entryTable (some (target, true)) (Doc.obj ms)
+        | .arr _ => .error (.mapEntryNotSupported raw "an array")
+        | _ =>
+            (do
+              let parent' ← setParent entryTable target ((ts.lookup entryTable).getD {})
+              let ts := ts.upsert entryTable fun t =>
+                { t with visits := t.visits + 1, collVisits := t.collVisits + 1
+                       , parent := parent', keyed := true, elemScalar := true }
+              let s ← seeScalar raw ev
+              recordMember ts entryTable "value" s)
+      have : Doc.sizeVals tl < Doc.sizeVals ((k, ev) :: tl) := Doc.sizeVals_lt (k, ev) tl
+      observeEntries cfg ts target entryTable raw tl
+termination_by (1 + Doc.sizeVals entries, 0)
+
+end
 
 /-- Fold every document into one picture of every table.
 

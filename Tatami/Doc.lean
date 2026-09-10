@@ -137,4 +137,73 @@ def describe : Doc → String
   | .obj _ => "an object"
 
 end Doc
+
+mutual
+
+/-- A size for a document: an object or an array is strictly larger than
+    anything inside it. Its only purpose is the termination argument for the
+    walk in `Tatami.Infer`, which recurses into a member of an object and so
+    is not structural. -/
+def Doc.size : Doc → Nat
+  | .null => 1
+  | .bool _ => 1
+  | .num _ => 1
+  | .str _ => 1
+  | .arr els => 1 + Doc.sizeList els
+  | .obj ms => 1 + Doc.sizeVals ms
+
+def Doc.sizeList : List Doc → Nat
+  | [] => 0
+  | d :: tl => Doc.size d + Doc.sizeList tl
+
+def Doc.sizeVals : List (String × Doc) → Nat
+  | [] => 0
+  | m :: tl => Doc.size m.2 + Doc.sizeVals tl
+
+end
+
+/-- Every document has positive size, which is what makes dropping one member
+    from a list a strict decrease. -/
+theorem Doc.size_pos (d : Doc) : 0 < d.size := by
+  cases d <;> simp [Doc.size] <;> omega
+
+/-- Dropping one element from a list is a strict decrease, because every
+    document has positive size. The walk in `Tatami.Infer` needs both of
+    these in scope at its recursive calls. -/
+theorem Doc.sizeList_lt (d : Doc) (tl : List Doc) :
+    Doc.sizeList tl < Doc.sizeList (d :: tl) := by
+  show Doc.sizeList tl < Doc.size d + Doc.sizeList tl
+  have := Doc.size_pos d
+  omega
+
+theorem Doc.sizeVals_lt (m : String × Doc) (tl : List (String × Doc)) :
+    Doc.sizeVals tl < Doc.sizeVals (m :: tl) := by
+  show Doc.sizeVals tl < Doc.size m.2 + Doc.sizeVals tl
+  have := Doc.size_pos m.2
+  omega
+
+/-- A member's value is smaller than the list it sits in, and so is whatever
+    that value contains. One lemma per recursive call in `Tatami.Infer`; each
+    is `omega` once the size of the constructor is unfolded, which is why they
+    are stated here rather than left to the termination checker. -/
+theorem Doc.size_lt_cons (k : String) (v : Doc) (tl : List (String × Doc)) :
+    v.size < 1 + Doc.sizeVals ((k, v) :: tl) := by
+  show v.size < 1 + (Doc.size v + Doc.sizeVals tl)
+  omega
+
+theorem Doc.size_lt_consList (e : Doc) (tl : List Doc) :
+    e.size < 1 + Doc.sizeList (e :: tl) := by
+  show e.size < 1 + (Doc.size e + Doc.sizeList tl)
+  omega
+
+theorem Doc.sizeVals_lt_obj (k : String) (entries tl : List (String × Doc)) :
+    Doc.sizeVals entries < Doc.sizeVals ((k, Doc.obj entries) :: tl) := by
+  show Doc.sizeVals entries < (1 + Doc.sizeVals entries) + Doc.sizeVals tl
+  omega
+
+theorem Doc.sizeList_lt_arr (k : String) (els : List Doc) (tl : List (String × Doc)) :
+    Doc.sizeList els < Doc.sizeVals ((k, Doc.arr els) :: tl) := by
+  show Doc.sizeList els < (1 + Doc.sizeList els) + Doc.sizeVals tl
+  omega
+
 end Tatami
