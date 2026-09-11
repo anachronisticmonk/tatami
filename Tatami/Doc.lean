@@ -62,71 +62,326 @@ private def pDigits (acc : String) : Input → String × Input
   | c :: rest => if isDigit c then pDigits (acc.push c) rest else (acc, c :: rest)
   | [] => (acc, [])
 
+/-- The optional leading sign. -/
+private def pSign : Input → String × Input
+  | '-' :: r => ("-", r)
+  | s => ("", s)
+
+/-- The optional fractional part. -/
+private def pFrac : Input → String × Input
+  | '.' :: r => let (d, r) := pDigits "" r; ("." ++ d, r)
+  | s => ("", s)
+
+/-- The optional sign of an exponent. -/
+private def pExpSign : Input → String × Input
+  | '+' :: r => ("+", r)
+  | '-' :: r => ("-", r)
+  | s => ("", s)
+
+/-- The optional exponent. -/
+private def pExp : Input → String × Input
+  | e :: r =>
+      if e == 'e' || e == 'E' then
+        let (sgn, r1) := pExpSign r
+        let (d, r2) := pDigits "" r1
+        (String.singleton e ++ sgn ++ d, r2)
+      else ("", e :: r)
+  | [] => ("", [])
+
 /-- A number, kept as the text it was written with, so that `1` and `1.0`
-    remain distinguishable. -/
+    remain distinguishable. Split into its four parts so that each can be
+    given its own lemma below. -/
 private def pNumber (s : Input) : Except String (Doc × Input) :=
-  let (sign, s) := match s with | '-' :: r => ("-", r) | _ => ("", s)
-  let (intPart, s) := pDigits "" s
+  let (sign, s1) := pSign s
+  let (intPart, s2) := pDigits "" s1
   if intPart.isEmpty then .error "expected a number" else
-  let (frac, s) :=
-    match s with
-    | '.' :: r => let (d, r) := pDigits "" r; ("." ++ d, r)
-    | _ => ("", s)
-  let (exp, s) :=
-    match s with
-    | e :: r =>
-        if e == 'e' || e == 'E' then
-          let (sgn, r) := match r with
-            | '+' :: r' => ("+", r') | '-' :: r' => ("-", r') | _ => ("", r)
-          let (d, r) := pDigits "" r
-          (String.singleton e ++ sgn ++ d, r)
-        else ("", e :: r)
-    | [] => ("", s)
-  .ok (.num (sign ++ intPart ++ frac ++ exp), s)
+  let (frac, s3) := pFrac s2
+  let (exp, s4) := pExp s3
+  .ok (.num (sign ++ intPart ++ frac ++ exp), s4)
 
-/-- The value parser. Marked `partial`: the input shrinks at every step, but
-    saying so to Lean would require carrying the proof through the return
-    type. Like the printer, the reader is a trusted boundary. -/
-private partial def pValue (s : Input) : Except String (Doc × Input) := do
-  match skipWs s with
-  | '{' :: r => pObject [] (skipWs r)
-  | '[' :: r => pArray [] (skipWs r)
-  | '"' :: r => let (v, r) ← pStringBody "" r; return (.str v, r)
-  | 't' :: 'r' :: 'u' :: 'e' :: r => return (.bool true, r)
-  | 'f' :: 'a' :: 'l' :: 's' :: 'e' :: r => return (.bool false, r)
-  | 'n' :: 'u' :: 'l' :: 'l' :: r => return (.null, r)
-  | t@('-' :: _) => pNumber t
-  | t@(c :: _) => if isDigit c then pNumber t else .error s!"unexpected character '{c}'"
+/-! ### Termination
+
+    `pValue` recurses through `pObject` and `pArray` on input that comes back
+    from a helper, so Lean cannot see that it shrinks. The lemmas below say so
+    once each, and `decreasing_by` at the end of the file does nothing but
+    invoke them -- the parser itself stays as it reads. -/
+
+private theorem skipWs_le : ∀ s : Input, (skipWs s).length ≤ s.length
+  | [] => by simp [skipWs]
+  | c :: rest => by
+      simp only [skipWs]
+      split
+      · exact Nat.le_succ_of_le (skipWs_le rest)
+      · simp
+
+private theorem pDigits_le : ∀ (acc : String) (s : Input), (pDigits acc s).2.length ≤ s.length
+  | _, [] => by simp [pDigits]
+  | acc, c :: rest => by
+      simp only [pDigits]
+      split
+      · exact Nat.le_succ_of_le (pDigits_le _ rest)
+      · simp
+
+private theorem pStringBody_lt (acc : String) (s : Input) (v : String) (r : Input)
+    (h : pStringBody acc s = .ok (v, r)) : r.length < s.length := by
+  fun_induction pStringBody acc s <;> simp_all <;> omega
+
+private theorem pString_lt (s : Input) (k : String) (r : Input)
+    (h : pString s = .ok (k, r)) : r.length < s.length := by
+  unfold pString at h
+  split at h
+  · exact Nat.lt_succ_of_lt (pStringBody_lt _ _ _ _ h)
+  · simp at h
+
+/-- A run of digits consumes at least the first character, when it is one. -/
+private theorem pDigits_lt (acc : String) (c : Char) (rest : Input) (h : isDigit c) :
+    (pDigits acc (c :: rest)).2.length < (c :: rest).length := by
+  simp only [pDigits, h, if_pos]
+  exact Nat.lt_succ_of_le (pDigits_le _ rest)
+
+private theorem pSign_le : ∀ s : Input, (pSign s).2.length ≤ s.length
+  | [] => by simp [pSign]
+  | _ :: _ => by simp only [pSign]; split <;> simp_all
+
+private theorem pExpSign_le : ∀ s : Input, (pExpSign s).2.length ≤ s.length
+  | [] => by simp [pExpSign]
+  | _ :: _ => by simp only [pExpSign]; split <;> simp_all
+
+private theorem pFrac_le : ∀ s : Input, (pFrac s).2.length ≤ s.length
+  | [] => by simp [pFrac]
+  | c :: r => by
+      simp only [pFrac]
+      split
+      · have := pDigits_le "" r
+        simp_all
+        omega
+      · simp
+
+private theorem pExp_le : ∀ s : Input, (pExp s).2.length ≤ s.length
+  | [] => by simp [pExp]
+  | e :: r => by
+      simp only [pExp]
+      split
+      · have h1 := pExpSign_le r
+        have h2 := pDigits_le "" (pExpSign r).2
+        simp
+        omega
+      · simp
+
+/-- A run of digits that produced something consumed something. -/
+private theorem pDigits_shrinks (acc : String) (s : Input)
+    (h : (pDigits acc s).1 ≠ acc) : (pDigits acc s).2.length < s.length := by
+  match s with
+  | [] => simp [pDigits] at h
+  | c :: rest =>
+      by_cases hc : isDigit c
+      · exact pDigits_lt acc c rest hc
+      · simp [pDigits, hc] at h
+
+/-- A number always consumes at least its first digit. -/
+private theorem pNumber_lt (s : Input) (d : Doc) (r : Input)
+    (h : pNumber s = .ok (d, r)) : r.length < s.length := by
+  unfold pNumber at h
+  split at h                          -- peel the sign
+  rename_i sgn s1 hsign
+  split at h                          -- peel the integer digits
+  rename_i ipart s2 hdig
+  split at h                          -- they must not be empty
+  · simp at h                         -- ...or this is an error, not an ok
+  · rename_i hne
+    injection h with h
+    injection h with _ h
+    subst h
+    have h1 : s1.length ≤ s.length := by
+      have := pSign_le s; rw [hsign] at this; simpa using this
+    have h2 : s2.length < s1.length := by
+      have := pDigits_shrinks "" s1 (by rw [hdig]; simpa using hne)
+      rw [hdig] at this; simpa using this
+    have h3 := pFrac_le s2
+    have h4 := pExp_le (pFrac s2).2
+    show (pExp (pFrac s2).2).2.length < s.length
+    omega
+
+/-- What a parser hands back: a value, the input left over, and the fact that
+    the leftover is shorter than what went in.
+
+    That last part has to be in the type. `pObject` recurses on whatever
+    `pValue` gives back, so its termination depends on a property of
+    `pValue` -- the function being defined. There is no lemma to prove
+    beforehand, because the function does not exist yet; it has to be proved
+    at the same time as the definition.
+
+    The proof is a `Prop`, so it is erased at compile time. It costs nothing
+    at runtime: the generated code is the same recursion either way. -/
+private abbrev Parsed (s : Input) := { p : Doc × Input // p.2.length < s.length }
+
+mutual
+
+/-- One JSON value. The first non-blank character says which kind. -/
+private def pValue (s : Input) : Except String (Parsed s) :=
+  match hs : skipWs s with
+  | '{' :: r =>
+      match pObject [] (skipWs r) with
+      | .error e => .error e
+      | .ok ⟨p, hp⟩ => .ok ⟨p, by
+          have a := skipWs_le s; rw [hs] at a; simp at a
+          have b := skipWs_le r
+          omega⟩
+  | '[' :: r =>
+      match pArray [] (skipWs r) with
+      | .error e => .error e
+      | .ok ⟨p, hp⟩ => .ok ⟨p, by
+          have a := skipWs_le s; rw [hs] at a; simp at a
+          have b := skipWs_le r
+          omega⟩
+  | '"' :: r =>
+      match hb : pStringBody "" r with
+      | .error e => .error e
+      | .ok (v, r') => .ok ⟨(.str v, r'), by
+          show r'.length < s.length
+          have a := skipWs_le s; rw [hs] at a; simp at a
+          have b := pStringBody_lt "" r v r' hb
+          omega⟩
+  | 't' :: 'r' :: 'u' :: 'e' :: r => .ok ⟨(.bool true, r), by
+      show r.length < s.length
+      have a := skipWs_le s; rw [hs] at a; simp at a; omega⟩
+  | 'f' :: 'a' :: 'l' :: 's' :: 'e' :: r => .ok ⟨(.bool false, r), by
+      show r.length < s.length
+      have a := skipWs_le s; rw [hs] at a; simp at a; omega⟩
+  | 'n' :: 'u' :: 'l' :: 'l' :: r => .ok ⟨(.null, r), by
+      show r.length < s.length
+      have a := skipWs_le s; rw [hs] at a; simp at a; omega⟩
+  | '-' :: tail =>
+      match hn : pNumber ('-' :: tail) with
+      | .error e => .error e
+      | .ok (d, r) => .ok ⟨(d, r), by
+          show r.length < s.length
+          have a := skipWs_le s; rw [hs] at a
+          have b := pNumber_lt ('-' :: tail) d r hn
+          simp at a b
+          omega⟩
+  | c :: tail =>
+      if isDigit c then
+        match hn : pNumber (c :: tail) with
+        | .error e => .error e
+        | .ok (d, r) => .ok ⟨(d, r), by
+            show r.length < s.length
+            have a := skipWs_le s; rw [hs] at a
+            have b := pNumber_lt (c :: tail) d r hn
+            simp at a b
+            omega⟩
+      else .error s!"unexpected character '{c}'"
   | [] => .error "unexpected end of input"
+-- The measure is (input length, who). `pArray` hands the *same* input to
+-- `pValue`, so length alone cannot decrease; ranking `pValue` below the other
+-- two makes that step count as progress, and every other call shortens the
+-- input outright.
+termination_by (s.length, 0)
+decreasing_by
+  all_goals
+    have a := skipWs_le s
+    rw [hs] at a
+    simp at a
+    have b := skipWs_le r
+    omega
 
-  where
-    pObject (acc : List (String × Doc)) : Input → Except String (Doc × Input)
-      | '}' :: r => .ok (.obj acc.reverse, r)
-      | s => do
-          let (k, s) ← pString (skipWs s)
-          match skipWs s with
-          | ':' :: s =>
-              let (v, s) ← pValue s
-              match skipWs s with
-              | ',' :: s => pObject ((k, v) :: acc) (skipWs s)
-              | '}' :: s => .ok (.obj ((k, v) :: acc).reverse, s)
-              | _ => .error "expected ',' or '}'"
-          | _ => .error "expected ':'"
+/-- The members of an object, after the opening brace.
 
-    pArray (acc : List Doc) : Input → Except String (Doc × Input)
-      | ']' :: r => .ok (.arr acc.reverse, r)
-      | s => do
-          let (v, s) ← pValue s
-          match skipWs s with
-          | ',' :: s => pArray (v :: acc) (skipWs s)
-          | ']' :: s => .ok (.arr (v :: acc).reverse, s)
-          | _ => .error "expected ',' or ']'"
+    The fallback branch names its input `rest` rather than reusing `s`: the
+    return type mentions `s`, so matching on it abstracts it, and the goals
+    are then about the matched form. -/
+private def pObject (acc : List (String × Doc)) (s : Input) : Except String (Parsed s) :=
+  match s with
+  | '}' :: r => .ok ⟨(.obj acc.reverse, r), by simp⟩
+  | rest =>
+    match hk : pString (skipWs rest) with
+    | .error e => .error e
+    | .ok (k, s1) =>
+      match hc : skipWs s1 with
+      | ':' :: s2 =>
+        match pValue s2 with
+        | .error e => .error e
+        | .ok ⟨(v, s3), h3⟩ =>
+          match hcm : skipWs s3 with
+          | ',' :: s4 =>
+            match pObject ((k, v) :: acc) (skipWs s4) with
+            | .error e => .error e
+            | .ok ⟨p, hp⟩ => .ok ⟨p, by
+                simp at h3
+                have a := pString_lt (skipWs rest) k s1 hk
+                have b := skipWs_le rest
+                have c := skipWs_le s1; rw [hc] at c; simp at c
+                have d := skipWs_le s3; rw [hcm] at d; simp at d
+                have e := skipWs_le s4
+                omega⟩
+          | '}' :: s4 => .ok ⟨(.obj ((k, v) :: acc).reverse, s4), by
+              show s4.length < rest.length
+              simp at h3
+              have a := pString_lt (skipWs rest) k s1 hk
+              have b := skipWs_le rest
+              have c := skipWs_le s1; rw [hc] at c; simp at c
+              have d := skipWs_le s3; rw [hcm] at d; simp at d
+              omega⟩
+          | _ => .error "expected ',' or '}'"
+      | _ => .error "expected ':'"
+termination_by (s.length, 1)
+decreasing_by
+  all_goals
+    first
+      | (have a := pString_lt (skipWs rest) k s1 hk
+         have b := skipWs_le rest
+         have c := skipWs_le s1; rw [hc] at c; simp at c
+         have d := skipWs_le s3; rw [hcm] at d; simp at d
+         have e := skipWs_le s4
+         simp at h3
+         omega)
+      | (have a := pString_lt (skipWs rest) k s1 hk
+         have b := skipWs_le rest
+         have c := skipWs_le s1; rw [hc] at c; simp at c
+         omega)
 
-def parse (text : String) : Except String Doc := do
-  let (v, rest) ← pValue text.toList
-  match skipWs rest with
-  | [] => return v
-  | _ => .error "trailing content after the document"
+/-- The elements of an array, after the opening bracket. -/
+private def pArray (acc : List Doc) (s : Input) : Except String (Parsed s) :=
+  match s with
+  | ']' :: r => .ok ⟨(.arr acc.reverse, r), by simp⟩
+  | rest =>
+    match pValue rest with
+    | .error e => .error e
+    | .ok ⟨(v, s1), h1⟩ =>
+      match hc : skipWs s1 with
+      | ',' :: s2 =>
+        match pArray (v :: acc) (skipWs s2) with
+        | .error e => .error e
+        | .ok ⟨p, hp⟩ => .ok ⟨p, by
+            simp at h1
+            have c := skipWs_le s1; rw [hc] at c; simp at c
+            have d := skipWs_le s2
+            omega⟩
+      | ']' :: s2 => .ok ⟨(.arr (v :: acc).reverse, s2), by
+          show s2.length < rest.length
+          simp at h1
+          have c := skipWs_le s1; rw [hc] at c; simp at c
+          omega⟩
+      | _ => .error "expected ',' or ']'"
+termination_by (s.length, 1)
+decreasing_by
+  all_goals
+    first
+      | omega
+      | (have c := skipWs_le s1; rw [hc] at c; simp at c
+         have d := skipWs_le s2
+         simp at h1
+         omega)
+
+end
+
+def parse (text : String) : Except String Doc :=
+  match pValue text.toList with
+  | .error e => .error e
+  | .ok ⟨(v, rest), _⟩ =>
+      match skipWs rest with
+      | [] => .ok v
+      | _ => .error "trailing content after the document"
 
 def describe : Doc → String
   | .null => "null"
