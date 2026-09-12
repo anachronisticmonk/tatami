@@ -59,17 +59,14 @@ def Obs.widened (o : Obs) : Bool := o.sawInt && o.sawFloat
 /-- What has been observed at one table: how many times an object appeared at
     that path, and what each of its members held. The visit count is the
     denominator for absence, and differs per table -- the root table is
-    visited once per document, a nested table once per parent that had it. -/
+    visited once per document, a nested table once per parent that had it.
+
+    Nothing here records where a row came from. Since a table is identified by
+    its path and nothing folds, the table it points back to and whether it is
+    keyed are functions of that path; `toSchema` reads them off it. Every field
+    that remains accumulates, so the order documents arrive in cannot matter. -/
 structure TableObs where
   visits : Nat := 0
-  /-- of those visits, how many were as a member of a collection -- an array
-      element or a map entry. A folded recursive table is reached both ways,
-      which is what makes its back-reference optional. -/
-  collVisits : Nat := 0
-  /-- the table those rows point back to -/
-  parent : Option Path := none
-  /-- rows are keyed by a string rather than positioned by an index -/
-  keyed : Bool := false
   members : List (String × Obs) := []
   /-- whether a collection's members were objects or scalars. One that is some
       of each has no single table shape. -/
@@ -138,30 +135,16 @@ def recordMember (ts : Tables) (p : Path) (k : String) (s : Seen)
   return ts.upsert p fun t =>
     { t with members := t.members.filter (fun q => q.1 != k) ++ [(k, next)] }
 
-/-- The table a collection's rows point back to.
-
-    A row carries a single `parent_id`, so rows reached from two different
-    tables cannot be expressed and are refused. This is also what keeps the
-    schema a function of the corpus rather than of document order: `parent` is
-    the one field that overwrites rather than merges, so without the check the
-    answer depends on which document arrived last. -/
-def setParent (p : Path) (pp : Path) (t : TableObs) : Except Error (Option Path) :=
-  match t.parent with
-  | none => .ok (some pp)
-  | some q =>
-      if q == pp then .ok (some q)
-      else .error (.ambiguousParent (Path.toString p) (Path.toString q) (Path.toString pp))
-
 mutual
 
 /-- Walk one object, recording its members and descending into whatever they
     hold.
 
-    `target` is the table this object belongs to, which is not always the path
-    it sits at: a path marked recursive folds into an ancestor, and both are
-    then the same table. `from?` is set when the object is a member of a
-    collection, carrying the table its row points back to and whether it is
-    keyed by a string.
+    `target` is the table this object belongs to, which is simply the path it
+    sits at -- nothing folds, so the two coincide. `inCollection` says whether
+    the object arrived as a member of a collection. That is the only thing
+    about a row's provenance not already recoverable from the path, and it is
+    needed solely to notice a collection holding both objects and scalars.
 
     Total, on the measure `Doc.size`. The recursion is on a member of the
     object rather than on the object, so it is not structural, and the four
@@ -170,20 +153,14 @@ mutual
     match on `j`, because `let ms <- members j` would hide `j = .obj ms` and
     with it the fact that the members are smaller. -/
 def observeObject (cfg : Config) (ts : Tables) (target : Path)
-    (from? : Option (Path × Bool)) (j : Doc) : Except Error Tables :=
+    (inCollection : Bool) (j : Doc) : Except Error Tables :=
   match j with
   | .obj ms => do
       checkDistinct target ms
-      let parent' ← match from? with
-        | some (pp, _) => setParent target pp ((ts.lookup target).getD {})
-        | none => .ok ((ts.lookup target).getD {}).parent
       let ts := ts.upsert target fun t =>
         { t with
           visits := t.visits + 1
-          collVisits := t.collVisits + (if from?.isSome then 1 else 0)
-          parent := parent'
-          keyed := match from? with | some (_, k) => t.keyed || k | none => t.keyed
-          elemObject := t.elemObject || from?.isSome }
+          elemObject := t.elemObject || inCollection }
       observeMembers cfg ts target ms
   | other => .error (.notObjectOrArray (Doc.describe other))
 termination_by (j.size, 1)
@@ -201,34 +178,31 @@ def observeMembers (cfg : Config) (ts : Tables) (target : Path)
             if cfg.isMap here then
               -- the members are data: each becomes a row keyed by its name
               let raw := Path.entry here
-              let entryTable := cfg.resolve raw
               (do
-                let ts ← recordMember ts target k (.value (.coll entryTable) false)
-                let ts := ts.upsert entryTable id
+                let ts ← recordMember ts target k (.value (.coll raw) false)
+                let ts := ts.upsert raw id
                 checkDistinct here entries
                 have : Doc.sizeVals entries < Doc.sizeVals ((k, Doc.obj entries) :: tl) :=
                   Doc.sizeVals_lt_obj k entries tl
-                observeEntries cfg ts target entryTable (Path.toString raw) entries)
+                observeEntries cfg ts raw (Path.toString raw) entries)
             else
               (do
-                let child := cfg.resolve here
-                let ts ← recordMember ts target k (.value (.ref child) false)
+                let ts ← recordMember ts target k (.value (.ref here) false)
                 -- `Doc.obj entries` rather than `v`: the match refines the list
                 -- element but not the occurrence of `v`, and the two forms have
                 -- to agree for the decrease to be stated
                 have : Doc.size (Doc.obj entries)
                      < 1 + Doc.sizeVals ((k, Doc.obj entries) :: tl) :=
                   Doc.size_lt_cons k (Doc.obj entries) tl
-                observeObject cfg ts child none (Doc.obj entries))
+                observeObject cfg ts here false (Doc.obj entries))
         | .arr els =>
             (do
               let raw := Path.elem here
-              let elemTable := cfg.resolve raw
-              let ts ← recordMember ts target k (.value (.coll elemTable) false)
-              let ts := ts.upsert elemTable id
+              let ts ← recordMember ts target k (.value (.coll raw) false)
+              let ts := ts.upsert raw id
               have : Doc.sizeList els < Doc.sizeVals ((k, Doc.arr els) :: tl) :=
                 Doc.sizeList_lt_arr k els tl
-              observeElems cfg ts target elemTable (Path.toString raw) els)
+              observeElems cfg ts raw (Path.toString raw) els)
         | _ =>
             (do
               let s ← seeScalar (Path.toString here) v
@@ -239,7 +213,7 @@ termination_by (1 + Doc.sizeVals ms, 0)
 
 /-- The elements of one array. An element that is itself an array is refused;
     a scalar element becomes a row with a single `value` column. -/
-def observeElems (cfg : Config) (ts : Tables) (target : Path) (elemTable : Path)
+def observeElems (cfg : Config) (ts : Tables) (elemTable : Path)
     (raw : String) (els : List Doc) : Except Error Tables :=
   match els with
   | [] => .ok ts
@@ -249,23 +223,21 @@ def observeElems (cfg : Config) (ts : Tables) (target : Path) (elemTable : Path)
         | .obj ms =>
             have : Doc.size (Doc.obj ms) < 1 + Doc.sizeList (Doc.obj ms :: tl) :=
               Doc.size_lt_consList (Doc.obj ms) tl
-            observeObject cfg ts elemTable (some (target, false)) (Doc.obj ms)
+            observeObject cfg ts elemTable true (Doc.obj ms)
         | .arr _ => .error (.nestedArray raw)
         | _ =>
             (do
-              let parent' ← setParent elemTable target ((ts.lookup elemTable).getD {})
               let ts := ts.upsert elemTable fun t =>
-                { t with visits := t.visits + 1, collVisits := t.collVisits + 1
-                       , parent := parent', elemScalar := true }
+                { t with visits := t.visits + 1, elemScalar := true }
               let s ← seeScalar raw e
               recordMember ts elemTable "value" s)
       have : Doc.sizeList tl < Doc.sizeList (e :: tl) := Doc.sizeList_lt e tl
-      observeElems cfg ts target elemTable raw tl
+      observeElems cfg ts elemTable raw tl
 termination_by (1 + Doc.sizeList els, 0)
 
 /-- The entries of an object marked as a map. Each entry becomes a row keyed
     by its name, so the key itself carries no type. -/
-def observeEntries (cfg : Config) (ts : Tables) (target : Path) (entryTable : Path)
+def observeEntries (cfg : Config) (ts : Tables) (entryTable : Path)
     (raw : String) (entries : List (String × Doc)) : Except Error Tables :=
   match entries with
   | [] => .ok ts
@@ -275,18 +247,16 @@ def observeEntries (cfg : Config) (ts : Tables) (target : Path) (entryTable : Pa
         | .obj ms =>
             have : Doc.size (Doc.obj ms) < 1 + Doc.sizeVals ((k, Doc.obj ms) :: tl) :=
               Doc.size_lt_cons k (Doc.obj ms) tl
-            observeObject cfg ts entryTable (some (target, true)) (Doc.obj ms)
+            observeObject cfg ts entryTable true (Doc.obj ms)
         | .arr _ => .error (.mapEntryNotSupported raw "an array")
         | _ =>
             (do
-              let parent' ← setParent entryTable target ((ts.lookup entryTable).getD {})
               let ts := ts.upsert entryTable fun t =>
-                { t with visits := t.visits + 1, collVisits := t.collVisits + 1
-                       , parent := parent', keyed := true, elemScalar := true }
+                { t with visits := t.visits + 1, elemScalar := true }
               let s ← seeScalar raw ev
               recordMember ts entryTable "value" s)
       have : Doc.sizeVals tl < Doc.sizeVals ((k, ev) :: tl) := Doc.sizeVals_lt (k, ev) tl
-      observeEntries cfg ts target entryTable raw tl
+      observeEntries cfg ts entryTable raw tl
 termination_by (1 + Doc.sizeVals entries, 0)
 
 end
@@ -299,12 +269,12 @@ end
 def inferCorpus (cfg : Config) (docs : List Doc) : Except Error Tables := do
   let mut ts : Tables := []
   for d in docs do
-    ts ← observeObject cfg ts (cfg.resolve []) none d
+    ts ← observeObject cfg ts [] false d
   for (p, t) in ts do
     if t.elemObject && t.elemScalar then throw (.mixedElements (Path.toString p))
   -- a marking that matched nothing is a typo, not a no-op
   for m in cfg.maps do
-    if (ts.lookup (cfg.resolve (Path.entry m))).isNone then
+    if (ts.lookup (Path.entry m)).isNone then
       throw (.markingMatchedNothing (Path.toString m))
   return ts.map fun (p, t) =>
     (p, { t with members := t.members.map fun (k, o) =>
@@ -322,9 +292,8 @@ def toSchema (ts : Tables) : Schema :=
       a.1.length > b.1.length
   ordered.toList.map fun (p, t) =>
     { path := p
-    , parent := if t.collVisits == 0 then none else t.parent
-    , parentOptional := t.collVisits > 0 && t.collVisits < t.visits
-    , keyed := t.keyed
+    , parent := Path.parentOfElement p
+    , keyed := Path.isEntry p
     , columns := (t.members.toArray.qsort (fun a b => a.1 < b.1)).toList.map
         fun (k, o) => { name := k, field := o.field } }
 

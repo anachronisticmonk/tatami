@@ -52,25 +52,23 @@ namespace Tatami
         inferCorpus [{"a":3}, {"a":1,"b":2}]  gives members ["a", "b"]
 
     Neither reaches the output, since `toSchema` sorts, so the claim belongs
-    on `toSchema`. But even there it was false until `setParent` was added:
-    `parent` was the one field that overwrote rather than merged, so with two
-    recursive markings folding different collections into one table, the
-    surviving parent was whichever document came last. With
+    on `toSchema`. It was false there too, for a separate reason: `parent` was
+    observed, and it *overwrote* rather than merged, so a table reachable from
+    two places kept whichever parent the last document happened to set.
 
-        {"recursive":[{"path":".a.items[]","folds_into":"."},
-                      {"path":".b.items[]","folds_into":"."}]}
-
-    the corpus `[{"a":{"items":[{"z":1}]}}, {"b":{"items":[{"z":2}]}}]` gave
-    `parent_id : B.id option` and its reverse gave `parent_id : A.id option`.
-    A row carries one parent key, so that shape is not expressible at all and
-    is now refused.
+    The `recursive` marking -- a path folded into an ancestor, so both became
+    one table -- was the only way to produce such a table, and it has been
+    removed. A table is identified by its path alone; its parent is
+    `Path.parentOfElement` of that path and `keyed` is `Path.isEntry` of it,
+    so neither is observed. Every field left in `TableObs` accumulates, which
+    is exactly what the proof below needs.
 
     Conditional on success, because *which* error is reported first does
     depend on order -- if one document has a type conflict and another a
     nested array, the answer differs. Whether inference succeeds does not:
     every rejection is either symmetric (`join` is commutative, so a type
-    conflict is a conflict either way; an ambiguous parent likewise), local to
-    one document (`duplicateMember`, `nestedArray`), or checked at the end
+    conflict is a conflict either way), local to one document
+    (`duplicateMember`, `nestedArray`), or checked at the end
     against accumulated flags (`mixedElements`, `markingMatchedNothing`).
     Diagnostics depending on order is fine; the schema depending on it is not.
 

@@ -32,11 +32,13 @@ What is stated here, and where each stands.
   What was nested `for` loops is four mutually recursive functions.
 * `infer_perm` is a real claim, and stating it correctly took two corrections.
   As an equation between `Tables` it is false, because that list carries
-  discovery order and order of last update; and until `setParent` was added
-  it was false even on `toSchema`, because `parent` overwrote rather than
-  merged. It is now conditional on success, since which error is reported
-  first legitimately depends on order while whether inference succeeds does
-  not. Three obstacles remain, including that `Array.qsort` has no
+  discovery order and order of last update; and it was false on `toSchema`
+  too while `parent` was observed, because it overwrote rather than merged.
+  Removing the `recursive` marking removed the only way to reach one table
+  from two places, so parent and `keyed` are read off the path and nothing
+  left in `TableObs` overwrites. It is now conditional on success, since
+  which error is reported first legitimately depends on order while whether
+  inference succeeds does not. Three obstacles remain, including that `Array.qsort` has no
   correctness lemmas in core -- see the docstring.
 * `infer_admits` and `infer_least` conclude `True`. They are reserved names,
   not theorems, and totality does not change that: they need the conformance
@@ -46,10 +48,9 @@ What is stated here, and where each stands.
 **Not covered, though it sounds as if it were.**
 * `File.WellFormed` constrains names only, not references. A `qualified M n`
   naming a module that does not exist, or one declared later in a file that
-  is not `module rec`, satisfies it and still does not compile --- which is
-  how the `recursive` fold bug slips past. "The emitted OCaml compiles" needs
-  a scoping clause and `File.recursive` computed from every cross-module
-  reference.
+  is not `module rec`, satisfies it and still does not compile. "The emitted
+  OCaml compiles" needs a scoping clause and `File.recursive` computed from
+  every cross-module reference.
 
 **Out of reach, and not for want of effort.**
 * Anything about the data surviving. The program emits a description of

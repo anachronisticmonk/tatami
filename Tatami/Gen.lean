@@ -66,8 +66,8 @@ def genModule (t : Table) : Except Error Module := do
       let idTy := ref pp "id"
       let posTy : TyExpr := if t.keyed then .string else .int
       fields := fields ++
-        [ { name := parentColumn, ty := if t.parentOptional then .option idTy else idTy }
-        , { name := positionColumn, ty := if t.parentOptional then .option posTy else posTy } ]
+        [ { name := parentColumn, ty := idTy }
+        , { name := positionColumn, ty := posTy } ]
   | none => pure ()
   let mut accessors : List Decl := []
   for c in t.columns do
