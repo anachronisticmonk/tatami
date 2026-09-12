@@ -1,5 +1,0 @@
-; The front end: JSON in, OCaml modules out. Phases 1 and 2.
-; May see heri. May not see toko.
-(library
- (name omote)
- (libraries heri))

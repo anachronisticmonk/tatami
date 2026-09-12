@@ -1,3 +1,0 @@
-; The border: what omote and toko agree on. Depends on neither.
-(library
- (name heri))

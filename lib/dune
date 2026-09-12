@@ -1,0 +1,8 @@
+(library
+ (name tatami)
+ (libraries unix threads.posix pgx pgx_unix)
+ (instrumentation
+  (backend bisect_ppx)))
+
+; dune runs ocamllex on lexer.mll and the result is an ordinary module, Lexer
+(ocamllex lexer)

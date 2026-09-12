@@ -1,0 +1,3 @@
+; schema/ holds generated-module stand-ins that are read at run time, not
+; compiled; web/ holds the page. Neither is a build directory.
+(data_only_dirs schema web)
