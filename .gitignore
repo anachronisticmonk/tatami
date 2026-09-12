@@ -12,8 +12,11 @@ _build/
 _opam/
 *.install
 
-# Personal scratchpad, not shared
-scratch/
+# Lean / lake
+/.lake/
 
 # coverage
 _coverage/
+
+# Personal scratchpad, not shared
+scratch/

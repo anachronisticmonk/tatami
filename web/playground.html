@@ -1,0 +1,1251 @@
+<title>Tatami Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+
+<style>
+  :root {
+    --bg:        #F1F2EC;
+    --surface:   #FBFBF7;
+    --sunk:      #E9EBE1;
+    --rail:      #EDEEE6;
+    --ink:       #1B1E19;
+    --muted:     #5D6357;
+    --faint:     #9AA08F;
+    --line:      #D8DACE;
+    --accent:    #5F7440;
+    --accent-bg: #E6ECD8;
+    --gold:      #8A6C1F;
+    --gold-bg:   #F0E7CC;
+    --alarm:     #9E3A22;
+    --alarm-bg:  #F5DFD8;
+    --heri:      #2B3A4A;
+    --sel:       #CBD9AE;
+
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --serif: "Newsreader", Georgia, serif;
+
+    --code-size: 13.5px;
+    --code-line: 1.62;
+    --code-pad: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #13160F; --surface: #1A1E16; --sunk: #10130D; --rail: #171B13;
+      --ink: #E7EADD; --muted: #949B87; --faint: #6B7360; --line: #2B3124;
+      --accent: #A6BE6E; --accent-bg: #23291A;
+      --gold: #CDAB5C; --gold-bg: #2A2416;
+      --alarm: #E4836A; --alarm-bg: #2E1B15;
+      --heri: #8FA8C4; --sel: #35402A;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #13160F; --surface: #1A1E16; --sunk: #10130D; --rail: #171B13;
+    --ink: #E7EADD; --muted: #949B87; --faint: #6B7360; --line: #2B3124;
+    --accent: #A6BE6E; --accent-bg: #23291A;
+    --gold: #CDAB5C; --gold-bg: #2A2416;
+    --alarm: #E4836A; --alarm-bg: #2E1B15;
+    --heri: #8FA8C4; --sel: #35402A;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap { max-width: 1320px; margin: 0 auto; padding: 28px 22px 60px; }
+
+  /* ---------------- header ---------------- */
+  header { border-bottom: 2px solid var(--heri); padding-bottom: 18px; margin-bottom: 20px; }
+  h1 {
+    font-family: var(--serif); font-weight: 500;
+    font-size: clamp(28px, 3.6vw, 38px); letter-spacing: -0.015em;
+    margin: 0 0 6px; text-wrap: balance;
+  }
+  .lede { color: var(--muted); margin: 0; max-width: 68ch; }
+  .stage {
+    display: inline-block; font-family: var(--mono); font-size: 11px;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent);
+    background: var(--accent-bg); border: 1px solid var(--line);
+    padding: 3px 8px; margin-bottom: 10px;
+  }
+  .examples { display: flex; flex-wrap: wrap; gap: 7px; margin: 16px 0 0; align-items: baseline; }
+  .examples .label {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--muted); margin-right: 4px;
+  }
+  button.chip {
+    font-family: var(--sans); font-size: 12.5px; background: var(--surface);
+    color: var(--ink); border: 1px solid var(--line); padding: 4px 10px;
+    cursor: pointer; transition: border-color .12s, color .12s;
+  }
+  button.chip:hover { border-color: var(--accent); color: var(--accent); }
+  button.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* ---------------- workbench ---------------- */
+  .bench {
+    display: grid; grid-template-columns: minmax(280px, 5fr) 8fr;
+    gap: 2px; background: var(--line); border: 1px solid var(--line);
+  }
+  @media (max-width: 1000px) { .bench { grid-template-columns: 1fr; } }
+
+  .panel { background: var(--surface); display: flex; flex-direction: column; min-width: 0; }
+  .panel-head {
+    display: flex; justify-content: space-between; align-items: center; gap: 10px;
+    padding: 8px 12px; border-bottom: 1px solid var(--line);
+    background: var(--sunk); min-height: 38px;
+  }
+  .panel-title {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted); white-space: nowrap;
+  }
+  .head-right { display: flex; align-items: center; gap: 8px; }
+
+  .engine {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--line); padding: 2px 7px; white-space: nowrap;
+  }
+  .engine.live { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+
+  button.act {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em;
+    text-transform: uppercase; background: transparent; color: var(--muted);
+    border: 1px solid var(--line); padding: 3px 8px; cursor: pointer;
+    white-space: nowrap;
+  }
+  button.act:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+  button.act:disabled { opacity: 0.4; cursor: default; }
+  button.act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  textarea.json {
+    font-family: var(--mono); font-size: var(--code-size); line-height: var(--code-line);
+    margin: 0; padding: var(--code-pad); border: 0; width: 100%;
+    min-height: 460px; flex: 1; resize: vertical;
+    background: var(--surface); color: var(--ink); outline: none; tab-size: 2;
+  }
+  textarea.json:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+
+  /* ---------------- editor ---------------- */
+  .editor { display: grid; grid-template-columns: 190px 1fr; flex: 1; min-height: 0; }
+  @media (max-width: 620px) { .editor { grid-template-columns: 1fr; } }
+
+  aside.files {
+    background: var(--rail); border-right: 1px solid var(--line);
+    padding: 10px 0; overflow-y: auto; min-width: 0;
+  }
+  .files h4 {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--faint); font-weight: 500;
+    margin: 0 0 5px; padding: 0 12px;
+  }
+  .files h4:not(:first-child) { margin-top: 16px; }
+  .files button {
+    display: block; width: 100%; text-align: left; background: none;
+    border: 0; border-left: 2px solid transparent; cursor: pointer;
+    font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+    padding: 4px 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .files button:hover { color: var(--ink); background: var(--sunk); }
+  .files button.on { color: var(--accent); border-left-color: var(--accent); background: var(--accent-bg); }
+  .files button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+  .files .dot { color: var(--gold); }
+  .files .depth1 { padding-left: 24px; }
+  .files .depth2 { padding-left: 36px; }
+
+  .code { display: flex; flex-direction: column; min-width: 0; }
+
+  .notice {
+    display: none; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 7px 12px; background: var(--gold-bg); border-bottom: 1px solid var(--line);
+    font-size: 12.5px; color: var(--gold);
+  }
+  .notice.on { display: flex; }
+
+  .surface { position: relative; flex: 1; display: flex; min-height: 460px; overflow: hidden; }
+
+  .gutter {
+    font-family: var(--mono); font-size: var(--code-size); line-height: var(--code-line);
+    padding: var(--code-pad) 8px var(--code-pad) 12px; margin: 0;
+    color: var(--faint); background: var(--sunk); border-right: 1px solid var(--line);
+    text-align: right; user-select: none; overflow: hidden; white-space: pre;
+    font-variant-numeric: tabular-nums; min-width: 3.2em;
+  }
+
+  .stack { position: relative; flex: 1; min-width: 0; }
+  .stack pre, .stack textarea {
+    font-family: var(--mono); font-size: var(--code-size); line-height: var(--code-line);
+    padding: var(--code-pad); margin: 0; border: 0;
+    position: absolute; inset: 0; width: 100%; height: 100%;
+    white-space: pre; overflow: auto; tab-size: 2;
+    letter-spacing: normal; word-spacing: normal;
+  }
+  .stack pre { color: var(--ink); background: var(--surface); pointer-events: none; }
+  .stack textarea {
+    color: transparent; background: transparent; caret-color: var(--accent);
+    resize: none; outline: none;
+  }
+  .stack textarea::selection { background: var(--sel); }
+  .stack textarea:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+
+  .kw { color: var(--accent); }
+  .cm { color: var(--muted); font-style: italic; }
+  .ty { color: var(--heri); }
+
+  .error {
+    font-family: var(--mono); font-size: 13px; line-height: 1.6;
+    color: var(--alarm); background: var(--alarm-bg);
+    padding: 16px; border-left: 3px solid var(--alarm); margin: 0;
+    white-space: pre-wrap;
+  }
+
+  /* ---------------- shape ---------------- */
+  .shape { margin-top: 26px; }
+  .shape h2 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted); font-weight: 500;
+    margin: 0 0 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  .shape p.hint { color: var(--muted); font-size: 13.5px; margin: 10px 0 14px; max-width: 74ch; }
+  .shaperow {
+    display: flex; align-items: center; gap: 12px; flex-wrap: wrap;
+    padding: 7px 0; border-bottom: 1px solid var(--line);
+  }
+  .shaperow code {
+    font-family: var(--mono); font-size: 13px; color: var(--ink); min-width: 16ch;
+  }
+  .shaperow label {
+    display: inline-flex; align-items: center; gap: 6px;
+    font-size: 13px; color: var(--muted); cursor: pointer;
+  }
+  .shaperow select {
+    font-family: var(--mono); font-size: 12.5px; background: var(--surface);
+    color: var(--ink); border: 1px solid var(--line); padding: 2px 6px;
+  }
+  .cfgline { display: flex; align-items: center; gap: 10px; margin-top: 14px; flex-wrap: wrap; }
+  .cfglabel {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .cfgline code {
+    font-family: var(--mono); font-size: 12.5px; color: var(--muted);
+    background: var(--sunk); border: 1px solid var(--line); padding: 3px 8px;
+    overflow-x: auto; max-width: 100%;
+  }
+
+  /* ---------------- observations ---------------- */
+  .trace { margin-top: 26px; }
+  .trace h2 {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted); font-weight: 500;
+    margin: 0 0 4px; padding-bottom: 8px; border-bottom: 1px solid var(--line);
+  }
+  .trace p.hint { color: var(--muted); font-size: 13.5px; margin: 10px 0 14px; max-width: 74ch; }
+  .table-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th {
+    text-align: left; font-family: var(--mono); font-weight: 500; font-size: 11px;
+    letter-spacing: 0.07em; text-transform: uppercase; color: var(--muted);
+    padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  td { padding: 9px 12px 9px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.mono { font-family: var(--mono); font-size: 13px; white-space: nowrap; }
+  td.counts {
+    font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums;
+    color: var(--muted); white-space: nowrap;
+  }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.05em; padding: 1px 6px; margin: 0 4px 3px 0;
+    border: 1px solid var(--line); color: var(--gold); background: var(--gold-bg);
+  }
+  .tbl { margin-bottom: 24px; }
+  .tbl h3 {
+    font-family: var(--mono); font-size: 12px; font-weight: 500; color: var(--ink);
+    margin: 0 0 8px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px;
+  }
+  .tbl h3 span {
+    font-size: 11px; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--muted); font-weight: 400;
+  }
+  .note { color: var(--muted); }
+  .empty { color: var(--muted); font-size: 13.5px; padding: 14px 0; }
+
+  footer {
+    margin-top: 36px; padding-top: 16px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 13px; max-width: 78ch;
+  }
+  footer code { font-family: var(--mono); font-size: 0.92em; }
+</style>
+
+<div class="wrap">
+  <header>
+    <div class="stage">Phase 1 &middot; objects and arrays</div>
+    <h1>Tatami Playground</h1>
+    <p class="lede">Paste a JSON object, or an array of them as a corpus, and watch it lower to OCaml module signatures. Nested objects become tables of their own with a key in the parent; arrays become tables whose rows point back.</p>
+    <div class="examples">
+      <span class="label">Try</span>
+      <button class="chip" data-ex="note">The design note example</button>
+      <button class="chip" data-ex="deep">Two levels deep</button>
+      <button class="chip" data-ex="arrayObjs">An array of objects</button>
+      <button class="chip" data-ex="arrayScalars">An array of scalars</button>
+      <button class="chip" data-ex="corpus">A corpus</button>
+      <button class="chip" data-ex="optional">An optional object</button>
+      <button class="chip" data-ex="names">Awkward names</button>
+      <button class="chip" data-ex="nulls">Nulls and absence</button>
+      <button class="chip" data-ex="conflict">A type conflict</button>
+      <button class="chip" data-ex="dup">Duplicate keys</button>
+      <button class="chip" data-ex="map">A map-shaped object</button>
+      <button class="chip" data-ex="tree">A comment thread</button>
+      <button class="chip" data-ex="nestedArray">Nested arrays</button>
+    </div>
+  </header>
+
+  <div class="bench">
+    <div class="panel">
+      <div class="panel-head"><span class="panel-title">JSON in</span></div>
+      <textarea class="json" id="in" spellcheck="false" aria-label="JSON input"></textarea>
+    </div>
+
+    <div class="panel">
+      <div class="panel-head">
+        <span class="panel-title" id="openName">generated.mli</span>
+        <span class="head-right">
+          <span class="engine" id="engine">&mdash;</span>
+          <button class="act" id="revert" disabled>Revert</button>
+          <button class="act" id="copy">Copy</button>
+          <button class="act" id="download" hidden>Download</button>
+        </span>
+      </div>
+      <div class="editor">
+        <aside class="files" id="files"></aside>
+        <div class="code">
+          <div class="notice" id="notice">
+            <span>Edited by hand. The JSON pane no longer updates this file.</span>
+            <button class="act" id="regen">Discard and regenerate</button>
+          </div>
+          <div class="surface" id="surface">
+            <pre class="gutter" id="gutter"></pre>
+            <div class="stack">
+              <pre id="hl" aria-hidden="true"></pre>
+              <textarea id="src" spellcheck="false" aria-label="Generated OCaml"></textarea>
+            </div>
+          </div>
+          <div id="errbox"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <section class="shape">
+    <h2>Shape</h2>
+    <p class="hint">Two shapes cannot be read off the data. An object whose keys are values looks exactly like a record, and a self-referential shape looks like a fixed number of nested ones &mdash; how many depends on how deep the sample goes. Mark them here; the markings are an input, not a guess.</p>
+    <div id="shape"></div>
+    <div class="cfgline">
+      <span class="cfglabel">config</span>
+      <code id="cfgjson">{}</code>
+      <button class="act" id="copycfg">Copy</button>
+    </div>
+  </section>
+
+  <section class="trace">
+    <h2>Observations</h2>
+    <p class="hint">One block per table, with the counts each column's type was derived from. Counts are per visit &mdash; once per document for the root table, once per parent for a nested one, once per element for an array &mdash; and they keep the difference between an explicit <code>null</code> and an absent member, which <code>option</code> cannot carry.</p>
+    <div id="trace"></div>
+  </section>
+
+  <footer>
+    The reference implementation is the Lean generator, which compiles to a binary; this page runs it through <code>dev/serve.py</code> when one is reachable, and otherwise falls back to an implementation of the same rules in JavaScript. Objects, nesting and arrays are handled. Arrays of arrays are refused, since the inner table would have no member name to take.
+  </footer>
+</div>
+
+<script>
+(function () {
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     A small JSON reader.
+
+     Deliberately not JSON.parse: we need the raw text of each number to
+     tell `1` from `1.0` (the lexical split), and we need duplicate keys
+     to survive so they can be rejected rather than silently overwritten.
+     ------------------------------------------------------------------ */
+
+  function readJson(src) {
+    var i = 0;
+
+    function fail(msg) { throw { tag: "parse", msg: msg + " at position " + i }; }
+    function ws() { while (i < src.length && /\s/.test(src[i])) i++; }
+
+    function str() {
+      if (src[i] !== '"') fail("expected a string");
+      i++;
+      var out = "";
+      while (i < src.length && src[i] !== '"') {
+        if (src[i] === "\\") {
+          i++;
+          var c = src[i++];
+          if (c === "n") out += "\n";
+          else if (c === "t") out += "\t";
+          else if (c === "r") out += "\r";
+          else if (c === "b") out += "\b";
+          else if (c === "f") out += "\f";
+          else if (c === "u") { out += String.fromCharCode(parseInt(src.substr(i, 4), 16)); i += 4; }
+          else out += c;
+        } else out += src[i++];
+      }
+      if (src[i] !== '"') fail("unterminated string");
+      i++;
+      return out;
+    }
+
+    function num() {
+      var start = i;
+      if (src[i] === "-") i++;
+      while (i < src.length && /[0-9]/.test(src[i])) i++;
+      if (src[i] === ".") { i++; while (i < src.length && /[0-9]/.test(src[i])) i++; }
+      if (src[i] === "e" || src[i] === "E") {
+        i++;
+        if (src[i] === "+" || src[i] === "-") i++;
+        while (i < src.length && /[0-9]/.test(src[i])) i++;
+      }
+      var raw = src.slice(start, i);
+      if (!/^-?[0-9]/.test(raw)) fail("malformed number");
+      return { k: "num", raw: raw };
+    }
+
+    function arr() {
+      i++; ws();
+      var items = [];
+      if (src[i] === "]") { i++; return { k: "arr", items: items }; }
+      for (;;) {
+        items.push(value()); ws();
+        if (src[i] === ",") { i++; ws(); continue; }
+        if (src[i] === "]") { i++; return { k: "arr", items: items }; }
+        fail("expected , or ]");
+      }
+    }
+
+    function obj() {
+      i++; ws();
+      var members = [];
+      if (src[i] === "}") { i++; return { k: "obj", members: members }; }
+      for (;;) {
+        ws();
+        var key = str(); ws();
+        if (src[i] !== ":") fail("expected :");
+        i++;
+        members.push([key, value()]); ws();
+        if (src[i] === ",") { i++; continue; }
+        if (src[i] === "}") { i++; return { k: "obj", members: members }; }
+        fail("expected , or }");
+      }
+    }
+
+    function value() {
+      ws();
+      var c = src[i];
+      if (c === "{") return obj();
+      if (c === "[") return arr();
+      if (c === '"') { str(); return { k: "str" }; }
+      if (c === "-" || (c >= "0" && c <= "9")) return num();
+      if (src.startsWith("true", i)) { i += 4; return { k: "bool" }; }
+      if (src.startsWith("false", i)) { i += 5; return { k: "bool" }; }
+      if (src.startsWith("null", i)) { i += 4; return { k: "null" }; }
+      fail(c === undefined ? "unexpected end of input" : "unexpected character " + JSON.stringify(c));
+    }
+
+    var v = value();
+    ws();
+    if (i < src.length) fail("trailing content");
+    return v;
+  }
+
+  /* ------------------------------------------------------------------
+     Names: every byte outside [A-Za-z0-9'] escapes to _hh, including _
+     itself, so _ is an unambiguous escape introducer and two distinct
+     member names can never collide.
+     ------------------------------------------------------------------ */
+
+  var KEYWORDS = ("and as assert asr begin class constraint do done downto else end exception " +
+    "external false for fun function functor if in include inherit initializer land lazy let " +
+    "lor lsl lsr lxor match method mod module mutable new nonrec object of open or private rec " +
+    "sig struct then to true try type val virtual when while with").split(" ");
+
+  var encoder = new TextEncoder();
+
+  function mangle(name) {
+    var bytes = encoder.encode(name);
+    var core = "";
+    for (var n = 0; n < bytes.length; n++) {
+      var b = bytes[n];
+      var ok = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b === 39;
+      core += ok ? String.fromCharCode(b) : "_" + b.toString(16).padStart(2, "0");
+    }
+    var out = /^[a-z]/.test(core) ? core : "f_" + core;
+    return KEYWORDS.indexOf(out) >= 0 ? out + "_" : out;
+  }
+
+  /* ------------------------------------------------------------------
+     Paths and module names.
+
+     A path is a list of steps from the root: {m:"name"} into a member,
+     {e:1} into the elements of an array, {y:1} into the entries of an object
+     marked as a map. It identifies a table, and the member names along it are
+     what the module is called.
+     ------------------------------------------------------------------ */
+
+  function seg(k) { return { m: k }; }
+  var ELEM = { e: 1 }, ENTRY = { y: 1 };
+
+  function segString(s) { return s.m !== undefined ? "." + s.m : s.e ? "[]" : "{}"; }
+  function pathString(p) { return p.length ? p.map(segString).join("") : "."; }
+  function pathNames(p) {
+    return p.filter(function (s) { return s.m !== undefined; }).map(function (s) { return s.m; });
+  }
+  function inCollection(p) {
+    return p.length > 0 && (p[p.length - 1].e === 1 || p[p.length - 1].y === 1);
+  }
+
+  function parsePath(str) {
+    if (str === ".") return [];
+    var out = [], i = 0;
+    while (i < str.length) {
+      if (str[i] === "[" && str[i + 1] === "]") { out.push(ELEM); i += 2; }
+      else if (str[i] === "{" && str[i + 1] === "}") { out.push(ENTRY); i += 2; }
+      else if (str[i] === ".") {
+        var j = i + 1;
+        while (j < str.length && ".[{".indexOf(str[j]) < 0) j++;
+        out.push(seg(str.slice(i + 1, j)));
+        i = j;
+      } else throw { msg: "unexpected '" + str[i] + "' in path " + str };
+    }
+    return out;
+  }
+
+  function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+  function moduleName(p) {
+    var names = pathNames(p);
+    return names.length === 0 ? "Root" : capitalize(names.map(mangle).join("_"));
+  }
+
+  /* ------------------------------------------------------------------
+     Markings the user supplies. Neither an object whose keys are data nor a
+     self-referential shape can be told from the data, so both are marked.
+     ------------------------------------------------------------------ */
+
+  function markings(cfg) {
+    cfg = cfg || {};
+    var maps = cfg.maps || [];
+    var rec = cfg.recursive || [];
+    return {
+      isMap: function (p) { return maps.indexOf(pathString(p)) >= 0; },
+      resolve: function (p) {
+        var s = pathString(p);
+        for (var i = 0; i < rec.length; i++)
+          if (rec[i].path === s) return parsePath(rec[i].folds_into);
+        return p;
+      },
+      maps: maps
+    };
+  }
+
+  /* ------------------------------------------------------------------
+     Types.
+     ------------------------------------------------------------------ */
+
+  var MAX_NATIVE_INT = 4611686018427387903n;
+
+  function samePath(a, b) { return a && b && pathString(a) === pathString(b); }
+
+  function joinTy(a, b) {
+    if (a.ty === "bot") return b;
+    if (b.ty === "bot") return a;
+    if (a.ty === "ref" || b.ty === "ref" || a.ty === "coll" || b.ty === "coll")
+      return (a.ty === b.ty && samePath(a.ref, b.ref)) ? a : null;
+    if (a.ty === b.ty) return a;
+    if ((a.ty === "int" && b.ty === "float") || (a.ty === "float" && b.ty === "int"))
+      return { ty: "float" };
+    return null;
+  }
+
+  function tyName(t) {
+    if (t.ty === "ref") return "the object at " + pathString(t.ref);
+    if (t.ty === "coll") return "the collection at " + pathString(t.ref);
+    return t.ty === "bot" ? "unknown" : t.ty === "str" ? "string" : t.ty;
+  }
+
+  function describe(v) {
+    return { obj: "an object", arr: "an array", num: "a number",
+             str: "a string", bool: "a boolean", "null": "null" }[v.k];
+  }
+
+  function scalarSeen(v) {
+    if (v.k === "null") return null;
+    if (v.k === "str") return { ty: "str" };
+    if (v.k === "bool") return { ty: "bool" };
+    if (/[.eE]/.test(v.raw)) return { ty: "float" };
+    var big = false;
+    try { var n = BigInt(v.raw); big = n > MAX_NATIVE_INT || n < -MAX_NATIVE_INT - 1n; }
+    catch (e) { big = false; }
+    return big ? { ty: "float", big: true } : { ty: "int" };
+  }
+
+  /* ------------------------------------------------------------------
+     The pipeline.
+     ------------------------------------------------------------------ */
+
+  function documents(v) {
+    if (v.k === "obj") return [v];
+    if (v.k === "arr") {
+      v.items.forEach(function (d, n) {
+        if (d.k !== "obj")
+          throw { msg: "element " + n + " of the top-level array is " + describe(d) +
+                       "; every element must be an object." };
+      });
+      return v.items;
+    }
+    throw { msg: "the top-level value is " + describe(v) +
+                 "; expected an object, or an array of objects." };
+  }
+
+  function infer(docs, cfg) {
+    var C = markings(cfg);
+    var tables = [];
+
+    function tableAt(path) {
+      var key = pathString(path);
+      for (var i = 0; i < tables.length; i++) if (tables[i].key === key) return tables[i];
+      var t = { key: key, path: path, visits: 0, collVisits: 0, parent: null,
+                keyed: false, members: [], elemObject: false, elemScalar: false };
+      tables.push(t);
+      return t;
+    }
+
+    function memberOf(t, k) {
+      for (var i = 0; i < t.members.length; i++) if (t.members[i].key === k) return t.members[i];
+      var m = { key: k, ty: "bot", ref: null, nullable: false,
+                values: 0, nulls: 0, absent: 0, big: false, sawInt: false, sawFloat: false };
+      t.members.push(m);
+      return m;
+    }
+
+    function record(t, k, seen, where) {
+      var m = memberOf(t, k);
+      if (seen === null) { m.nulls++; return; }
+      var joined = joinTy({ ty: m.ty, ref: m.ref }, seen);
+      if (joined === null)
+        throw { msg: "the member " + pathString(where) + " holds both " +
+                     tyName({ ty: m.ty, ref: m.ref }) + " and " + tyName(seen) +
+                     ", which have no common type." };
+      m.ty = joined.ty; m.ref = joined.ref || null; m.values++;
+      if (seen.big) m.big = true;
+      if (seen.ty === "int") m.sawInt = true;
+      if (seen.ty === "float") m.sawFloat = true;
+    }
+
+    function distinct(ms, at) {
+      var seen = Object.create(null);
+      ms.forEach(function (pair) {
+        if (seen[pair[0]])
+          throw { msg: "the object at " + pathString(at) + " carries the member " +
+                       pair[0] + " more than once." };
+        seen[pair[0]] = true;
+      });
+    }
+
+    function scalarRow(table, parent, keyed, value, at) {
+      var e = tableAt(table);
+      e.visits++; e.collVisits++; e.parent = parent;
+      if (keyed) e.keyed = true;
+      e.elemScalar = true;
+      record(e, "value", scalarSeen(value), at);
+    }
+
+    function observe(target, from, obj) {
+      var t = tableAt(target);
+      t.visits++;
+      if (from) {
+        t.collVisits++; t.parent = from.parent;
+        if (from.keyed) t.keyed = true;
+        t.elemObject = true;
+      }
+      distinct(obj.members, target);
+
+      obj.members.forEach(function (pair) {
+        var k = pair[0], v = pair[1], here = target.concat([seg(k)]);
+
+        if (v.k === "obj") {
+          if (C.isMap(here)) {
+            var raw = here.concat([ENTRY]), et = C.resolve(raw);
+            record(t, k, { ty: "coll", ref: et }, here);
+            tableAt(et);
+            distinct(v.members, here);
+            v.members.forEach(function (ep) {
+              var ev = ep[1];
+              if (ev.k === "obj") observe(et, { parent: target, keyed: true }, ev);
+              else if (ev.k === "arr")
+                throw { msg: "the member at " + pathString(raw) + " is an array. " +
+                             "Map entries may be objects or scalars." };
+              else scalarRow(et, target, true, ev, raw);
+            });
+          } else {
+            var child = C.resolve(here);
+            record(t, k, { ty: "ref", ref: child }, here);
+            observe(child, null, v);
+          }
+        } else if (v.k === "arr") {
+          var rawE = here.concat([ELEM]), lt = C.resolve(rawE);
+          record(t, k, { ty: "coll", ref: lt }, here);
+          tableAt(lt);
+          v.items.forEach(function (e) {
+            if (e.k === "obj") observe(lt, { parent: target, keyed: false }, e);
+            else if (e.k === "arr")
+              throw { msg: "the array at " + pathString(rawE) + " has an element that is " +
+                           "itself an array. Wrap the inner array in an object to give it a name." };
+            else scalarRow(lt, target, false, e, rawE);
+          });
+        } else record(t, k, scalarSeen(v), here);
+      });
+    }
+
+    docs.forEach(function (d) { observe(C.resolve([]), null, d); });
+
+    tables.forEach(function (t) {
+      if (t.elemObject && t.elemScalar)
+        throw { msg: "the array at " + t.key + " has both objects and scalars among its elements." };
+      t.members.forEach(function (m) {
+        m.absent = t.visits - m.values - m.nulls;
+        m.nullable = m.nulls > 0 || m.absent > 0;
+      });
+      t.members.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
+      t.parentOptional = t.collVisits > 0 && t.collVisits < t.visits;
+      if (t.collVisits === 0) t.parent = null;
+    });
+
+    C.maps.forEach(function (m) {
+      var want = pathString(C.resolve(parsePath(m).concat([ENTRY])));
+      if (!tables.some(function (t) { return t.key === want; }))
+        throw { msg: "the configuration marks " + m + " as a map, but no object was found there." };
+    });
+
+    tables.sort(function (a, b) {
+      if (a.path.length !== b.path.length) return b.path.length - a.path.length;
+      return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+    });
+    return tables;
+  }
+
+  function ocamlType(col, self) {
+    function ref(p, n) {
+      return moduleName(p) === self ? (n === "id" ? "id" : n) : moduleName(p) + "." + n;
+    }
+    var base = col.ty === "ref" ? ref(col.ref, "id")
+             : col.ty === "coll" ? ref(col.ref, "t") + " list"
+             : col.ty === "bot" ? "unit"
+             : col.ty === "str" ? "string" : col.ty;
+    return col.ty === "coll" ? base : base + (col.nullable ? " option" : "");
+  }
+
+  function render(tables) {
+    var names = tables.map(function (t) { return moduleName(t.path); });
+    names.forEach(function (n, i) {
+      if (names.indexOf(n) !== i) throw { msg: "two tables would both be called " + n + "." };
+    });
+
+    // a reference between two different modules that runs both ways makes the
+    // group cyclic; a table that only points at itself does not
+    var recursive = tables.some(function (t) {
+      return t.parent && moduleName(t.parent) !== moduleName(t.path);
+    });
+
+    var mods = tables.map(function (t, i) {
+      var self = moduleName(t.path);
+      function ref(p, n) {
+        return moduleName(p) === self ? (n === "id" ? "id" : n) : moduleName(p) + "." + n;
+      }
+      var fields = ["id : id"], accessors = [];
+      var posName = t.keyed ? "key" : "idx";
+      if (t.parent) {
+        var idTy = ref(t.parent, "id"), posTy = t.keyed ? "string" : "int";
+        fields.push("parent_id : " + idTy + (t.parentOptional ? " option" : ""));
+        fields.push(posName + " : " + posTy + (t.parentOptional ? " option" : ""));
+      }
+      t.members.forEach(function (m) {
+        var name = mangle(m.key);
+        if (name === "id" || (t.parent && (name === "parent_id" || name === posName)))
+          throw { msg: "the member " + m.key + " collides with the generated " + name + " column." };
+        if (m.ty === "coll") {
+          if (name === "get")
+            throw { msg: "the member " + m.key + " holds an object, so it needs an accessor of " +
+                         "that name, which collides with the generated get." };
+          accessors.push("  val " + name + " : t -> " + ref(m.ref, "t") + " list");
+          return;
+        }
+        fields.push(name + " : " + ocamlType(m, self));
+        if (m.ty === "ref") {
+          if (name === "get")
+            throw { msg: "the member " + m.key + " holds an object, so it needs an accessor of " +
+                         "that name, which collides with the generated get." };
+          accessors.push("  val " + name + " : t -> " + ref(m.ref, "t") +
+                         (m.nullable ? " option" : ""));
+        }
+      });
+      var kw = recursive ? (i === 0 ? "module rec" : "and") : "module";
+      return kw + " " + moduleName(t.path) + " : sig\n" +
+             "  type id\n" +
+             "  type t = { " + fields.join("; ") + " }\n" +
+             "  val get : id -> t\n" +
+             (accessors.length ? accessors.join("\n") + "\n" : "") +
+             "end";
+    });
+
+    return "(* generated.mli *)\n\n" + mods.join("\n\n") + "\n";
+  }
+
+  /* ------------------------------------------------------------------
+     Presentation.
+
+     The page prefers the Lean binary, reached through the local dev server
+     (dev/serve.py). With no server it falls back to the JavaScript above,
+     which implements the same rules. Both produce the same report shape, so
+     nothing below cares which one ran -- and opening the page with and
+     without the server is a cheap differential test.
+     ------------------------------------------------------------------ */
+
+  var inEl     = document.getElementById("in");
+  var filesEl  = document.getElementById("files");
+  var srcEl    = document.getElementById("src");
+  var hlEl     = document.getElementById("hl");
+  var gutterEl = document.getElementById("gutter");
+  var surface  = document.getElementById("surface");
+  var errbox   = document.getElementById("errbox");
+  var traceEl  = document.getElementById("trace");
+  var engineEl = document.getElementById("engine");
+  var openName = document.getElementById("openName");
+  var noticeEl = document.getElementById("notice");
+  var shapeEl  = document.getElementById("shape");
+  var cfgJsonEl = document.getElementById("cfgjson");
+  var revertBtn   = document.getElementById("revert");
+  var copyBtn     = document.getElementById("copy");
+  var downloadBtn = document.getElementById("download");
+
+  // A download only works where the page is served normally. Published as an
+  // artifact it is sandboxed and inert, so the button is not offered there.
+  var canDownload = location.protocol === "file:" ||
+                    location.hostname === "localhost" ||
+                    location.hostname === "127.0.0.1";
+  if (canDownload) downloadBtn.hidden = false;
+
+  function esc(s) {
+    return String(s).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  /* The markings. Sent with every request, and shown as the config file the
+     binary would read. */
+  var config = { maps: [], recursive: [] };
+
+  function configForWire() {
+    var c = {};
+    if (config.maps.length) c.maps = config.maps;
+    if (config.recursive.length) c.recursive = config.recursive;
+    return c;
+  }
+
+  function highlight(src) {
+    return esc(src)
+      .replace(/\b(type|module|rec|sig|end|val|and)\b/g, '<span class="kw">$1</span>')
+      .replace(/\b(int|float|string|bool|unit|option|list|id)\b/g, '<span class="ty">$1</span>')
+      .replace(/\(\*[^*]*\*\)/g, '<span class="cm">$&</span>');
+  }
+
+  function lineNumbers(text) {
+    var n = text.replace(/\n$/, "").split("\n").length;
+    var g = "";
+    for (var i = 1; i <= n; i++) g += i + "\n";
+    return g;
+  }
+
+  /* ---------------- the files being shown ---------------- */
+
+  var files = [];        // [{ name, generated, text, edited }]
+  var openIndex = 0;
+
+  function current() { return files[openIndex]; }
+
+  /* Modules within the open file, for the outline. */
+  function outline(text) {
+    var out = [], lines = text.split("\n");
+    for (var i = 0; i < lines.length; i++) {
+      var m = /^(?:module rec|module|and)\s+([A-Za-z0-9_']+)\s*:/.exec(lines[i]);
+      if (m) out.push({ name: m[1], line: i });
+    }
+    return out;
+  }
+
+  function renderFiles() {
+    var html = '<h4>Files</h4>';
+    files.forEach(function (f, i) {
+      html += '<button data-file="' + i + '" class="' + (i === openIndex ? "on" : "") + '">' +
+              esc(f.name) + (f.edited ? ' <span class="dot">&bull;</span>' : "") + "</button>";
+    });
+    var mods = current() ? outline(current().text) : [];
+    if (mods.length) {
+      html += "<h4>Modules</h4>";
+      mods.forEach(function (m) {
+        html += '<button class="depth1" data-line="' + m.line + '">' + esc(m.name) + "</button>";
+      });
+    }
+    filesEl.innerHTML = html;
+  }
+
+  function paint() {
+    var f = current();
+    var text = f ? f.text : "";
+    hlEl.innerHTML = highlight(text) + "\n";
+    gutterEl.textContent = lineNumbers(text);
+    if (srcEl.value !== text) srcEl.value = text;
+    openName.textContent = f ? f.name : "";
+    noticeEl.className = f && f.edited ? "notice on" : "notice";
+    revertBtn.disabled = !(f && f.edited);
+    syncScroll();
+  }
+
+  function syncScroll() {
+    hlEl.scrollTop = srcEl.scrollTop;
+    hlEl.scrollLeft = srcEl.scrollLeft;
+    gutterEl.scrollTop = srcEl.scrollTop;
+  }
+
+  function jumpTo(line) {
+    var lh = parseFloat(getComputedStyle(srcEl).lineHeight) || 22;
+    srcEl.scrollTop = Math.max(0, line * lh - lh);
+    syncScroll();
+    srcEl.focus();
+    var pos = srcEl.value.split("\n").slice(0, line).join("\n").length + (line ? 1 : 0);
+    srcEl.setSelectionRange(pos, pos);
+  }
+
+  filesEl.addEventListener("click", function (e) {
+    var b = e.target.closest("button");
+    if (!b) return;
+    if (b.dataset.file !== undefined) { openIndex = +b.dataset.file; paint(); renderFiles(); }
+    else if (b.dataset.line !== undefined) jumpTo(+b.dataset.line);
+  });
+
+  srcEl.addEventListener("scroll", syncScroll);
+  srcEl.addEventListener("input", function () {
+    var f = current();
+    if (!f) return;
+    f.text = srcEl.value;
+    f.edited = f.text !== f.generated;
+    hlEl.innerHTML = highlight(f.text) + "\n";
+    gutterEl.textContent = lineNumbers(f.text);
+    noticeEl.className = f.edited ? "notice on" : "notice";
+    revertBtn.disabled = !f.edited;
+    renderFiles();
+  });
+
+  function anyEdited() { return files.some(function (f) { return f.edited; }); }
+
+  revertBtn.addEventListener("click", function () {
+    var f = current();
+    if (!f) return;
+    f.text = f.generated; f.edited = false;
+    paint(); renderFiles();
+  });
+
+  document.getElementById("regen").addEventListener("click", function () {
+    files.forEach(function (f) { f.text = f.generated; f.edited = false; });
+    paint(); renderFiles();
+  });
+
+  copyBtn.addEventListener("click", function () {
+    var f = current();
+    if (!f) return;
+    var done = function () {
+      copyBtn.textContent = "Copied";
+      setTimeout(function () { copyBtn.textContent = "Copy"; }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(f.text).then(done, fallback);
+    else fallback();
+    function fallback() {
+      var ta = document.createElement("textarea");
+      ta.value = f.text; document.body.appendChild(ta); ta.select();
+      try { document.execCommand("copy"); done(); }
+      catch (e) { copyBtn.textContent = "Press Ctrl+C"; }
+      document.body.removeChild(ta);
+    }
+  });
+
+  downloadBtn.addEventListener("click", function () {
+    var f = current();
+    if (!f) return;
+    var blob = new Blob([f.text], { type: "text/plain" });
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = f.name;
+    document.body.appendChild(a); a.click(); document.body.removeChild(a);
+    setTimeout(function () { URL.revokeObjectURL(a.href); }, 1000);
+  });
+
+  /* ---------------- talking to the generator ---------------- */
+
+  function localReport(src) {
+    try {
+      var docs = documents(readJson(src));
+      var tables = infer(docs, configForWire());
+      return {
+        ok: true, ocaml: render(tables), documents: docs.length,
+        tables: tables.map(function (t) {
+          return {
+            path: pathString(t.path), module: moduleName(t.path), visits: t.visits,
+            columns: t.members.map(function (m) {
+              return {
+                key: m.key, name: mangle(m.key), type: ocamlType(m),
+                values: m.values, nulls: m.nulls, absent: m.absent,
+                widened: m.sawInt && m.sawFloat, big: m.big,
+                renamed: mangle(m.key) !== m.key, neverTyped: m.ty === "bot"
+              };
+            })
+          };
+        })
+      };
+    } catch (e) {
+      return { ok: false, error: e.msg || String(e) };
+    }
+  }
+
+  var serverUp = null;
+
+  function translate(src) {
+    if (serverUp === false)
+      return Promise.resolve({ via: "browser", report: localReport(src) });
+    return fetch("/translate", {
+        method: "POST",
+        body: JSON.stringify({ input: src, config: configForWire() })
+      })
+      .then(function (r) { if (!r.ok) throw 0; return r.json(); })
+      .then(function (j) { serverUp = true; return { via: "lean", report: j }; })
+      .catch(function () {
+        serverUp = false;
+        return { via: "browser", report: localReport(src) };
+      });
+  }
+
+  function setEngine(via) {
+    var lean = via === "lean";
+    engineEl.textContent = lean ? "Lean binary" : "in-browser";
+    engineEl.className = lean ? "engine live" : "engine";
+    engineEl.title = lean
+      ? "Produced by the Lean binary, through the local dev server."
+      : "No dev server reachable, so the page used its own implementation of the same rules.";
+  }
+
+  /* ---------------- the shape panel ---------------- */
+
+  /* Every path a marking could apply to: the tables that exist, plus the
+     paths already marked -- a marked path stops being a table of its own, so
+     it would otherwise vanish from the list the moment you ticked it. */
+  function markablePaths(tables) {
+    var seen = [], out = [];
+    function add(p) { if (seen.indexOf(p) < 0) { seen.push(p); out.push(p); } }
+    (tables || []).forEach(function (t) { if (t.path !== ".") add(t.path); });
+    config.maps.forEach(add);
+    config.recursive.forEach(function (r) { add(r.path); });
+    return out.sort();
+  }
+
+  function ancestorsOf(path) {
+    var p = parsePath(path), out = ["."];
+    for (var i = 1; i < p.length; i++)
+      if (p[i - 1].m !== undefined) out.push(pathString(p.slice(0, i)));
+    return out;
+  }
+
+  function foldTargetOf(path) {
+    for (var i = 0; i < config.recursive.length; i++)
+      if (config.recursive[i].path === path) return config.recursive[i].folds_into;
+    return "";
+  }
+
+  function renderShape(tables) {
+    var paths = markablePaths(tables);
+    if (!paths.length) {
+      shapeEl.innerHTML = '<p class="empty">Nothing to mark: the document has no nested objects or collections.</p>';
+    } else {
+      shapeEl.innerHTML = paths.map(function (path) {
+        var collection = /\[\]$|\{\}$/.test(path);
+        var control;
+        if (collection) {
+          var chosen = foldTargetOf(path);
+          control = '<label>folds into <select data-fold="' + esc(path) + '">' +
+            '<option value="">nothing</option>' +
+            ancestorsOf(path).map(function (a) {
+              return '<option value="' + esc(a) + '"' + (a === chosen ? " selected" : "") + ">" +
+                     esc(a) + "</option>";
+            }).join("") + "</select></label>";
+        } else {
+          var on = config.maps.indexOf(path) >= 0;
+          control = '<label><input type="checkbox" data-map="' + esc(path) + '"' +
+                    (on ? " checked" : "") + "> its keys are data</label>";
+        }
+        return '<div class="shaperow"><code>' + esc(path) + "</code>" + control + "</div>";
+      }).join("");
+    }
+    cfgJsonEl.textContent = JSON.stringify(configForWire());
+  }
+
+  shapeEl.addEventListener("change", function (e) {
+    var t = e.target;
+    if (t.dataset.map !== undefined) {
+      var i = config.maps.indexOf(t.dataset.map);
+      if (t.checked && i < 0) config.maps.push(t.dataset.map);
+      if (!t.checked && i >= 0) config.maps.splice(i, 1);
+    } else if (t.dataset.fold !== undefined) {
+      config.recursive = config.recursive.filter(function (r) { return r.path !== t.dataset.fold; });
+      if (t.value) config.recursive.push({ path: t.dataset.fold, folds_into: t.value });
+    } else return;
+    files.forEach(function (f) { f.edited = false; });
+    run();
+  });
+
+  document.getElementById("copycfg").addEventListener("click", function () {
+    var btn = this, text = JSON.stringify(configForWire(), null, 2);
+    var done = function () {
+      btn.textContent = "Copied";
+      setTimeout(function () { btn.textContent = "Copy"; }, 1400);
+    };
+    if (navigator.clipboard && navigator.clipboard.writeText)
+      navigator.clipboard.writeText(text).then(done, function () {});
+  });
+
+  /* ---------------- observations ---------------- */
+
+  function isOptional(c) { return / option$/.test(c.type); }
+
+  function notes(c, visits) {
+    var t = [];
+    if (c.widened) t.push(["widened", "an integer and a float were both seen, so the column is a float"]);
+    if (c.big) t.push(["widened", "an integer too large for OCaml's int widened it to float"]);
+    if (c.neverTyped) t.push(["untyped", "no value was ever observed here"]);
+    if (/ list$/.test(c.type)) t.push(["list", "holds an array, so its elements are a table of their own"]);
+    else if (/\./.test(c.type)) t.push(["key", "holds an object, so the column is a key into that table"]);
+    if (isOptional(c)) t.push(["partial", "absent or null somewhere, so the column carries an option"]);
+    if (c.renamed) t.push(["renamed", "not a legal OCaml identifier as written"]);
+    if (!isOptional(c) && visits > 1) t.push(["total", "present with a value every time"]);
+    return t;
+  }
+
+  function renderTable(t) {
+    var head = '<div class="tbl"><h3>module ' + esc(t.module) +
+      "<span>from " + esc(t.path) + " &middot; " + t.visits +
+      (t.visits === 1 ? " visit" : " visits") + "</span></h3>";
+    if (!t.columns.length)
+      return head + '<p class="empty">No members, so the table carries only its identifier.</p></div>';
+    var rows = t.columns.map(function (c) {
+      var ns = notes(c, t.visits);
+      var counts = c.values + " value" +
+        (c.nulls ? " / " + c.nulls + " null" : "") +
+        (c.absent ? " / " + c.absent + " absent" : "");
+      return "<tr>" +
+        '<td class="mono">' + esc(c.key) + "</td>" +
+        '<td class="mono">' + esc(c.name) + "</td>" +
+        '<td class="mono">' + esc(c.type) + "</td>" +
+        '<td class="counts">' + counts + " / " + t.visits + "</td>" +
+        "<td>" +
+          ns.map(function (p) { return '<span class="tag">' + p[0] + "</span>"; }).join("") +
+          '<div class="note">' + esc(ns.map(function (p) { return p[1]; }).join("; ")) + "</div>" +
+        "</td></tr>";
+    }).join("");
+    return head +
+      '<div class="table-scroll"><table><thead><tr><th>Member</th><th>Column</th>' +
+      "<th>Type</th><th>Observations</th><th>Notes</th></tr></thead><tbody>" +
+      rows + "</tbody></table></div></div>";
+  }
+
+  /* ---------------- the loop ---------------- */
+
+  function show(res) {
+    setEngine(res.via);
+    var rep = res.report;
+
+    if (!rep.ok) {
+      surface.style.display = "none";
+      errbox.innerHTML = '<p class="error">' + esc(rep.error) + "</p>";
+      traceEl.innerHTML = '<p class="empty">No schema &mdash; the input was rejected.</p>';
+      filesEl.innerHTML = "<h4>Files</h4>";
+      openName.textContent = "";
+      renderShape([]);
+      return;
+    }
+
+    surface.style.display = "";
+    errbox.innerHTML = "";
+
+    // one file today; the .ml implementation will join it
+    var next = [{ name: "generated.mli", generated: rep.ocaml, text: rep.ocaml, edited: false }];
+    files = next;
+    if (openIndex >= files.length) openIndex = 0;
+    paint();
+    renderFiles();
+    traceEl.innerHTML = (rep.tables || []).map(renderTable).join("");
+    renderShape(rep.tables);
+  }
+
+  var pending = null;
+
+  function run() {
+    clearTimeout(pending);
+    pending = setTimeout(function () {
+      var src = inEl.value;
+      if (!src.trim()) {
+        files = []; surface.style.display = "none"; errbox.innerHTML = "";
+        filesEl.innerHTML = "<h4>Files</h4>"; openName.textContent = "";
+        traceEl.innerHTML = '<p class="empty">Paste some JSON to begin.</p>';
+        return;
+      }
+      if (anyEdited()) return;   // hand edits win until discarded
+      translate(src).then(show);
+    }, 120);
+  }
+
+  var EXAMPLES = {
+    note: '{ "a": 1, "b": { "c": 1, "d": 2 } }',
+    deep: '{ "a": 1,\n  "b": { "c": 1,\n         "inner": { "z": true } } }',
+    arrayObjs: '{ "id_no": 1,\n  "items": [ { "sku": "a", "qty": 2 },\n             { "sku": "b", "qty": 1 } ] }',
+    arrayScalars: '{ "tags": ["red", "blue"] }',
+    corpus: '[ { "sku": "a", "price": 1,   "qty": 2 },\n  { "sku": "b", "price": 2.5 },\n  { "sku": "c", "price": 3,   "qty": 1, "clearance": true } ]',
+    optional: '[ { "a": 1, "b": { "c": 1 } },\n  { "a": 2 } ]',
+    names: '{ "my-field": 1,\n  "type": 2,\n  "1abc": 3,\n  "Name": "ada",\n  "caf\\u00e9": true }',
+    nulls: '[ { "x": 1, "y": 2,    "z": null },\n  { "x": 2, "y": null, "z": null },\n  { "x": 3 } ]',
+    conflict: '[ { "b": { "c": 1 } },\n  { "b": 5 } ]',
+    dup: '{ "a": 1, "a": 2 }',
+    nestedArray: '{ "matrix": [ [1, 2], [3] ] }',
+    map: '{ "users": { "u_1001": { "name": "ada",   "age": 36 },\n              "u_1002": { "name": "grace", "age": 45 } } }',
+    tree: '{ "text": "top",\n  "replies": [ { "text": "a reply", "replies": [] },\n               { "text": "another",  "replies": [ { "text": "deeper", "replies": [] } ] } ] }'
+  };
+
+  document.querySelectorAll("button.chip").forEach(function (b) {
+    b.addEventListener("click", function () {
+      // an example is a fresh start: markings from the previous document
+      // would otherwise be carried onto one they do not fit
+      config = { maps: [], recursive: [] };
+      files.forEach(function (f) { f.edited = false; });
+      inEl.value = EXAMPLES[b.dataset.ex];
+      run();
+      inEl.focus();
+    });
+  });
+
+  inEl.addEventListener("input", run);
+  inEl.value = EXAMPLES.arrayObjs;
+  run();
+})();
+</script>
