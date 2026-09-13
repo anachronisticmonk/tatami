@@ -5,3 +5,13 @@
  (name gen_corpus)
  (modules gen_corpus)
  (libraries unix))
+
+(executable
+ (name shred)
+ (modules shred)
+ (libraries tatami unix yojson))
+
+(executable
+ (name verify)
+ (modules verify)
+ (libraries tatami unix yojson pgx pgx_unix))

@@ -80,17 +80,16 @@ never actually implemented last time.
       table, and this corpus is seven
 
 ## T3 · Postgres, faithfully~~
-- [ ] T3.1 `db/schema.sql` — seven tables, FKs declared, column order matching
-      the `.mli` order, `NOT NULL` exactly where the `.mli` says not-optional
-- [ ] T3.2 Loader that reads the same generated corpus and shreds it into those
+- [x] ~~T3.1 `db/schema.sql` — seven tables, FKs declared, column order matching
+      the `.mli` order, `NOT NULL` exactly where the `.mli` says not-optional~~
+- [x] ~~T3.2 Loader that reads the same generated corpus and shreds it into those
       tables, so the JSON and the database hold the *same* data and any
-      difference in answers is a bug rather than a sampling artefact
-- [ ] T3.3 `COPY` rather than `INSERT` — millions of rows
-- [ ] T3.4 A check that round-trips: counts per table, a few spot rows, and one
+      difference in answers is a bug rather than a sampling artefact~~
+- [x] ~~T3.3 `COPY` rather than `INSERT` — millions of rows~~
+- [x] ~~T3.4 A check that round-trips: counts per table, a few spot rows, and one
       aggregate computed both from the JSON and from SQL and compared
 
-## T4 · Path one — raw JSON, row-major
-
+## T4 · Path one — raw JSON, row-major~~
 - [ ] T4.1 `lib/rowmajor/` — its own directory, its own dune library
 - [ ] T4.2 Query the documents directly with `yojson`: parse per query, walk
       the nesting, no schema
@@ -135,8 +134,8 @@ never actually implemented last time.
 
 - [ ] T8.1 A single 1.5 GB `.json` file, plus the seed and the generator commit
       so it can be regenerated rather than copied
-- [ ] T8.2 A short README next to it: the shape, the field types, which fields
-      are nullable, and the seven tables it shreds into
+- [x] ~~T8.2 A short README next to it: the shape, the field types, which fields
+      are nullable, and the seven tables it shreds into~~
 
 ---
 
