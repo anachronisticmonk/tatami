@@ -5,7 +5,7 @@
 
 LATEXMK := latexmk -pdf -interaction=nonstopmode -halt-on-error
 
-DOCS := phase_1 phase_3
+DOCS := phase_1
 
 .PHONY: all clean $(DOCS)
 
@@ -14,10 +14,5 @@ all: $(DOCS)
 phase_1:
 	cd phase_1 && $(LATEXMK) lowering.tex
 
-phase_3:
-	cd phase_3 && $(LATEXMK) kernels.tex
-	cd phase_3 && $(LATEXMK) measurements.tex
-
 clean:
 	cd phase_1 && latexmk -C
-	cd phase_3 && latexmk -C

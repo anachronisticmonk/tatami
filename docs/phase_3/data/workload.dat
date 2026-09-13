@@ -1,6 +1,0 @@
-label plain tuned speedup
-int-half-survive 15.96 8.91 1.79
-int-few-equality 6.04 0.43 14.12
-float-half-survive 21.26 10.37 2.05
-text-compare 13.39 6.03 2.22
-int-few-lessthan 5.82 0.48 12.18

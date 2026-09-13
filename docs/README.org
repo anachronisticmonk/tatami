@@ -10,11 +10,13 @@
 | ~phase_1/~     | JSON to OCaml modules: the lowering          | complete, all decided   |
 |                | scenarios. The specification the front end   |                         |
 |                | is written against.                          |                         |
-| ~phase_3/~     | Composable kernels: what a kernel is, what   | first draft, nothing    |
-|                | crosses the boundary, what makes one legal   | decided                 |
-|                | on a device. ~kernels.tex~ is the            |                         |
-|                | specification; ~notes.org~ is the question   |                         |
-|                | list it came out of.                         |                         |
+| ~phase_3/~     | Cleared. The back end's documents were        | to be rewritten         |
+|                | written around a performance claim that did   |                         |
+|                | not survive scrutiny --- in a SQL-backed      |                         |
+|                | store the catalog holds the same types and    |                         |
+|                | nullability the signature does, so a          |                         |
+|                | schema-blind kernel reaches parity. Starting  |                         |
+|                | again from what the derivation itself buys.   |                         |
 
 The design note is a PDF without its source; the others are LaTeX, built with
 ~make~ from this directory.
