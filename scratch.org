@@ -1,0 +1,69 @@
+#+TITLE: scratch
+#+STARTUP: overview
+
+* The project
+
+You have JSON. You want to query it fast. So you flatten it into columns,
+generate OCaml that reads those columns, and run queries against that. The
+interesting part is the last step: some of that work belongs on a GPU and some
+doesn't, and you want to know which without measuring.
+
+* The one bet
+
+You generated the code, so you know what every piece of it does to memory ---
+not what it computes, what it /touches/.
+
+- a field of ints is a dense array you walk in order
+- a string is two arrays, offsets and bytes
+- a foreign key is a random jump into a different array
+- a self-referencing key is a jump you can't put a bound on
+
+"Good on a GPU" is almost exactly "walks in order, and everything it jumps to
+is already there." So the placement decision is a memory-access-shape
+decision, and you know the access shape for free because you're the one who
+created it. Everyone else has to guess this from statistics. You don't,
+because you built the layout.
+
+That's the whole thing. It doesn't need any vocabulary beyond that to be true
+or false.
+
+* Why effects are in this at all
+
+An effect is a hole. If the accessor performs instead of returns, the same
+query code can be read by something that walks a CPU array or by something
+that enqueues a GPU kernel, and the query can't tell. Effects are a swap
+mechanism, not a type system. That's the entire reason they're here, and it's
+worth not dressing it up as more.
+
+* Passes over the .mli, done right
+
+The type of a generated accessor already /is/ a layout statement. ~int~ means
+dense, fixed stride. ~string~ means offsets plus bytes. ~string option~ adds a
+mask. ~Order.id~ means gather.
+
+So there's no need for a separate effect signature emitted alongside the
+module. What's needed is to read the types already being emitted as claims
+about memory. That makes the pass exactly what it should be: ~.mli~ in,
+annotated ~.mli~ out, nothing new invented to carry the information.
+
+* The example
+
+#+begin_src sql
+select * from t where col = 1
+#+end_src
+
+Compare-a-fixed-width-column-to-a-constant is the single most GPU-shaped
+operation that exists --- dense scan, no branch, produces a mask. Any framing
+under which the easiest possible query comes out as the hard case is the wrong
+framing. Reading types as layout doesn't have that problem: it sees an int
+column and a comparison and says yes immediately.
+
+* What would actually kill this
+
+- Shredding the JSON is probably slower than every query then run against it,
+  and the GPU never earns that back on a single query. The win only exists if
+  the same corpus is queried many times --- a claim about the workload, not
+  about the compiler, and it decides what is fair to benchmark.
+- Real JSON is mostly strings, and strings are where GPUs stop helping.
+- On an M2 there's no transfer to pay for, so the placement question is least
+  interesting on the machine this is being developed on.

@@ -1,0 +1,16 @@
+#+title: TODO
+
+* Vishakh and Vimala <2026-09-16 Wed>
+* TODO Referential Integrity multiple mli files
+* TODO Generate ML file from .mli files using Lean4 proof
+* TODO Effect Handlers
+
+* Durwasa
+** TODO Pass query literals as pgx parameters instead of inline SQL text
+   ~lib/plain.ml~ pastes the literal into the WHERE clause using
+   ~Query.value_to_string~, which exists to /display/ a query. It does not
+   re-escape the quote the lexer already unescaped, so ~where sku = 'a''b'~
+   emits ~= 'a'b'~ --- a syntax error, and an injection. Fix with
+   ~Pg.execute ~params~ and ~$1~, not a better quoter.
+
+* NOTE Action item for VD VS send the generated json file.
