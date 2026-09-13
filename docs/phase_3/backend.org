@@ -1,0 +1,249 @@
+#+TITLE: Back end — findings
+#+SUBTITLE: Material for backend.tex. Things established, and what they cost.
+
+This is where results go once they are known, as opposed to [[file:notes.org][notes.org]], which is
+where questions go while they are still open. The distinction is worth keeping:
+notes.org is allowed to speculate and this file is not. Nothing enters here
+without either a measurement behind it or an argument that can be checked.
+
+~backend.tex~ will be written out of this file the way ~phase_1/lowering.tex~
+was written --- each item as the option considered, the one selected, and the
+cost of having selected it. Until then this is the accumulating record.
+
+* F1. The signature is the source of the type facts, not the only copy
+
+The first objection anyone raises, and it is correct: a SQL store cannot be
+queried without a ~CREATE TABLE~, and that DDL declares both the type and
+~NOT NULL~. So ~pg_attribute~ holds exactly the facts the analysis is built on,
+and a schema-blind kernel is one catalog query away from parity.
+
+What survives the objection is a claim about *origin* rather than about
+exclusivity:
+
+#+begin_quote
+JSON corpus → Phase 1 → orders.mli → CREATE TABLE → catalog
+#+end_quote
+
+The catalog knows ~qty~ is a non-null int because the signature said so and
+something emitted DDL from it. JSON carries no types and no nullability;
+~val note : t -> string option~ is a *conclusion* Phase 1 drew from observing
+the field absent in some documents. Nobody declared it.
+
+But once that DDL has run the facts are independently readable, so the honest
+statement is: *the ~.mli~ is the source, not the only copy.* Any argument that
+the type information exists nowhere else is false in a SQL deployment.
+
+Consequence for the evaluation, recorded because it weakens it: our ~plain~
+models schema-blind tooling --- ~psql~, a CSV export, a generic admin UI all
+render every column as text --- which is a real category, but in a SQL setting
+it is blind *by choice*. The baseline that would test the claim rather than a
+tooling habit reads schemaless JSON, where there is no catalog to ask. That is
+Q5 in notes.org, and it is open.
+
+* F2. Postgres sends text, whatever the DDL says
+
+Load-bearing, and the thing that makes F1 survivable.
+
+Knowing ~qty~ is ~integer~ does not make the server send a machine integer. The
+extended query protocol carries a per-column format code and the default is
+text, so ~qty = 7~ arrives as the two ASCII bytes ~"7"~. What the server's type
+knowledge buys is the *oid in the RowDescription* --- it says what the bytes
+mean, not that the bytes will be convenient.
+
+pgx never asks for anything else. ~pgx.ml~, in the Bind serialisation:
+
+#+begin_src ocaml
+add_int16 msg 0;
+(* Send back all results as text. *)
+#+end_src
+
+So the parse is not avoidable by either kernel. It is only *amortisable*, and
+that is the entire difference between them:
+
+| kernel | what it does with ~"7"~                                  |
+|--------+----------------------------------------------------------|
+| plain  | keeps it, and calls ~int_of_string~ on every use          |
+| tuned  | calls ~int_of_string~ once, into an ~int array~, then done |
+
+* F3. The win is reuse, not the query
+
+Measured, and it bounds every performance claim the back end can make.
+
+One query: no win. At k=0 the two kernels are level --- 220.7ms against
+203.8ms, inside the noise --- because decoding costs about what ~plain~ saves
+by not decoding. Worse, if the answer must become text for a page, ~tuned~
+parses text into ints and then formats ints back into text, so it loses.
+
+| k   | plain   | tuned   | ratio |
+|-----+---------+---------+-------|
+| 0   | 220.7ms | 203.8ms | 1.08  |
+| 1   | 280.8   | 230.7   | 1.22  |
+| 5   | 521.2   | 338.0   | 1.54  |
+| 20  | 1422.9  | 740.5   | 1.92  |
+| 100 | 6231.6  | 2887.4  | 2.16  |
+
+What has to repeat is the *use of the parsed values*, not the predicate. A
+different comparison, a sum, a sort, a join key, printing it --- any second
+touch pays. Three queries over one loaded corpus is 600,036 parses for ~plain~
+and none for ~tuned~, and the same ~"7"~ in the same memory is re-interpreted
+each time because there was never anywhere typed to put the result.
+
+This is ~scratch.org~'s own risk, now with numbers: the win exists only if the
+same corpus is queried many times, which is a claim about the workload rather
+than about the compiler.
+
+* F4. Holding the corpus across queries is an architectural commitment
+
+Follows from F3 and is not yet honoured.
+
+If every query re-fetches and re-materialises, ~tuned~ never amortises and the
+system sits at k=0 permanently. ~bin/serve.ml~ does exactly that today: each
+request calls ~Data.fetch~ again. The typed arrays therefore buy nothing in the
+running demonstration, which is an embarrassing gap between what the paper
+measures and what the server does.
+
+So the back end has to own a resident decoded corpus, and that is a storage
+decision rather than a lowering one --- Q5 arriving from a direction the
+original framing did not anticipate. The measurement did not discover that
+columnar storage is faster; it discovered that *residency* is the precondition
+for the claim.
+
+* F5. A binary wire format would make the signature necessary
+
+The sharpest form found so far, and untested.
+
+Postgres will send binary if the client asks per column. Binary is *not
+self-describing*: four bytes could be an ~int32~ or the first half of a
+~float8~, so interpreting them requires knowing the column type. Text can be
+rendered blind; binary cannot.
+
+Which inverts the position of F1 entirely:
+
+- ~tuned~ knows ~qty~ is ~int4~, reads four bytes, byte-swaps. No parse at all.
+- ~plain~ holds opaque bytes and *cannot proceed* --- not slowly, at all.
+
+Under a binary wire the signature stops being a convenience and becomes a
+precondition. That is a much stronger claim than amortising a parse, and it is
+the one worth pursuing.
+
+Costs, so this is not mistaken for a free win:
+
+- pgx hardcodes text in Bind, so it means vendoring or an opam pin.
+- ~Pgx.Value.to_int~ parses text; going binary breaks every conversion and we
+  would write decoders per oid ourselves.
+- ~numeric~ is base-10000 digit groups with sign and weight. ~price~ is
+  ~numeric(10,2)~, so getting it subtly wrong corrupts money silently.
+- Binary representations are less stable across server versions than text.
+
+* F6. The signature removes a round trip a general driver cannot avoid
+
+A second-order consequence of F5, and independent of speed.
+
+Result format codes are a field of the *Bind* message. The column oids arrive
+in *RowDescription*, which comes later. So a client that wants binary must
+commit to a format per column before being told what the columns are --- and
+a general driver's only way out is an extra ~Describe~ round trip, or a
+prepared-statement cache to amortise one.
+
+We do not have that problem: ~orders.mli~ names every type before the process
+connects, so the format codes can go straight into Bind with no ~Describe~.
+
+This also explains why pgx does not do what we are proposing. A general-purpose
+driver is in ~plain~'s position by construction --- it cannot assume it knows
+the schema, and binary is undecodable without it. ~Pgx.Value.t = v option~,
+opaque, converted on demand, is a design that only works if the wire form is
+self-describing enough to defer the decision. The specialised consumer can do
+what the general library cannot, which is the project's thesis arriving from an
+unexpected direction.
+
+* F7. What is not exploited yet
+
+Recorded so it is not claimed by accident.
+
+The ~.mli~ is static, so the intended design specialises at compile time ---
+Phase 2 emits accessors in which the mask branch is simply absent from the
+generated code. Nothing built does this. ~Data.slot~ matches on the layout at
+run time, per query, exactly as a catalog-driven implementation would. So there
+is currently *no* static advantage over asking the catalog, and any argument
+that leans on one is describing an aspiration.
+
+What is genuinely not duplicable in a catalog is the effect signature Phase 2
+emits, on which the placement claim rests. It does not exist yet.
+
+* F8. Dataflow: the leaves start at facts rather than at top
+
+The framing for constant propagation, and why it is not merely a textbook
+exercise transplanted.
+
+Classical constant propagation over a program that reads input must initialise
+every input to NAC, because nothing is known about what arrives. Our leaves are
+generated accessors, so the analysis begins with what the signature states.
+
+Two lattices, kept separate because they answer different questions. The
+constant component decides whether an expression can be *replaced*; the
+nullability component decides whether the column holding its result needs a
+validity array, which is a decision about memory.
+
+#+begin_quote
+qty  → (NAC, not null)      from val qty  : t -> int
+note → (NAC, may be null)   from val note : t -> string option
+#+end_quote
+
+Every column is NAC on the value axis, permanently --- a column is not a
+constant, and it would be dishonest to suggest the constant lattice has much to
+say about a table. The nullability axis is the one carrying the claim, and on
+it ~qty~ sits one level off the floor for free.
+
+The consequence is a rewrite whose legality is decided by the signature:
+
+| predicate             | folds to        | why                                     |
+|-----------------------+-----------------+-----------------------------------------|
+| ~where qty = qty~     | TRUE, no scan   | ~qty : int~ is total, so x = x holds     |
+| ~where note = note~   | cannot fold     | NULL = NULL is NULL, not true           |
+
+And ~qty * price~ meets ~not null ⊓ not null~, so a computed output column
+provably needs no mask. That is the sharpest available form: a conservative
+analysis becoming exact, not by being cleverer, but because we emitted the
+leaves.
+
+Open: the query language has no expressions, so there is nothing to propagate
+through yet. Straight-line code also means the fixpoint converges in one pass,
+so the iteration is honest machinery with nothing to iterate --- real iteration
+needs branches, which only ~let~ bindings or a disjunctive predicate would give.
+
+* F9. What is left on the table
+
+Measured, unfixed, and listed in ~measurements.tex~ §7. Repeated here because
+this file is what backend.tex will be written from.
+
+- The survivor ~int list~ is what collapses 13× to 2× on unselective queries.
+  A bitmask in a ~Bytes.t~ plus a counting pass replaces it, and is also the
+  representation a GPU kernel would produce anyway.
+- ~plain~ reaches columns with ~List.nth~. Fixing the baseline comes first;
+  numbers measured against a slow baseline are worth less than a smaller
+  honest figure.
+- ~render~ is charged to ~tuned~ and is a property of the destination, not of
+  the representation. On ~select *~ it was 208ms, enough alone to invert the
+  result.
+- Query literals are pasted into SQL text. ~Query.value_to_string~ is a display
+  function and does not re-escape the quote the lexer unescaped, so
+  ~where sku = 'a''b'~ emits a syntax error and an injection. Correctness, and
+  first in the queue.
+
+* Where the back end's claim now stands
+
+Assembled from the above, and deliberately narrower than the original framing.
+
+1. The type facts are the signature's *in origin*, and duplicated into any SQL
+   catalog by necessity (F1).
+2. The wire is text regardless, so the parse is unavoidable and the only
+   question is how often it is paid (F2).
+3. Paying it once is worth about 2.2× on a repeated workload and nothing at all
+   on a single query (F3), which makes residency a precondition rather than an
+   optimisation (F4).
+4. The claim becomes a *necessity* rather than a convenience only under a
+   binary wire format (F5) or a schemaless store (F1), neither of which is
+   built.
+5. What the signature does buy unconditionally, and without any benchmark, is
+   the ability to predict the cost of a column before running anything --- which
+   is the half a placement decision needs.
