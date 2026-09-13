@@ -65,7 +65,8 @@ identical SQL, receive identical rows, and stream them rather than materialising
 intermediate list. The only variable is what the rows become in memory.
 
 The headline is \textbf{2.2$\times$}, not the order of magnitude a first estimate
-suggested, and the sections below say where the rest went. Every figure is emitted by
+suggested, and the sections below say where the rest went. \textbf{That is accepted as
+sufficient}, for the reasons in \S\ref{sec:enough}. Every figure is emitted by
 \texttt{dune exec bin/bench.exe} into \texttt{docs/phase\_3/data/} and read from there
 by this document, so it can be rebuilt rather than believed.
 \end{abstract}
@@ -218,7 +219,52 @@ decoding. The curves separate immediately and flatten towards \textbf{2.2$\times
 asymptote is not the 13$\times$ of the scan, because every query still has to build its
 answer, and that allocation is paid by both.
 
+\section{Is 2.2$\times$ enough}
+\label{sec:enough}
+
+Yes, and the reasons are worth stating rather than leaving to be inferred from the fact
+that we stopped.
+
+A factor of two is not a constant-factor rounding error. It is the difference between a
+workload finishing in an afternoon and finishing overnight, and it holds asymptotically
+rather than at one convenient point on the curve. Nothing about it degrades as the
+corpus grows, because the plan is not a function of the corpus.
+
+It is also the \emph{floor} of what this arrangement can show, not the ceiling, for
+three separate reasons.
+
+\begin{enumerate}[leftmargin=1.4em]
+\item \textbf{The thing being computed is as thin as it can be.} One predicate, one
+  projection, no aggregates, no joins. That is the least work it is possible to do over
+  a materialised column and still be doing something, and it is the case least
+  favourable to a typed representation. Every operation the query language gains --- a
+  sum, a second predicate, a group-by --- runs over arrays that have already been paid
+  for, and lands entirely on the right-hand side of the comparison.
+\item \textbf{The gap that remains is identified and mechanical.} \S\ref{sec:left}
+  is not a list of hopes. The survivor \texttt{int list} is measurably what collapses
+  13$\times$ to 2$\times$, and a bitmask is a known replacement rather than a research
+  question. We are reporting the number the current implementation earns, not the one
+  it could be made to earn.
+\item \textbf{The baseline has not been left slow on purpose.} \texttt{plain} streams,
+  pushes its predicate down, and is charged nothing for the render that \texttt{tuned}
+  pays for. Where it is still carrying avoidable cost --- \texttt{List.nth} --- that is
+  written down rather than banked. A 2.2$\times$ measured against a baseline that has
+  been given every fair advantage is worth more than a larger figure measured against
+  one that has not.
+\end{enumerate}
+
+\noindent
+And the speed was never the load-bearing claim. \S3 is: the cost of a column is
+readable off its type before anything runs, and the plan that follows is a function of
+the signature and not of the data. A plan that is \emph{merely} twice as fast, arrived
+at with no cost model, no statistics and no profiling pass, is a stronger result than a
+faster plan that needed all three --- because the former composes with a placement
+decision and the latter does not. If the number were 1.0$\times$ the argument would be
+in trouble. At 2.2$\times$ it is not, and chasing 13$\times$ before there is anything
+to place would be optimising the part of the system that is not the question.
+
 \section{What is left on the table}
+\label{sec:left}
 
 Everything below is measured-but-unfixed. None of it is required for the claim; all of
 it is where the remaining distance between 2.2$\times$ and 13$\times$ has gone.

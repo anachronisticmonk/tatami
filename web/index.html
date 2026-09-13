@@ -15,6 +15,13 @@
        font:14px/1.55 ui-sans-serif,-apple-system,"Helvetica Neue",sans-serif}
   code,pre,textarea,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
   header{padding:20px 26px 16px;border-bottom:1px solid var(--line)}
+  .top{display:flex;align-items:flex-start;justify-content:space-between;gap:18px;
+       flex-wrap:wrap}
+  nav{display:flex;gap:8px;flex-shrink:0}
+  a.nav{display:inline-block;padding:7px 14px;border:1px solid var(--line);border-radius:5px;
+        background:var(--panel);color:var(--accent);text-decoration:none;font-size:12.5px;
+        font-weight:600;white-space:nowrap}
+  a.nav:hover{border-color:var(--accent);background:var(--warm)}
   h1{margin:0;font-size:17px;letter-spacing:.02em}
   .flow{font-size:12.5px;color:var(--accent);margin-top:5px}
   main{display:grid;grid-template-columns:340px 1fr;align-items:start}
@@ -64,10 +71,18 @@
 </head>
 <body>
 <header>
-  <h1>tatami</h1>
-  <div class="flow">
-    the <b>.mli</b> says what the data is &rarr; the <b>analysis</b> reads it
-    &rarr; the <b>kernel</b> follows from that
+  <div class="top">
+    <div>
+      <h1>tatami</h1>
+      <div class="flow">
+        the <b>.mli</b> says what the data is &rarr; the <b>analysis</b> reads it
+        &rarr; the <b>kernel</b> follows from that
+      </div>
+    </div>
+    <nav>
+      <a class="nav" href="/performance/">Performance &rarr;</a>
+      <a class="nav" href="/trace/">Trace &rarr;</a>
+    </nav>
   </div>
 </header>
 
