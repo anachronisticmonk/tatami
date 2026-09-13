@@ -16,6 +16,7 @@ phase_1:
 
 phase_3:
 	cd phase_3 && $(LATEXMK) kernels.tex
+	cd phase_3 && $(LATEXMK) measurements.tex
 
 clean:
 	cd phase_1 && latexmk -C

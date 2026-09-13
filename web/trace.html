@@ -1,0 +1,201 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>tatami — trace</title>
+<style>
+  :root {
+    --bg:#fbfaf7; --panel:#fff; --ink:#1c1a17; --dim:#6f6a61; --line:#e3dfd6;
+    --accent:#7a4b2a; --code:#f5f2ec; --warm:#fff8ef; --edge:#efdfc9;
+    --good:#2f6b3f; --bad:#a3271c;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.55 ui-sans-serif,-apple-system,"Helvetica Neue",sans-serif}
+  code,pre,textarea,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  header{padding:20px 26px 16px;border-bottom:1px solid var(--line)}
+  h1{margin:0;font-size:17px;letter-spacing:.02em}
+  nav{margin-top:6px;font-size:12.5px}
+  nav a{color:var(--accent);text-decoration:none;margin-right:14px}
+  nav a:hover{text-decoration:underline}
+  nav a.here{color:var(--dim);pointer-events:none}
+  main{padding:18px 26px 90px;max-width:1000px}
+  pre{margin:0;padding:10px 12px;background:var(--code);border:1px solid var(--line);
+      border-radius:6px;overflow-x:auto;font-size:12.5px;line-height:1.5}
+  textarea{width:100%;min-height:54px;padding:10px 12px;border:1px solid var(--line);
+           border-radius:6px;background:var(--panel);font-size:13px;resize:vertical;color:var(--ink)}
+  textarea:focus{outline:2px solid var(--edge);border-color:var(--accent)}
+  .bar{display:flex;gap:10px;align-items:center;margin:8px 0 18px;flex-wrap:wrap}
+  button.go{padding:7px 16px;border:0;border-radius:5px;background:var(--accent);
+            color:#fff;font:inherit;font-weight:600;cursor:pointer}
+  button.go:hover{background:#8e5931}
+  .ex{padding:4px 9px;border:1px solid var(--line);border-radius:20px;background:var(--panel);
+      font:inherit;font-size:12px;cursor:pointer;color:var(--dim)}
+  .ex:hover{border-color:var(--accent);color:var(--accent)}
+  .step{display:grid;grid-template-columns:150px 1fr;gap:18px;padding:16px 0;
+        border-top:1px solid var(--line)}
+  @media(max-width:760px){.step{grid-template-columns:1fr;gap:8px}}
+  .who{font-size:12px}
+  .who b{display:block;font-size:13px;color:var(--accent)}
+  .who span{color:var(--dim)}
+  .what{min-width:0}
+  .say{font-size:12.5px;color:var(--dim);margin:0 0 8px;max-width:68ch}
+  .tok{display:inline-block;border:1px solid var(--line);border-radius:4px;background:var(--panel);
+       padding:2px 7px;margin:0 4px 4px 0;font-family:ui-monospace,Menlo,monospace;font-size:12px}
+  .tok i{font-style:normal;color:var(--dim);font-size:10px;margin-right:5px;text-transform:uppercase}
+  .tok.kw{background:var(--warm);border-color:var(--edge)}
+  table{border-collapse:collapse;font-size:13px;width:100%;background:var(--panel)}
+  th,td{text-align:left;padding:5px 10px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:11px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);font-weight:600}
+  .wrap{border:1px solid var(--line);border-radius:6px;overflow:auto}
+  .mono{font-size:12.5px}
+  .null{color:var(--bad);font-style:italic}
+  .lic{list-style:none;margin:6px 0 0;padding:0}
+  .lic li{padding:5px 10px;border-left:3px solid var(--accent);background:var(--warm);
+          margin-bottom:4px;font-size:12.5px}
+  .lic li.no{border-left-color:#b9a894;color:var(--dim)}
+  .err{color:var(--bad);background:#fff4f2;border:1px solid #f0d5cf;border-radius:6px;
+       padding:10px 12px;font-size:13px}
+  .tag{display:inline-block;font-size:10.5px;letter-spacing:.04em;padding:1px 6px;
+       border-radius:3px;background:var(--warm);border:1px solid var(--edge);color:var(--accent)}
+  .tag.off{background:#f2f0ec;border-color:var(--line);color:var(--dim)}
+</style>
+</head>
+<body>
+<header>
+  <h1>tatami — trace</h1>
+  <nav><a href="/">query</a><a href="/performance/">performance</a><a class="here">trace</a></nav>
+</header>
+<main>
+  <textarea id="q">select note from orders where qty &gt; 4</textarea>
+  <div class="bar">
+    <button class="go" id="run">Trace</button>
+    <button class="ex">select note from orders where qty &gt; 4</button>
+    <button class="ex">select * from orders</button>
+    <button class="ex">select id from orders where note = 'x'</button>
+    <button class="ex">select qty from orders where price &gt; 500.0</button>
+  </div>
+  <div id="out"></div>
+</main>
+<script>
+const $ = s => document.querySelector(s);
+const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+const KW = new Set(['select','from','where']);
+
+function step(who, note, body) {
+  return `<div class="step"><div class="who"><b>${who}</b><span>${note}</span></div>
+          <div class="what">${body}</div></div>`;
+}
+function say(t) { return `<p class="say">${t}</p>`; }
+
+function render(d) {
+  let h = '';
+
+  h += step('the text', 'a string', say(
+    'Nothing yet knows that <code>' + esc(d.query.table) + '</code> is a table or that ' +
+    'the words are grammar. This is what arrived in the POST body.') +
+    `<pre>${esc(d.text)}</pre>`);
+
+  h += step('lexer.mll', 'ocamllex', say(
+    'One pass, longest match wins. Keywords are not special — they come back as plain ' +
+    'words, folded to lower case. A number stays <em>text</em>: whether it is an int or ' +
+    'a float is the parser’s decision, and the dot is what settles it.') +
+    d.tokens.filter(t => t.kind !== 'end').map(t =>
+      `<span class="tok ${KW.has(t.text) ? 'kw' : ''}"><i>${t.kind}</i>${esc(t.text) ||
+      '&nbsp;'}</span>`).join('') +
+    `<span class="tok"><i>end</i></span>`);
+
+  const w = d.query.where;
+  h += step('parser.ml', 'tokens → Query.t', say(
+    'The grammar words are consumed and the parts land in named fields. ' +
+    (w ? `<code>${esc(w.value.text)}</code> became <code>Query.${w.value.ctor}</code> here, ` +
+         'and that constructor decides which comparison the analysis can emit. ' : '') +
+    'The column names are still just strings — the parser never opens the signature.') +
+    `<pre>{ table  = "${esc(d.query.table)}";
+  select = [${d.query.select.map(s => ` "${esc(s)}"`).join(';') || ''} ]${
+    d.query.select.length ? '' : '            (* [] means select * *)'};
+  where  = ${w ? `Some { column = "${esc(w.column)}";
+                 op = ${esc(w.op)};
+                 value = ${w.value.ctor} ${w.value.ctor === 'Text' ?
+                   `"${esc(w.value.text)}"` : esc(w.value.text)} }` : 'None'} }</pre>`);
+
+  h += step('schema.ml', 'reads the .mli', say(
+    'The signature is read as <em>text</em>, one line at a time, and each accessor becomes ' +
+    'a claim about memory. <code>int</code> means dense and fixed stride; <code>string</code> ' +
+    'means an offsets lookup; <code>option</code> means a validity mask exists. The table name ' +
+    'comes from the filename, not from anything inside the file.') +
+    '<div class="wrap"><table><thead><tr><th>column</th><th>type in the .mli</th>' +
+    '<th>storage</th><th>mask</th></tr></thead><tbody>' +
+    d.schema.columns.map(c => `<tr><td class="mono">${esc(c.name)}</td>
+      <td class="mono">${esc(c.layout)}</td>
+      <td><span class="tag ${c.dense ? '' : 'off'}">${c.dense ? 'dense' : 'variable width'}</span></td>
+      <td><span class="tag ${c.nullable ? '' : 'off'}">${c.nullable ? 'allocated' : 'none'}</span></td>
+      </tr>`).join('') + '</tbody></table></div>');
+
+  h += step('analysis.ml', 'signature × query', say(
+    'The two meet. Note <code>read</code>: the predicate’s column is loaded even when it ' +
+    'is not selected. And <code>guarded</code> is decided by the column under the predicate ' +
+    'alone — a total column has no mask to test, so the loop carries no branch at all.') +
+    `<pre>${esc(d.plan.summary)}</pre>` +
+    `<p class="say" style="margin-top:8px">filter <code>${esc(d.plan.filter)}</code> ·
+      guard <span class="tag ${d.plan.guarded ? '' : 'off'}">${d.plan.guarded ?
+      'validity tested per row' : 'no validity test emitted'}</span> ·
+      projection <span class="tag ${d.plan.project === 'identity' ? '' : 'off'}">${
+      esc(d.plan.project)}</span></p>` +
+    '<ul class="lic">' + d.licences.map(l =>
+      `<li class="${l.good ? '' : 'no'}">${esc(l.text)}</li>`).join('') + '</ul>');
+
+  h += step('to postgres', 'both kernels', say(
+    'The same predicate goes down to the database either way, so the rows that come back are ' +
+    'identical and so is the work Postgres does. The only difference is the select list: ' +
+    '<b>plain</b> has no signature, so <code>select *</code> must stay a star and it never ' +
+    'learns what came back; <b>tuned</b> expands it to the columns the .mli names.') +
+    `<pre>plain  ${esc(d.plain_sql)}
+tuned  ${esc(d.tuned_sql)}</pre>`);
+
+  h += step('the rows land', 'plain', say(
+    `Every cell becomes a boxed <code>string option</code> — ${d.plain_rows} rows of them. ` +
+    'The list knows nothing about names or types, so answering a second question about this ' +
+    'data means parsing the same text again.') +
+    `<pre>${d.plain_rows} rows : string option list list</pre>`);
+
+  h += step('the rows land', 'tuned', say(
+    'Each column goes straight into an array of the type the signature named, streamed in as ' +
+    'rows arrive. A mask exists only where <code>option</code> appeared. This is the ' +
+    'representation every later query runs over.') +
+    '<div class="wrap"><table><thead><tr><th>column</th><th>storage</th><th>length</th>' +
+    '<th>mask</th><th>nulls</th></tr></thead><tbody>' +
+    d.columns.map(c => `<tr><td class="mono">${esc(c.name)}</td>
+      <td class="mono">${esc(c.storage)}</td><td class="mono">${c.length}</td>
+      <td><span class="tag ${c.mask ? '' : 'off'}">${c.mask ? 'yes' : 'not allocated'}</span></td>
+      <td class="mono">${c.mask ? c.nulls : '—'}</td></tr>`).join('') +
+    '</tbody></table></div>');
+
+  h += step('rendered', 'first 10 rows', say(
+    'Back to text, for this page only. A <span class="null">NULL</span> here is the mask ' +
+    'speaking: the values array holds an initialiser at that slot — an empty string, or a ' +
+    'real zero — and only the mask can tell that apart from a value someone stored.') +
+    '<div class="wrap"><table><thead><tr>' +
+    d.columns.map(c => `<th>${esc(c.name)}</th>`).join('') + '</tr></thead><tbody>' +
+    d.preview.map(r => '<tr>' + r.map(c => `<td class="mono">${
+      c === null ? '<span class="null">NULL</span>' : esc(c)}</td>`).join('') + '</tr>').join('') +
+    '</tbody></table></div>');
+
+  return h;
+}
+
+async function trace() {
+  $('#out').innerHTML = '<p class="say">tracing…</p>';
+  const r = await fetch('/api/trace', { method:'POST', body: $('#q').value });
+  const d = await r.json();
+  $('#out').innerHTML = d.error ? `<div class="err">${esc(d.error)}</div>` : render(d);
+}
+$('#run').onclick = trace;
+document.querySelectorAll('.ex').forEach(b => b.onclick = () => {
+  $('#q').value = b.textContent.trim(); trace();
+});
+trace();
+</script>
+</body>
+</html>

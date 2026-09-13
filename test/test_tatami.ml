@@ -201,7 +201,9 @@ let load_tests =
           let s = Schema.load "../schema/orders.mli" in
           Alcotest.(check string) "table" "orders" s.table;
           Alcotest.(check (list string))
-            "columns" [ "id"; "qty"; "price"; "sku"; "note" ] (Schema.names s)) ]
+            "columns"
+            [ "id"; "customer_id"; "sku"; "qty"; "price"; "note" ]
+            (Schema.names s)) ]
 
 (* ---- query printing ----------------------------------------------------- *)
 
@@ -607,6 +609,114 @@ let store_tests =
              false
            with Failure _ -> true)) ]
 
+(* ---- the plan ----------------------------------------------------------- *)
+
+(* From query text to plan, because the plan is only meaningful next to the
+   query that produced it. [orders_schema] above is the signature in
+   schema/orders.mli: id and qty dense ints, price a dense float, sku a
+   string, note a string that may be absent. *)
+let plans sql expected () =
+  Alcotest.(check string)
+    sql expected
+    (Analysis.to_string (Analysis.plan orders_schema (Parser.parse sql)))
+
+let plan_cases =
+  [ (* Nothing is removed, so nothing is gathered. The identity projection is
+       the largest single win available and it comes from the absence of a
+       predicate, not from any column's type. *)
+    ( "no predicate at all",
+      "select * from orders",
+      "read id, qty, price, sku, note | filter keep all | project identity id, \
+       qty, price, sku, note" );
+    ( "one column, no predicate",
+      "select qty from orders",
+      "read qty | filter keep all | project identity qty" );
+    ( "the query we are building for",
+      "select qty from orders where qty > 4",
+      "read qty | filter qty > 4 | project gather qty" );
+    (* The column under the predicate is read even though it is not selected.
+       Forgetting this is how a tuned loop reads an array it never loaded. *)
+    ( "the predicate's column is read too",
+      "select note from orders where qty > 4",
+      "read note, qty | filter qty > 4 | project gather note" );
+    ( "selected and tested is read once",
+      "select qty, note from orders where qty > 4",
+      "read qty, note | filter qty > 4 | project gather qty, note" );
+    (* The whole point, in one line: qty is total so the loop carries no
+       validity test, note is optional so it carries one. The difference is
+       read off the constructor, never off the data. *)
+    ( "a total column is not guarded",
+      "select id from orders where qty = 4",
+      "read id, qty | filter qty = 4 | project gather id" );
+    ( "an optional column is guarded",
+      "select id from orders where note = 'x'",
+      "read id, note | filter note = 'x' (guarded) | project gather id" );
+    ( "a total string column is not guarded",
+      "select sku from orders where sku = 'abc'",
+      "read sku | filter sku = 'abc' | project gather sku" );
+    (* An exact literal against an inexact column: widening loses nothing, so
+       [price > 10] is accepted rather than demanding 10.0. *)
+    ( "an int literal widens to a float column",
+      "select id from orders where price > 10",
+      "read id, price | filter price > 10 | project gather id" );
+    ( "a float literal on a float column",
+      "select id from orders where price >= 10.5",
+      "read id, price | filter price >= 10.5 | project gather id" );
+    ( "projection keeps the order it was written in",
+      "select price, qty from orders",
+      "read price, qty | filter keep all | project identity price, qty" );
+    ( "every operator survives the round trip",
+      "select id from orders where qty <> 4",
+      "read id, qty | filter qty <> 4 | project gather id" ) ]
+
+let plan_tests =
+  List.map
+    (fun (name, sql, expected) ->
+      Alcotest.test_case name `Quick (plans sql expected))
+    plan_cases
+
+(* ---- what the plan refuses ---------------------------------------------- *)
+
+(* A signature that cannot describe the literal is a mistake in the query, and
+   the analysis says so instead of coercing. Each of these would otherwise
+   produce a loop that runs and returns the wrong rows. *)
+
+let paid : Schema.column =
+  { name = "paid"; layout = Schema.Plain (Schema.Dense Schema.Bool) }
+
+let with_paid : Schema.t =
+  { orders_schema with columns = orders_schema.columns @ [ paid ] }
+
+let refuses_in schema sql () =
+  Alcotest.(check bool)
+    sql true
+    (try
+       ignore (Analysis.plan schema (Parser.parse sql));
+       false
+     with Analysis.Error _ -> true)
+
+let refuses sql = refuses_in orders_schema sql
+
+let refusal_cases =
+  [ (* The case that earns the rule. [qty < 4] and [qty < 4.5] disagree on
+       every row where qty = 4, so rounding the literal answers wrongly and
+       quickly -- and quietly, which is worse. *)
+    ("a fractional literal against an int column", refuses "select qty from orders where qty < 4.5");
+    ("a string literal against an int column", refuses "select qty from orders where qty = 'x'");
+    ("a number against a string column", refuses "select sku from orders where sku > 4");
+    (* Not a type error so much as a gap: Query.value has no bool, so there is
+       nothing to compare a bool column with yet. Recorded here so the day a
+       bool literal arrives, this test says where to look. *)
+    ("a bool column has no literal yet", refuses_in with_paid "select paid from orders where paid = 1");
+    ("a column the signature does not have", refuses "select qty from orders where nope = 1");
+    ("selecting a column the signature does not have", refuses "select nope from orders");
+    ("a table this signature does not describe", refuses "select qty from customers") ]
+
+let refusal_tests =
+  List.map
+    (fun (name, thunk) -> Alcotest.test_case name `Quick thunk)
+    refusal_cases
+
 (* ---- runner ------------------------------------------------------------- *)
 
 let () =
@@ -627,4 +737,6 @@ let () =
       ("data: columns", data_tests);
       ("data: the SQL we emit", sql_tests);
       ("data: slots", slot_tests);
-      ("data: store", store_tests) ]
+      ("data: store", store_tests);
+      ("analysis: the plan", plan_tests);
+      ("analysis: what it refuses", refusal_tests) ]

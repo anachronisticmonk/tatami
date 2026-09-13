@@ -151,3 +151,16 @@ let load (schema : Schema.t) wanted =
         (fun (c : Schema.column) s ->
            { name = c.name; values = s.values; valid = s.valid })
         cols slots)
+
+(* One round trip, for whoever asks. Both kernels go through here, so "they
+   issue the same query against the same connection" is a property of the code
+   rather than of two functions happening to agree. *)
+let fetch sql =
+  Pg.with_conn ~ssl:`No ~host ~port ~user ~password ~database (fun conn ->
+      Pg.execute conn sql)
+
+(* The same round trip, but the rows are handed over one at a time and never
+   collected into a list. Whoever consumes them decides what to keep. *)
+let fetch_iter sql ~f =
+  Pg.with_conn ~ssl:`No ~host ~port ~user ~password ~database (fun conn ->
+      Pg.execute_iter conn sql ~f)

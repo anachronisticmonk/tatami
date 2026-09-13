@@ -9,3 +9,8 @@
  (name serve)
  (modules serve)
  (libraries tatami tiny_httpd yojson))
+
+(executable
+ (name bench)
+ (modules bench)
+ (libraries tatami unix))
