@@ -1,16 +1,7 @@
 ; One stanza per executable. A single (executables) stanza links every listed
 ; module into every binary, so each one would run the others' top-level effects.
-(executable
- (name main)
- (modules main)
- (libraries tatami))
 
 (executable
- (name serve)
- (modules serve)
- (libraries tatami tiny_httpd yojson))
-
-(executable
- (name bench)
- (modules bench)
- (libraries tatami unix))
+ (name gen_corpus)
+ (modules gen_corpus)
+ (libraries unix))

@@ -4,13 +4,6 @@
  (name test_tatami)
  (modules test_tatami)
  (libraries tatami alcotest)
- ; the real generated stand-in, so one test reads the file the program reads
+ ; the generated stand-ins, so the tests read the files the program reads
  (deps
   (glob_files %{project_root}/schema/*.mli)))
-
-; Not a (test), so `dune test` does not run it. Needs the container up:
-;   dune exec test/test_db.exe
-(executable
- (name test_db)
- (modules test_db)
- (libraries tatami alcotest))

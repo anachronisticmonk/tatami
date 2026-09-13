@@ -20,3 +20,7 @@ _coverage/
 
 # Personal scratchpad, not shared
 scratch/
+
+# Generated corpora, regenerate with bin/gen_corpus.exe
+corpus/
+*.json.gz

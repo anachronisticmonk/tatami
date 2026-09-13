@@ -4,6 +4,11 @@ type scalar =
   | Int (*an int array: unboxed machine comparison*)
   | Float
   | Bool
+  (*NOTE a foreign key. Stored exactly as Int is -- one dense int array, no
+    tag, no indirection -- so nothing downstream has to special-case it. What
+    it carries beyond Int is which table the number points into, which is the
+    only thing a join needs and the one thing [int] would have thrown away. *)
+  | Key of string
 
 (*NOTE a column can either be something like base + i * width Dense *)
 (*     or can be offsets[i] *)
@@ -31,7 +36,11 @@ let column t name = List.find_opt (fun c -> c.name = name) t.columns
 (* given a table, it will give you all column names *)
 let names t = List.map (fun c -> c.name) t.columns
 
-let scalar_to_string = function Int -> "int" | Float -> "float" | Bool -> "bool"
+let scalar_to_string = function
+  | Int -> "int"
+  | Float -> "float"
+  | Bool -> "bool"
+  | Key t -> String.capitalize_ascii t ^ ".id"
 let shape_to_string  = function Dense s -> scalar_to_string s | Var -> "string"
 
 let layout_to_string = function
@@ -59,7 +68,23 @@ let split_arrow s =
   in
   go 0
 
-let layout_of_type = function
+(*NOTE [Owner.id] is a key into the owner table. Phase 1 writes the reference
+  into the type rather than leaving it to a naming convention, so the schema
+  reader can see it without being told which columns are keys. *)
+let key_of_type s =
+  let n = String.length s in
+  if n > 3 && String.sub s (n - 3) 3 = ".id" then
+    let m = String.sub s 0 (n - 3) in
+    if m <> "" && m.[0] >= 'A' && m.[0] <= 'Z' && not (String.contains m '.') then
+      Some (String.lowercase_ascii m)
+    else None
+  else None
+
+let layout_of_type s =
+  match key_of_type s with
+  | Some table -> Some (Plain (Dense (Key table)))
+  | None ->
+  match s with
     | "int" -> Some (Plain (Dense Int))
     | "float" -> Some (Plain (Dense Float))
     | "bool" -> Some (Plain (Dense Bool))
@@ -93,3 +118,20 @@ let load path =
   let text = read_file path in
   let columns = List.filter_map parse_line (String.split_on_char '\n' text) in
   {table = Filename.remove_extension (Filename.basename path); columns}
+
+
+(*NOTE one .mli is one table, so a corpus of seven tables is seven files read
+  together. Order is the directory's, sorted, so a schema is the same however
+  the filesystem chooses to list it. *)
+let load_dir dir =
+  Sys.readdir dir |> Array.to_list
+  |> List.filter (fun f -> Filename.check_suffix f ".mli")
+  |> List.sort compare
+  |> List.map (fun f -> load (Filename.concat dir f))
+
+(*NOTE the table a key points into, given the column that holds it. *)
+let target = function
+  | {layout = Plain (Dense (Key t)) | Nullable (Dense (Key t)); _} -> Some t
+  | _ -> None
+
+let table tables name = List.find_opt (fun t -> t.table = name) tables
