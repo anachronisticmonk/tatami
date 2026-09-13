@@ -15,3 +15,8 @@
  (name verify)
  (modules verify)
  (libraries tatami unix yojson pgx pgx_unix))
+
+(executable
+ (name bench)
+ (modules bench)
+ (libraries tatami rowmajor columnar unix))

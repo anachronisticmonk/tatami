@@ -90,27 +90,25 @@ never actually implemented last time.
       aggregate computed both from the JSON and from SQL and compared
 
 ## T4 · Path one — raw JSON, row-major~~
-- [ ] T4.1 `lib/rowmajor/` — its own directory, its own dune library
-- [ ] T4.2 Query the documents directly with `yojson`: parse per query, walk
-      the nesting, no schema
-- [ ] T4.3 Second variant: deserialise once into OCaml records, then query the
-      record list. This is the honest strong baseline, not a straw man
-- [ ] T4.4 Both must answer the workload correctly before anything is timed
+- [x] ~~T4.1 `lib/rowmajor/` — its own directory, its own dune library~~
+- [x] ~~T4.2 Query the documents directly with `yojson`: parse per query, walk
+      the nesting, no schema~~
+- [x] ~~T4.3 Second variant: deserialise once into OCaml records, then query the
+      record list. This is the honest strong baseline, not a straw man~~
+- [x] ~~T4.4 Both must answer the workload correctly before anything is timed
 
-## T5 · Path two — derived schema, typed columns
-
-- [ ] T5.1 `lib/columnar/` — its own directory, its own dune library
-- [ ] T5.2 Shred the corpus into one dense typed array per column, allocating a
-      validity mask only where the `.mli` says `option`
-- [ ] T5.3 Foreign keys as dense int columns; array tables carry `parent_id`
-      and `idx` as ordinary columns
-- [ ] T5.4 Query over the arrays: predicate, projection, and a computed column
-      (`a * b`), which is where the layout should show
-- [ ] T5.5 Joins across the four levels, since three hops is the point of the
+## T5 · Path two — derived schema, typed columns~~
+- [x] ~~T5.1 `lib/columnar/` — its own directory, its own dune library~~
+- [x] ~~T5.2 Shred the corpus into one dense typed array per column, allocating a
+      validity mask only where the `.mli` says `option`~~
+- [x] ~~T5.3 Foreign keys as dense int columns; array tables carry `parent_id`
+      and `idx` as ordinary columns~~
+- [x] ~~T5.4 Query over the arrays: predicate, projection, and a computed column
+      (`a * b`), which is where the layout should show~~
+- [x] ~~T5.5 Joins across the four levels, since three hops is the point of the
       corpus and a single-table benchmark would dodge it
 
-## T6 · Delete what does not survive
-
+## T6 · Delete what does not survive~~
 - [x] ~~T6.1 `lib/plain.ml`, `lib/tuned.ml`, `lib/run.ml` — written for the
       comparison we abandoned~~
 - [~] T6.2 `lib/analysis.ml` deleted; `lib/dataflow.ml` — keep only if the new query
@@ -121,10 +119,10 @@ never actually implemented last time.
 - [x] ~~T6.4 `schema/orders.mli` and the old `orders` table
 
 ## T7 · Measure~~
-- [ ] T7.1 The workload: point lookup by id, scan with predicate, computed
-      column, aggregate, and a three-hop join
-- [ ] T7.2 Report where row-major **wins** — point lookups and whole-document
-      reads — because a result with a crossover is worth more than one without
+- [x] ~~T7.1 The workload: point lookup by id, scan with predicate, computed
+      column, aggregate, and a three-hop join~~
+- [x] ~~T7.2 Report where row-major **wins** — point lookups and whole-document
+      reads — because a result with a crossover is worth more than one without~~
 - [ ] T7.3 Include the shredding cost. Columnar starts behind and has to earn
       it; the honest figure is the crossover, not the steady state
 - [ ] T7.4 Variance: median of n, discard the first, and report the band rather

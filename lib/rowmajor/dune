@@ -1,0 +1,6 @@
+; The baseline: what an OCaml programmer gets without a derived schema. Two
+; variants live here, sharing the record definitions -- querying the documents
+; directly, and deserialising them once.
+(library
+ (name rowmajor)
+ (libraries tatami yojson))

@@ -1,0 +1,5 @@
+; The derived-schema path: one dense typed array per column, a validity mask
+; only where the .mli says [option].
+(library
+ (name columnar)
+ (libraries tatami yojson))
