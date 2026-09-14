@@ -21,6 +21,9 @@ _coverage/
 # Personal scratchpad, not shared
 scratch/
 
-# Generated corpora, regenerate with bin/gen_corpus.exe
-corpus/
+# Generated corpora, regenerate with bin/gen_corpus.exe. small.json is the
+# exception: it is checked in so the corpus can be read without generating one.
+corpus/*
+!corpus/small.json
+!corpus/README.md
 *.json.gz
