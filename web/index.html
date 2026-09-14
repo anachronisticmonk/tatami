@@ -251,8 +251,40 @@ function Line({runs, query}) {
       'corpus MB'));
 }
 
-function Perf({runs}) {
+/* Selectivity: does the winner ever change as the predicate keeps more rows?
+   A placement rule read off the types cannot see selectivity, so this is the
+   chart that would falsify it. */
+function Sweep({points}) {
+  const W = 720, H = 250, pl = 44, pb = 42, pt = 12, pr = 20;
+  const xs = points.map((p, i) => i);
+  const ratio = p => p.scan_rec / p.scan_col;
+  const ymax = Math.max(...points.map(ratio), 4);
+  const X = i => pl + (i / Math.max(1, points.length - 1)) * (W - pl - pr);
+  const Y = v => H - pb - (v / ymax) * (H - pb - pt);
+  return h('svg', {viewBox: `0 0 ${W} ${H}`, style: {maxWidth: '100%'}},
+    h('line', {x1: pl, y1: Y(1), x2: W - pr, y2: Y(1), stroke: '#a3271c',
+               strokeDasharray: '4 3'}),
+    h('text', {x: W - pr, y: Y(1) - 5, textAnchor: 'end', fontSize: 10.5, fill: '#a3271c'},
+      '1× — below this line row-major would win'),
+    [0.25, 0.5, 0.75, 1].map(f =>
+      h('text', {key: f, x: pl - 8, y: Y(ymax * f) + 4, textAnchor: 'end', fontSize: 10.5,
+                 fill: '#6f6a61'}, (ymax * f).toFixed(0) + '×')),
+    h('path', {d: xs.map(i => `${i ? 'L' : 'M'}${X(i)},${Y(ratio(points[i]))}`).join(' '),
+               fill: 'none', stroke: 'var(--col)', strokeWidth: 2}),
+    xs.map(i => h('circle', {key: i, cx: X(i), cy: Y(ratio(points[i])), r: 3, fill: 'var(--col)'})),
+    xs.map(i => h('text', {key: 't' + i, x: X(i), y: H - 22, textAnchor: 'middle',
+                           fontSize: 10, fill: '#6f6a61'},
+                  points[i].pct.toFixed(points[i].pct < 1 ? 2 : 0) + '%')),
+    h('text', {x: W / 2, y: H - 4, textAnchor: 'middle', fontSize: 11, fill: '#6f6a61'},
+      'rows kept by the predicate'));
+}
+
+function Perf({data}) {
   const [query, setQuery] = React.useState('computed');
+  /* the file holds two kinds of record: benchmark runs, and selectivity
+     sweeps. Reading a sweep as a run is what left this tab blank. */
+  const runs = data.filter(d => !d.sweep && d.stores);
+  const sweeps = data.filter(d => d.sweep && d.points);
   if (!runs.length) return h('div', {className: 'note'},
     'No measurements yet. Run: dune exec bin/bench.exe -- --corpus corpus/small.json --json bench/results.jsonl');
   const last = runs[runs.length - 1];
@@ -282,13 +314,20 @@ function Perf({runs}) {
                keys: ['records', 'columnar'], colours: ['var(--rec)', 'var(--col)'],
                fmt: v => (v / 1000).toFixed(1) + 's'})),
     h('div', {className: 'note'},
-      'Shredding is the cost columnar pays up front. The crossover — how many queries before it repays — is the number that decides whether any of this is worth it.'));
+      'Shredding is the cost columnar pays up front. The crossover — how many queries before it repays — is the number that decides whether any of this is worth it.'),
+    sweeps.length ? h('div', {},
+      h('h2', {}, 'does selectivity change the winner?'),
+      h('p', {className: 'lead'},
+        'A placement rule read off the types cannot see selectivity — whether a predicate keeps one row in a thousand or half the table is a fact about the data, not the schema. If the winner flipped along this axis, no type-level rule could be right. It does not flip: the line stays above 1× throughout.'),
+      h('div', {className: 'card'}, h(Sweep, {points: sweeps[sweeps.length - 1].points}))) : null);
 }
 
 function drawPerf() {
-  fetch('/api/bench').then(r => r.json()).then(runs => {
+  fetch('/api/bench').then(r => r.json()).then(data => {
     if (!perfRoot) perfRoot = ReactDOM.createRoot($('#perf'));
-    perfRoot.render(h(Perf, {runs}));
+    perfRoot.render(h(Perf, {data}));
+  }).catch(e => {
+    $('#perf').innerHTML = `<div class="note">could not load measurements: ${esc(e)}</div>`;
   });
 }
 </script>
