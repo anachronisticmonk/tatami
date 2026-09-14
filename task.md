@@ -123,15 +123,15 @@ never actually implemented last time.
       column, aggregate, and a three-hop join~~
 - [x] ~~T7.2 Report where row-major **wins** — point lookups and whole-document
       reads — because a result with a crossover is worth more than one without~~
-- [ ] T7.3 Include the shredding cost. Columnar starts behind and has to earn
-      it; the honest figure is the crossover, not the steady state
+- [x] ~~T7.3 Include the shredding cost. Columnar starts behind and has to earn
+      it; the honest figure is the crossover, not the steady state~~
 - [ ] T7.4 Variance: median of n, discard the first, and report the band rather
       than asserting it
 
 ## T8 · Hand the corpus to the front end
 
-- [ ] T8.1 A single 1.5 GB `.json` file, plus the seed and the generator commit
-      so it can be regenerated rather than copied
+- [x] ~~T8.1 A single 1.5 GB `.json` file, plus the seed and the generator commit
+      so it can be regenerated rather than copied~~
 - [x] ~~T8.2 A short README next to it: the shape, the field types, which fields
       are nullable, and the seven tables it shreds into~~
 
