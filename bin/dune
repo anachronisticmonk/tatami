@@ -1,0 +1,22 @@
+; One stanza per executable. A single (executables) stanza links every listed
+; module into every binary, so each one would run the others' top-level effects.
+
+(executable
+ (name gen_corpus)
+ (modules gen_corpus)
+ (libraries unix))
+
+(executable
+ (name shred)
+ (modules shred)
+ (libraries tatami unix yojson))
+
+(executable
+ (name verify)
+ (modules verify)
+ (libraries tatami unix yojson pgx pgx_unix))
+
+(executable
+ (name bench)
+ (modules bench)
+ (libraries tatami rowmajor columnar unix))

@@ -1,0 +1,9 @@
+; The default suite. Pure functions only -- no database, no network, runs in
+; milliseconds on any machine.
+(test
+ (name test_tatami)
+ (modules test_tatami)
+ (libraries tatami alcotest)
+ ; the generated stand-ins, so the tests read the files the program reads
+ (deps
+  (glob_files %{project_root}/schema/*.mli)))
