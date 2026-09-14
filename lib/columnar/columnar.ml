@@ -155,11 +155,78 @@ let col t name =
   | Some b -> b
   | None -> failwith (Printf.sprintf "no column %s in %s" name t.t_name)
 
+(* ---- where a parent's children live -------------------------------------- *)
+
+(* The structural fact the join has been throwing away.
+
+   Shredding walks documents depth-first, so every run of one repo is written
+   before any run of the next. The child table is therefore *grouped* by its
+   parent key: a parent's children occupy one contiguous block of rows, and
+   [idx] restarting at 0 is the witness.
+
+   That is not a statistic. It follows from the parent-child relationship
+   having been an array -- [coll] in the Lean model -- plus the order shredding
+   visits documents in. A database would need an index, or a CLUSTER, to know
+   the same thing.
+
+   With it, following a key stops being a scan of the whole child table and
+   becomes a slice. Without it, the fallback is the scan we had. So the index
+   checks as it builds: if any parent's rows turn out to be interrupted, the
+   grouping claim is false and the slices are not used. *)
+
+(* Offsets, not a hashtable.
+
+   Children are grouped by parent *and in parent order*: repo row 0's runs come
+   first, then repo row 1's. So the whole relationship is one int array of
+   length |parent| + 1, where parent i owns child rows [off.(i), off.(i+1)).
+   Following a key becomes an array index -- no hashing, no probe, and no index
+   on the parent's key that the row-major store would not also have.
+
+   This is Arrow's list layout, arrived at from the schema rather than adopted:
+   it is what [coll] means once the documents have been flattened.
+
+   Built by walking the child's key column and cutting a block each time the
+   key changes. If the number of blocks does not match the number of parents,
+   the grouping does not hold -- a corpus shredded in some other order, or a
+   parent with no children -- and the offsets are refused rather than trusted. *)
+type offsets = { off : int array; valid : bool }
+
+let no_offsets = { off = [||]; valid = false }
+
+let build_offsets (type k) ~(parents : int) (key : k array) : offsets =
+  let n = Array.length key in
+  let off = Array.make (parents + 1) 0 in
+  let blocks = ref 0 and i = ref 0 in
+  (try
+     while !i < n do
+       if !blocks >= parents then raise Exit;
+       off.(!blocks) <- !i;
+       let k = Array.unsafe_get key !i in
+       incr i;
+       while !i < n && Array.unsafe_get key !i = k do incr i done;
+       incr blocks
+     done
+   with Exit -> ());
+  if !blocks = parents && !i = n then (off.(parents) <- n; { off; valid = true })
+  else no_offsets
+
+let span o i = (o.off.(i), o.off.(i + 1) - o.off.(i))
+
 (* ---- the store ----------------------------------------------------------- *)
 
 let name = "columnar"
 
-type t = { tables : (string * Data.t list) list; rows : (string * int) list }
+type t = {
+  tables : (string * Data.t list) list;
+  rows : (string * int) list;
+  mutable runs_of : offsets;   (* repo row -> its rows in run  *)
+  mutable jobs_of : offsets;   (* run row  -> its rows in job  *)
+  mutable steps_of : offsets;  (* job row  -> its rows in step *)
+  (* the one lookup neither layout gets for free: a uuid to a row. The
+     row-major store is given the same, so this is not an index one side has
+     and the other does not. *)
+  mutable repo_at : (string, int) Hashtbl.t;
+}
 
 let get t tbl c : Data.t =
   match List.assoc_opt tbl t.tables with
@@ -240,8 +307,19 @@ let load path =
 
   let freeze t = (t.t_name, List.map (fun (_, b) -> finish b) t.cols) in
   let ts = List.map freeze [ repo; run; job; step ] in
-  { tables = ts;
-    rows = List.map (fun (n, cs) -> (n, match cs with [] -> 0 | c :: _ -> Data.length c)) ts }
+  let store =
+    { tables = ts;
+      rows = List.map (fun (n, cs) -> (n, match cs with [] -> 0 | c :: _ -> Data.length c)) ts;
+      runs_of = no_offsets; jobs_of = no_offsets; steps_of = no_offsets;
+      repo_at = Hashtbl.create 16 }
+  in
+  let rows n = match List.assoc_opt n store.rows with Some k -> k | None -> 0 in
+  store.runs_of <- build_offsets ~parents:(rows "repo") (texts store "run" "repo_id");
+  store.jobs_of <- build_offsets ~parents:(rows "run") (ints store "job" "run_id");
+  store.steps_of <- build_offsets ~parents:(rows "job") (ints store "step" "job_id");
+  let rid = texts store "repo" "id" in
+  Array.iteri (fun i k -> Hashtbl.replace store.repo_at k i) rid;
+  store
 
 let footprint (_ : t) =
   Gc.full_major ();
@@ -283,9 +361,11 @@ let by_status t =
   done;
   Workload.Groups (List.sort compare (Hashtbl.fold (fun k v a -> (k, v) :: a) tbl []))
 
-(* A set of keys, for following one from table to table. This is the join
-   row-major does not have to do: it already holds the children inside the
-   parent, where the columnar store holds them in a different array entirely. *)
+(* ---- the fallback: following a key by scanning ---------------------------- *)
+
+(* What this did before the grouping was noticed, kept because the grouping is
+   checked rather than assumed: a corpus shredded in some other order would not
+   have it, and then these are the only way through. *)
 let idset ids =
   let h = Hashtbl.create (Array.length ids * 2) in
   Array.iter (fun i -> Hashtbl.replace h i ()) ids;
@@ -298,31 +378,25 @@ let children ~key ~id keep =
   done;
   idset (Array.of_list !out)
 
-(* The reassembly, and the case this layout should lose. There is no
-   repo-shaped object here: finding one document's steps means scanning run,
-   then job, then step -- three full passes to gather what row-major had
-   contiguously all along. *)
-let document t id =
-  let rid = texts t "repo" "id" in
-  if not (Array.exists (fun x -> String.equal x id) rid) then Workload.Missing
-  else
-    let keep = Hashtbl.create 2 in
-    Hashtbl.replace keep id ();
-    let runs = children ~key:(texts t "run" "repo_id") ~id:(ints t "run" "id") keep in
-    let jobs = children ~key:(ints t "job" "run_id") ~id:(ints t "job" "id") runs in
-    let sk = ints t "step" "job_id" and sd = ints t "step" "ms" in
-    let steps = ref 0 and ms = ref 0 in
-    for i = 0 to Array.length sk - 1 do
-      if Hashtbl.mem jobs (Array.unsafe_get sk i) then (
-        incr steps;
-        ms := !ms + Array.unsafe_get sd i)
-    done;
-    Workload.Row
-      (List.map string_of_int [ Hashtbl.length runs; Hashtbl.length jobs; !steps; !ms ])
+(* What the join did before the grouping was noticed, kept because the grouping
+   is checked rather than assumed: a corpus shredded in some other order would
+   not have it, and then probing every child is the only way through. *)
+let document_by_scan t id =
+  let keep = Hashtbl.create 2 in
+  Hashtbl.replace keep id ();
+  let runs = children ~key:(texts t "run" "repo_id") ~id:(ints t "run" "id") keep in
+  let jobs = children ~key:(ints t "job" "run_id") ~id:(ints t "job" "id") runs in
+  let sk = ints t "step" "job_id" and sd = ints t "step" "ms" in
+  let steps = ref 0 and ms = ref 0 in
+  for i = 0 to Array.length sk - 1 do
+    if Hashtbl.mem jobs (Array.unsafe_get sk i) then (
+      incr steps;
+      ms := !ms + Array.unsafe_get sd i)
+  done;
+  Workload.Row
+    (List.map string_of_int [ Hashtbl.length runs; Hashtbl.length jobs; !steps; !ms ])
 
-(* Three hops, and every one of them a scan. Row-major walks pointers it
-   already holds; this has to rebuild the relationship from keys. *)
-let three_hop t org =
+let three_hop_by_scan t org =
   let o = texts t "repo" "org" and rid = texts t "repo" "id" in
   let keep = Hashtbl.create 1024 in
   for i = 0 to Array.length o - 1 do
@@ -337,3 +411,65 @@ let three_hop t org =
     if Hashtbl.mem jobs (Array.unsafe_get sk i) then total := !total + Array.unsafe_get sd i
   done;
   Workload.Sum_int !total
+
+(* ---- following a key ------------------------------------------------------ *)
+
+let grouped t = t.runs_of.valid && t.jobs_of.valid && t.steps_of.valid
+
+(* Sum [ms] over one job's steps: a slice, addressed by the job's row. *)
+let steps_ms t job_row =
+  let start, len = span t.steps_of job_row in
+  let d = ints t "step" "ms" in
+  let acc = ref 0 in
+  for i = start to start + len - 1 do
+    acc := !acc + Array.unsafe_get d i
+  done;
+  (len, !acc)
+
+(* Everything under one repo. The three hops now cost what the answer costs
+   rather than what the corpus costs: a slice of run, a slice of job per run, a
+   slice of step per job, every one an array index.
+
+   Row-major walks the same shape. The difference left is that these rows are
+   dense and contiguous where those are pointers into a heap. *)
+let document t id =
+  match Hashtbl.find_opt t.repo_at id with
+  | None -> Workload.Missing
+  | Some _ when not (grouped t) -> document_by_scan t id
+  | Some row ->
+      let r0, rn = span t.runs_of row in
+      let jobs = ref 0 and steps = ref 0 and ms = ref 0 in
+      for r = r0 to r0 + rn - 1 do
+        let j0, jn = span t.jobs_of r in
+        jobs := !jobs + jn;
+        for j = j0 to j0 + jn - 1 do
+          let n, m = steps_ms t j in
+          steps := !steps + n;
+          ms := !ms + m
+        done
+      done;
+      Workload.Row (List.map string_of_int [ rn; !jobs; !steps; !ms ])
+
+(* Three hops. The repo filter stays a scan -- there is no index on [org], and
+   inventing one would be a statistic rather than a type -- but everything
+   under it is a slice, so the work after the filter is proportional to what
+   matched rather than to the whole corpus. *)
+let three_hop t org =
+  if not (grouped t) then three_hop_by_scan t org
+  else begin
+    let o = texts t "repo" "org" in
+    let total = ref 0 in
+    for i = 0 to Array.length o - 1 do
+      if String.equal (Array.unsafe_get o i) org then begin
+        let r0, rn = span t.runs_of i in
+        for r = r0 to r0 + rn - 1 do
+          let j0, jn = span t.jobs_of r in
+          for j = j0 to j0 + jn - 1 do
+            let _, m = steps_ms t j in
+            total := !total + m
+          done
+        done
+      end
+    done;
+    Workload.Sum_int !total
+  end
