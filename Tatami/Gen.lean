@@ -34,6 +34,49 @@ def moduleName (p : Path) : String :=
   | [] => "Root"
   | segs => capitalize (String.intercalate "_" (segs.map mangle))
 
+/-- The module holding every table's key type.
+
+    A foreign key names a type here rather than in the module it points into,
+    which is what keeps the units acyclic. Without it a collection's rows
+    would name their parent's `id` and the parent would name their `t`, and
+    OCaml compilation units cannot be mutually recursive. -/
+def idsModuleName : String := "Ids"
+
+/-- A table's key type inside `Ids`: its module name, lowercased. Distinct
+    module names give distinct type names, because a module name always
+    begins with a capital. -/
+def idTypeName (p : Path) : String :=
+  match (moduleName p).toList with
+  | c :: cs => String.ofList (c.toLower :: cs)
+  | [] => "root"
+
+/-- Every table's key type, abstract, and nothing else.
+
+    There is deliberately no way to make one. An earlier version exposed an
+    injection per table, on the reasoning that the generated implementations
+    are separate compilation units and so cannot see through the abstraction.
+    Nothing generated ever called one: every path that would *reach* a row is
+    a hole, so no emitted body constructs a key. All it did was let a consumer
+    build a foreign key naming a row that does not exist.
+
+    So a key can be obtained only from a row, and a row only from `get` or
+    `of_`, which is the honest reading of "no row source": there is no way in
+    at all. Whatever fills those holes will need to construct keys, and the
+    place for that is a wrapped library whose public interface omits `Ids`,
+    not a naming convention. -/
+def idsModule (s : Schema) : Module :=
+  { name := idsModuleName
+  , decls := s.map fun t => .abstractType (idTypeName t.path)
+  , impl := s.map fun t => .typeAlias (idTypeName t.path) .int }
+
+/-- The lookup a collection's rows carry: every row whose `parent_id` is the
+    given key. It is declared in the *child*, because that is where the rows
+    and the `parent_id` column live; the parent's accessor delegates to it.
+
+    `get` keys on `id`, this keys on `parent_id`, and the child owns both. The
+    parent owns neither, which is why it cannot answer the question itself. -/
+def childLookupName (parent : Path) : String := "of_" ++ idTypeName parent
+
 /-- Generated columns, which a document member must not collide with. -/
 def parentColumn : String := "parent_id"
 def indexColumn : String := "idx"
@@ -54,48 +97,87 @@ def fieldTyExpr (f : Field) : TyExpr :=
 
 def genModule (t : Table) : Except Error Module := do
   let self := moduleName t.path
+  if self == idsModuleName then throw (.reservedModuleName (Path.toString t.path))
   -- a type from another module needs qualifying; one from this module does not
   let ref (p : Path) (n : String) : TyExpr :=
     if moduleName p == self then (if n == "id" then .id else .named n)
     else .qualified (moduleName p) n
+  -- where a row source would be. Phase 1 emits no shredder, so every way of
+  -- *reaching* a row is a hole; every way of *reading* one is a projection.
+  let hole (what : String) : Expr :=
+    .app (.var "failwith") [.str s!"{self}.{what}: no row source"]
   let positionColumn := if t.keyed then keyColumn else indexColumn
+  let lookupName : Option String := t.parent.map childLookupName
   let mut fields : List RecField := [{ name := "id", ty := .id }]
+  let mut lookup : List Decl := []
+  let mut lookupImpl : List Decl := []
   -- rows that sit in a collection carry a key back and their position in it
   match t.parent with
   | some pp =>
-      let idTy := ref pp "id"
+      -- the one place a unit must not name the module it points into: these
+      -- rows are reached *from* their parent, so naming it would be a cycle
+      let idTy : TyExpr := .qualified idsModuleName (idTypeName pp)
       let posTy : TyExpr := if t.keyed then .string else .int
       fields := fields ++
         [ { name := parentColumn, ty := idTy }
         , { name := positionColumn, ty := posTy } ]
+      let nm := childLookupName pp
+      lookup := [ .value nm (.arrow idTy (.list (.named "t"))) ]
+      lookupImpl := [ .letValue nm ["_"] (hole nm) ]
   | none => pure ()
   let mut accessors : List Decl := []
+  let mut bodies : List Decl := []
   for c in t.columns do
     let name := mangle c.name
     if name == "id" then throw (.reservedColumnName c.name "id")
     if t.parent.isSome && (name == parentColumn || name == positionColumn) then
       throw (.reservedColumnName c.name name)
+    -- every column now carries an accessor, so every column can collide
+    if name == "get" then throw (.reservedAccessorName c.name "get")
+    -- unreachable for a schema inference built, since `mangle` escapes `_` and
+    -- so can never produce `of_root`; kept because `gen` is total on `Schema`,
+    -- the same reason `certify` checks the file it just built
+    if lookupName == some name then throw (.reservedAccessorName c.name name)
     match c.field.ty with
     | .coll p =>
         -- no column: the elements point back here, so the parent holds nothing
-        if name == "get" then throw (.reservedAccessorName c.name)
         accessors := accessors ++
           [ .value name (.arrow (.named "t") (.list (ref p "t"))) ]
+        -- delegate: the rows are the child's, and so is the parent_id column
+        bodies := bodies ++
+          [ .letValue name ["r"]
+              (.app (.qual (moduleName p) (childLookupName t.path))
+                    [.field (.var "r") "id"]) ]
     | .ref p =>
-        if name == "get" then throw (.reservedAccessorName c.name)
         fields := fields ++ [{ name := name, ty := if c.field.nullable then .option (ref p "id") else ref p "id" }]
         let target : TyExpr := ref p "t"
         accessors := accessors ++
           [ .value name (.arrow (.named "t")
               (if c.field.nullable then .option target else target)) ]
+        -- following a foreign key is a projection and a `get`
+        let follow : Expr :=
+          if c.field.nullable then
+            .app (.qual "Option" "map") [.qual (moduleName p) "get", .field (.var "r") name]
+          else
+            .app (.qual (moduleName p) "get") [.field (.var "r") name]
+        bodies := bodies ++ [ .letValue name ["r"] follow ]
     | _ =>
         fields := fields ++ [{ name := name, ty := fieldTyExpr c.field }]
+        -- the design note's `val a : Root.t -> int` / `let a r = r.a`; this is
+        -- what Phase 2 rewrites into a yielding accessor
+        accessors := accessors ++
+          [ .value name (.arrow (.named "t") (fieldTyExpr c.field)) ]
+        bodies := bodies ++ [ .letValue name ["r"] (.field (.var "r") name) ]
   return {
     name := moduleName t.path
     decls :=
-      [ .abstractType "id"
+      [ .typeAlias "id" (.qualified idsModuleName (idTypeName t.path))
       , .recordType "t" fields
-      , .value "get" (.arrow .id (.named "t")) ] ++ accessors
+      , .value "get" (.arrow .id (.named "t")) ] ++ lookup ++ accessors
+    impl :=
+      [ .typeAlias "id" (.qualified idsModuleName (idTypeName t.path))
+      , .recordType "t" fields
+      , .letValue "get" ["_"] (hole "get") ] ++ lookupImpl ++ bodies
   }
 
 /-- Exposed, with `certify`, so `Proofs.Wellformed` can invert `gen`. -/
@@ -106,13 +188,7 @@ def genRaw (s : Schema) : Except Error File := do
   let names := mods.map (·.name)
   for n in names do
     if (names.filter (· == n)).length > 1 then throw (.moduleNameClash n)
-  -- a reference between two different modules that runs both ways makes the
-  -- group cyclic; a table that only points at itself does not
-  let crossModule := s.any fun t =>
-    match t.parent with
-    | some pp => moduleName pp != moduleName t.path
-    | none => false
-  return { recursive := crossModule, modules := mods }
+  return { modules := idsModule s :: mods }
 
 /-- The generator checks its own output before handing it back, and refuses a
     file that repeats a name rather than emitting one that will not compile.

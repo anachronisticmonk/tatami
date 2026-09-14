@@ -25,27 +25,73 @@ def TyExpr.print : TyExpr → String
   | .arrow a b =>
       (if a.needsParens then "(" ++ a.print ++ ")" else a.print) ++ " -> " ++ b.print
 
+/- `Expr.atom` is the same printer with parentheses where an argument
+   position needs them; the two are mutual so that nesting stays structural. -/
+mutual
+
+def Expr.print : Expr → String
+  | .var n => n
+  | .field e f => Expr.atom e ++ "." ++ f
+  | .qual m n => m ++ "." ++ n
+  | .str s => "\"" ++ s ++ "\""
+  | .app f args => String.intercalate " " (Expr.atom f :: Expr.atoms args)
+
+def Expr.atom : Expr → String
+  | .app f args => "(" ++ String.intercalate " " (Expr.atom f :: Expr.atoms args) ++ ")"
+  | .var n => n
+  | .field e f => Expr.atom e ++ "." ++ f
+  | .qual m n => m ++ "." ++ n
+  | .str s => "\"" ++ s ++ "\""
+
+def Expr.atoms : List Expr → List String
+  | [] => []
+  | e :: tl => Expr.atom e :: Expr.atoms tl
+
+end
+
 def Decl.print : Decl → String
   | .abstractType n => s!"type {n}"
+  | .typeAlias n ty => s!"type {n} = {ty.print}"
   | .recordType n fields =>
       let body := String.intercalate "; "
         (fields.map fun f => s!"{f.name} : {f.ty.print}")
       s!"type {n} = \{ {body} }"
   | .value n ty => s!"val {n} : {ty.print}"
+  | .letValue n params body =>
+      let ps := if params.isEmpty then "" else " " ++ String.intercalate " " params
+      s!"let {n}{ps} = {body.print}"
 
-def Module.print (keyword : String) (m : Module) : String :=
-  let body := String.intercalate "\n" (m.decls.map fun d => "  " ++ d.print)
-  s!"{keyword} {m.name} : sig\n{body}\nend"
+/-- The file a module is written to. OCaml takes a unit's module name from
+    its file name, capitalised, so lowercasing the module name inverts it. -/
+def Module.fileName (m : Module) : String :=
+  (match m.name.toList with
+   | c :: cs => String.ofList (c.toLower :: cs)
+   | [] => m.name) ++ ".mli"
 
+/-- One module as one compilation unit: its declarations at the top level,
+    with no enclosing `sig`, because the file itself is the signature. -/
+def Module.printUnit (m : Module) : String :=
+  let body := String.intercalate "\n" (m.decls.map Decl.print)
+  s!"(* {m.fileName} *)\n\n{body}\n"
+
+def Module.implFileName (m : Module) : String :=
+  (match m.name.toList with
+   | c :: cs => String.ofList (c.toLower :: cs)
+   | [] => m.name) ++ ".ml"
+
+def Module.printImpl (m : Module) : String :=
+  let body := String.intercalate "\n" (m.impl.map Decl.print)
+  s!"(* {m.implFileName} *)\n\n{body}\n"
+
+/-- Every file, in the order they must be compiled: each module's signature
+    immediately before its implementation, `Ids` first and the rest
+    deepest-first, so nothing ever names a unit not yet compiled. -/
+def File.units (f : File) : List (String × String) :=
+  f.modules.flatMap fun m =>
+    [(m.fileName, m.printUnit), (m.implFileName, m.printImpl)]
+
+/-- Every unit in one text, for a terminal that has nowhere to put files. -/
 def File.print (f : File) : String :=
-  let header := "(* generated.mli *)\n"
-  match f.modules with
-  | [] => header
-  | first :: rest =>
-      let firstKeyword := if f.recursive then "module rec" else "module"
-      let restKeyword := if f.recursive then "and" else "module"
-      let body := String.intercalate "\n\n"
-        (Module.print firstKeyword first :: rest.map (Module.print restKeyword))
-      header ++ "\n" ++ body ++ "\n"
+  String.intercalate "\n" (f.units.map (·.2))
 
 end Tatami

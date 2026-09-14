@@ -4,6 +4,9 @@ import Lean.Data.Json
 open Lean Tatami
 
 structure Outcome where
+  /-- every unit as (file name, contents), in compile order -/
+  units : List (String × String)
+  /-- the same units in one text, for a terminal -/
   ocaml : String
   tables : Tables
   documents : Nat
@@ -18,7 +21,8 @@ def pipeline (cfg : Config) (input : String) : Except String Outcome :=
           let docs ← documents j
           let tables ← inferCorpus cfg docs
           let file ← gen (toSchema tables)
-          return { ocaml := file.print, tables := tables, documents := docs.length }
+          return { units := file.units, ocaml := file.print
+                 , tables := tables, documents := docs.length }
           : Except Error Outcome)
       with
       | .error e => .error e.toString
@@ -59,18 +63,24 @@ def reportJson : Except String Outcome → Json
       Json.mkObj
         [ ("ok", .bool true)
         , ("ocaml", .str o.ocaml)
+        , ("files", .arr (o.units.map (fun u =>
+            Json.mkObj [("name", .str u.1), ("ocaml", .str u.2)])).toArray)
         , ("documents", nat o.documents)
         , ("tables", .arr (ordered.map tableJson).toArray) ]
 
-/-- `tatami [--json] [--config FILE] [INPUT]` -/
+/-- `tatami [--json] [--config FILE] [-o DIR] [INPUT]`
+
+    One `.mli` per module. With `-o` they are written there; without it they
+    all go to stdout, each behind its own `(* name *)` banner. -/
 def main (args : List String) : IO UInt32 := do
   let jsonMode := args.contains "--json"
   let rest := args.filter (fun a => a != "--json")
-  let rec split : List String → Option String × List String
-    | "--config" :: f :: tl => let (_, r) := split tl; (some f, r)
-    | a :: tl => let (c, r) := split tl; (c, a :: r)
-    | [] => (none, [])
-  let (configFile, files) := split rest
+  let rec split : List String → Option String × Option String × List String
+    | "--config" :: f :: tl => let (_, o, r) := split tl; (some f, o, r)
+    | "-o" :: d :: tl => let (c, _, r) := split tl; (c, some d, r)
+    | a :: tl => let (c, o, r) := split tl; (c, o, a :: r)
+    | [] => (none, none, [])
+  let (configFile, outDir, files) := split rest
   let configText ← match configFile with
     | some f => IO.FS.readFile f
     | none => pure ""
@@ -86,5 +96,13 @@ def main (args : List String) : IO UInt32 := do
     return 0
   else
     match result with
-    | .ok o => IO.print o.ocaml; return 0
+    | .ok o =>
+        match outDir with
+        | none => IO.print o.ocaml
+        | some dir =>
+            IO.FS.createDirAll dir
+            for (name, text) in o.units do
+              IO.FS.writeFile (dir ++ "/" ++ name) text
+            IO.println s!"wrote {o.units.length} files to {dir}/"
+        return 0
     | .error msg => (← IO.getStderr).putStrLn msg; return 1

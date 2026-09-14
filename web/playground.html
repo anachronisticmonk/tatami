@@ -752,60 +752,116 @@
     return col.ty === "coll" ? base : base + (col.nullable ? " option" : "");
   }
 
-  function render(tables) {
+  function lowerFirst(n) { return n.charAt(0).toLowerCase() + n.slice(1); }
+  function fileNameOf(n) { return lowerFirst(n) + ".mli"; }
+  /* A table's key type inside Ids: its module name, lowercased. A foreign key
+     names a type here rather than in the module it points into, which is what
+     keeps the units acyclic -- OCaml units cannot be mutually recursive. */
+  function idTypeName(p) { return lowerFirst(moduleName(p)); }
+  var IDS = "Ids";
+
+  function renderUnits(tables) {
     var names = tables.map(function (t) { return moduleName(t.path); });
     names.forEach(function (n, i) {
       if (names.indexOf(n) !== i) throw { msg: "two tables would both be called " + n + "." };
+      if (n === IDS)
+        throw { msg: "the table at " + tables[i].path + " would be called Ids, which is the " +
+                     "module holding every table's key type. Rename the member it is reached through." };
     });
 
-    // a reference between two different modules that runs both ways makes the
-    // group cyclic; a table that only points at itself does not
-    var recursive = tables.some(function (t) {
-      return t.parent && moduleName(t.parent) !== moduleName(t.path);
-    });
+    /* Every table's key type, abstract, and nothing else. There is
+       deliberately no way to make one: every path that would reach a row is a
+       hole, so nothing generated ever needs to construct a key, and exposing
+       an injection would only let a consumer build a foreign key naming a row
+       that does not exist. */
+    var units = [
+      { name: "ids.mli",
+        text: "(* ids.mli *)\n\n" +
+              tables.map(function (t) { return "type " + idTypeName(t.path); }).join("\n") + "\n" },
+      { name: "ids.ml",
+        text: "(* ids.ml *)\n\n" +
+              tables.map(function (t) { return "type " + idTypeName(t.path) + " = int"; }).join("\n") + "\n" }
+    ];
 
-    var mods = tables.map(function (t, i) {
+    tables.forEach(function (t) {
       var self = moduleName(t.path);
       function ref(p, n) {
         return moduleName(p) === self ? (n === "id" ? "id" : n) : moduleName(p) + "." + n;
       }
-      var fields = ["id : id"], accessors = [];
+      /* Phase 1 emits no shredder, so every way of reaching a row is a hole;
+         every way of reading one is a projection. */
+      function hole(what) {
+        return 'failwith "' + self + "." + what + ': no row source"';
+      }
+      /* `get` keys on id, this keys on parent_id, and the child owns both.
+         The parent's accessor delegates to it. */
+      function childLookup(parent) { return "of_" + idTypeName(parent); }
+
+      var fields = ["id : id"], accessors = [], bodies = [];
+      var lookup = [], lookupImpl = [], lookupName = null;
       var posName = t.keyed ? "key" : "idx";
       if (t.parent) {
-        var idTy = ref(t.parent, "id"), posTy = t.keyed ? "string" : "int";
+        var idTy = IDS + "." + idTypeName(t.parent), posTy = t.keyed ? "string" : "int";
         fields.push("parent_id : " + idTy);
         fields.push(posName + " : " + posTy);
+        lookupName = childLookup(t.parent);
+        lookup = ["val " + lookupName + " : " + idTy + " -> t list"];
+        lookupImpl = ["let " + lookupName + " _ = " + hole(lookupName)];
       }
       t.members.forEach(function (m) {
         var name = mangle(m.key);
         if (name === "id" || (t.parent && (name === "parent_id" || name === posName)))
           throw { msg: "the member " + m.key + " collides with the generated " + name + " column." };
+        // every column now carries an accessor, so every column can collide
+        if (name === "get" || name === lookupName)
+          throw { msg: "the member " + m.key + " needs an accessor of that name, " +
+                       "which collides with the generated " + name + "." };
         if (m.ty === "coll") {
-          if (name === "get")
-            throw { msg: "the member " + m.key + " holds an object, so it needs an accessor of " +
-                         "that name, which collides with the generated get." };
-          accessors.push("  val " + name + " : t -> " + ref(m.ref, "t") + " list");
+          accessors.push("val " + name + " : t -> " + ref(m.ref, "t") + " list");
+          // delegate: the rows are the child's, and so is the parent_id column
+          bodies.push("let " + name + " r = " + moduleName(m.ref) + "." +
+                      childLookup(t.path) + " r.id");
           return;
         }
         fields.push(name + " : " + ocamlType(m, self));
         if (m.ty === "ref") {
-          if (name === "get")
-            throw { msg: "the member " + m.key + " holds an object, so it needs an accessor of " +
-                         "that name, which collides with the generated get." };
-          accessors.push("  val " + name + " : t -> " + ref(m.ref, "t") +
+          accessors.push("val " + name + " : t -> " + ref(m.ref, "t") +
                          (m.nullable ? " option" : ""));
+          bodies.push("let " + name + " r = " + (m.nullable
+            ? "Option.map " + moduleName(m.ref) + ".get r." + name
+            : moduleName(m.ref) + ".get r." + name));
+        } else {
+          // the design note's `val a : Root.t -> int` / `let a r = r.a`; this
+          // is what Phase 2 rewrites into a yielding accessor
+          accessors.push("val " + name + " : t -> " + ocamlType(m, self));
+          bodies.push("let " + name + " r = r." + name);
         }
       });
-      var kw = recursive ? (i === 0 ? "module rec" : "and") : "module";
-      return kw + " " + moduleName(t.path) + " : sig\n" +
-             "  type id\n" +
-             "  type t = { " + fields.join("; ") + " }\n" +
-             "  val get : id -> t\n" +
-             (accessors.length ? accessors.join("\n") + "\n" : "") +
-             "end";
+      var types = "type id = " + IDS + "." + idTypeName(t.path) + "\n" +
+                  "type t = { " + fields.join("; ") + " }\n";
+      units.push({
+        name: fileNameOf(self),
+        text: "(* " + fileNameOf(self) + " *)\n\n" + types +
+              "val get : id -> t\n" +
+              (lookup.length ? lookup.join("\n") + "\n" : "") +
+              (accessors.length ? accessors.join("\n") + "\n" : "")
+      });
+      var implFile = lowerFirst(self) + ".ml";
+      units.push({
+        name: implFile,
+        text: "(* " + implFile + " *)\n\n" + types +
+              "let get _ = " + hole("get") + "\n" +
+              (lookupImpl.length ? lookupImpl.join("\n") + "\n" : "") +
+              (bodies.length ? bodies.join("\n") + "\n" : "")
+      });
     });
 
-    return "(* generated.mli *)\n\n" + mods.join("\n\n") + "\n";
+    return units;
+  }
+
+  /* Every unit in one text, for anything that wants a single string. */
+  function render(tables) {
+    return renderUnits(tables).map(function (u) { return u.text; }).join("\n");
   }
 
   /* ------------------------------------------------------------------
@@ -1022,11 +1078,13 @@
     return g;
   }
 
+  /* Each file is one module, so the file list is the module list. What is
+     worth outlining inside a file is its declarations. */
   function outline(text) {
     var out = [], lines = text.split("\n");
     for (var i = 0; i < lines.length; i++) {
-      var m = /^(?:module rec|module|and)\s+([A-Za-z0-9_']+)\s*:/.exec(lines[i]);
-      if (m) out.push({ name: m[1], line: i });
+      var m = /^(?:type|val)\s+([A-Za-z0-9_']+)/.exec(lines[i]);
+      if (m) out.push({ name: lines[i].split(/\s+/)[0] + " " + m[1], line: i });
     }
     return out;
   }
@@ -1039,13 +1097,14 @@
     });
     var mods = current() ? outline(current().text) : [];
     if (mods.length) {
-      html += "<h4>Modules</h4>";
+      html += "<h4>In this file</h4>";
       mods.forEach(function (m) {
         html += '<button class="indent" data-line="' + m.line + '">' + esc(m.name) + "</button>";
       });
     }
     filesEl.innerHTML = html;
-    $("n-modules").textContent = mods.length ? String(mods.length) : "";
+    var moduleCount = files.filter(function (f) { return f.name !== "ids.mli"; }).length;
+    $("n-modules").textContent = moduleCount ? String(moduleCount) : "";
   }
 
   function paint() {
@@ -1144,8 +1203,12 @@
     try {
       var docs = documents(readJson(src));
       var tables = infer(docs, configForWire());
+      var units = renderUnits(tables);
       return {
-        ok: true, ocaml: render(tables), documents: docs.length,
+        ok: true,
+        ocaml: units.map(function (u) { return u.text; }).join("\n"),
+        files: units.map(function (u) { return { name: u.name, ocaml: u.text }; }),
+        documents: docs.length,
         tables: tables.map(function (t) {
           return {
             path: pathString(t.path), module: moduleName(t.path), visits: t.visits,
@@ -1257,7 +1320,9 @@
 
     surface.style.display = "";
     errbox.innerHTML = "";
-    files = [{ name: "generated.mli", generated: rep.ocaml, text: rep.ocaml, edited: false }];
+    files = (rep.files || []).map(function (u) {
+      return { name: u.name, generated: u.ocaml, text: u.ocaml, edited: false };
+    });
     if (openIndex >= files.length) openIndex = 0;
     paint();
     renderFiles();

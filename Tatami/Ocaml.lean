@@ -8,9 +8,13 @@ namespace Tatami
     properties of the emitted code are statable about data rather than about
     a string.
 
-    It grows one construct at a time as the input fragment grows. At this
-    stage a flat object needs no list type and no module references, so it
-    has neither. -/
+    It grows one construct at a time as the input fragment grows.
+
+    Phase 1 emits implementations as well as signatures (design note §3: the
+    note shows `val a : Root.t -> int` beside `let a r = r.a`), and Phase 2 is
+    a *source-to-source pass over that generated code*. So the bodies have to
+    be data too, or Phase 2 is string rewriting and nothing about it can be
+    stated. `Expr` below is grown to exactly what those bodies need. -/
 
 inductive TyExpr where
   | id
@@ -26,6 +30,17 @@ inductive TyExpr where
   | arrow  : TyExpr → TyExpr → TyExpr
   deriving Repr, Inhabited
 
+/-- Expressions, only as far as the emitted bodies reach: a projection, a
+    call into another module, and the placeholder standing where a row source
+    would be. Nothing here can compute. -/
+inductive Expr where
+  | var   : String → Expr             -- r
+  | field : Expr → String → Expr      -- r.a
+  | qual  : String → String → Expr    -- B.get
+  | str   : String → Expr             -- "..."
+  | app   : Expr → List Expr → Expr   -- f x y
+  deriving Repr, Inhabited
+
 structure RecField where
   name : String
   ty : TyExpr
@@ -33,20 +48,29 @@ structure RecField where
 
 inductive Decl where
   | abstractType : String → Decl
+  /-- `type id = Ids.root`: a name for a type declared elsewhere. Each unit
+      gives its key type such a name, so that `Root.id` stays writable while
+      the type itself lives in `Ids` and no unit depends on another for it. -/
+  | typeAlias    : String → TyExpr → Decl
   | recordType   : String → List RecField → Decl
   | value        : String → TyExpr → Decl
+  /-- `let a r = r.a`: an implementation. Only appears in a `.ml`. -/
+  | letValue     : String → List String → Expr → Decl
   deriving Repr
 
 structure Module where
   name : String
+  /-- the `.mli` -/
   decls : List Decl
+  /-- the `.ml`. Well-formedness is stated of `decls` only: the signature is
+      what a consumer compiles against, and the implementation is checked by
+      OCaml against it. -/
+  impl : List Decl := []
   deriving Repr
 
+/-- Every module the generator emits, each of which becomes one `.mli`
+    compilation unit, in the order they must be compiled. -/
 structure File where
-  /-- true when the modules refer to one another in a cycle, which an array
-      always creates: the parent reaches the elements, the elements carry a
-      key back to the parent -/
-  recursive : Bool
   modules : List Module
   deriving Repr
 

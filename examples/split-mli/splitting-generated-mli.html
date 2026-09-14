@@ -1,0 +1,846 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<style>
+  :root { color-scheme: light; }
+  body { margin: 0; font: 14px/1.5 system-ui, sans-serif; }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+</style>
+</head>
+<body>
+<title>Splitting generated.mli</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+
+<style>
+  :root {
+    --paper:      #F2F4F6;
+    --surface:    #FFFFFF;
+    --surface-2:  #E8ECF0;
+    --ink:        #151B21;
+    --ink-2:      #3D4A57;
+    --muted:      #667585;
+    --line:       #D3DAE1;
+    --line-soft:  #E3E8ED;
+    --accent:     #1F6A8C;
+    --accent-bg:  #E3EFF5;
+    --ok:         #2C6E4E;
+    --ok-bg:      #DFEDE5;
+    --fail:       #A83B2A;
+    --fail-bg:    #F6E3DF;
+
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --serif: Spectral, ui-serif, Georgia, "Times New Roman", serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper:      #101419;
+      --surface:    #171C23;
+      --surface-2:  #1E252E;
+      --ink:        #E4EAF0;
+      --ink-2:      #B7C2CE;
+      --muted:      #8695A4;
+      --line:       #29313A;
+      --line-soft:  #212831;
+      --accent:     #6FB6D6;
+      --accent-bg:  #15303D;
+      --ok:         #63BE93;
+      --ok-bg:      #14301F;
+      --fail:       #E0887A;
+      --fail-bg:    #341914;
+    }
+  }
+
+  :root[data-theme="dark"] {
+    --paper:      #101419;
+    --surface:    #171C23;
+    --surface-2:  #1E252E;
+    --ink:        #E4EAF0;
+    --ink-2:      #B7C2CE;
+    --muted:      #8695A4;
+    --line:       #29313A;
+    --line-soft:  #212831;
+    --accent:     #6FB6D6;
+    --accent-bg:  #15303D;
+    --ok:         #63BE93;
+    --ok-bg:      #14301F;
+    --fail:       #E0887A;
+    --fail-bg:    #341914;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  .wrap {
+    max-width: 68rem;
+    margin: 0 auto;
+    padding-inline: 20px;
+    padding-block: 0 72px;
+  }
+
+  .col { max-width: 40rem; }
+
+  /* ---------- masthead ---------- */
+
+  header.masthead {
+    border-bottom: 2px solid var(--ink);
+    padding-block: 44px 22px;
+    margin-bottom: 40px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.1em;
+    text-transform: uppercase;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: clamp(2rem, 5.2vw, 3rem);
+    line-height: 1.1;
+    letter-spacing: -0.015em;
+    margin: 0 0 14px;
+    text-wrap: balance;
+  }
+
+  .standfirst {
+    font-family: var(--serif);
+    font-size: clamp(1.05rem, 2.2vw, 1.25rem);
+    line-height: 1.5;
+    color: var(--ink-2);
+    margin: 0;
+    max-width: 44rem;
+  }
+
+  .meta {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 26px;
+    margin-top: 26px;
+    font-family: var(--mono);
+    font-size: 12px;
+    color: var(--muted);
+  }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---------- sections ---------- */
+
+  section { margin-bottom: 52px; }
+
+  h2 {
+    font-family: var(--serif);
+    font-weight: 600;
+    font-size: 1.5rem;
+    line-height: 1.25;
+    letter-spacing: -0.01em;
+    margin: 0 0 4px;
+    text-wrap: balance;
+  }
+
+  .sec-num {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.08em;
+    color: var(--muted);
+    display: block;
+    margin-bottom: 8px;
+  }
+
+  h3 {
+    font-family: var(--sans);
+    font-weight: 600;
+    font-size: 1rem;
+    margin: 0 0 8px;
+  }
+
+  p { margin: 0 0 16px; }
+  p:last-child { margin-bottom: 0; }
+
+  .lede { color: var(--ink-2); }
+
+  code {
+    font-family: var(--mono);
+    font-size: 0.88em;
+    background: var(--surface-2);
+    padding: 1px 5px;
+    border-radius: 3px;
+  }
+
+  strong { font-weight: 600; }
+
+  /* ---------- code blocks ---------- */
+
+  pre {
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1.62;
+    background: var(--surface);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 14px 16px;
+    margin: 0;
+    overflow-x: auto;
+    white-space: pre;
+    tab-size: 2;
+  }
+  pre code { background: none; padding: 0; font-size: inherit; }
+
+  pre.err {
+    border-left-color: var(--fail);
+    color: var(--ink-2);
+  }
+
+  .cmt { color: var(--muted); }
+  .hl  { color: var(--accent); font-weight: 500; }
+  .bad { color: var(--fail); font-weight: 500; }
+
+  .filename {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    letter-spacing: 0.04em;
+    color: var(--muted);
+    margin: 0 0 6px;
+  }
+
+  .stack { display: flex; flex-direction: column; gap: 20px; }
+
+  /* ---------- three-up comparison ---------- */
+
+  .three {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 20px;
+    align-items: start;
+  }
+
+  .variant { display: flex; flex-direction: column; gap: 8px; }
+
+  .variant-head {
+    display: flex;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 10px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 7px;
+  }
+
+  .variant-head h3 { margin: 0; }
+
+  .pill {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    padding: 2px 7px;
+    border-radius: 2px;
+    white-space: nowrap;
+  }
+  .pill.ok   { color: var(--ok);   background: var(--ok-bg); }
+  .pill.fail { color: var(--fail); background: var(--fail-bg); }
+
+  .order {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--muted);
+  }
+  .order b { color: var(--ink-2); font-weight: 500; }
+
+  /* ---------- callout ---------- */
+
+  .note {
+    background: var(--accent-bg);
+    border-left: 3px solid var(--accent);
+    padding: 16px 18px;
+    font-size: 15px;
+  }
+  .note p { margin-bottom: 10px; }
+  .note p:last-child { margin-bottom: 0; }
+
+  /* ---------- figure ---------- */
+
+  figure { margin: 0; }
+
+  .panels {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+    gap: 18px;
+  }
+
+  .panel {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 14px 12px 10px;
+  }
+
+  .panel h3 {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 500;
+    letter-spacing: 0.06em;
+    text-transform: uppercase;
+    color: var(--muted);
+    text-align: center;
+    margin: 0 0 6px;
+  }
+
+  .panel svg { display: block; width: 100%; height: auto; color: var(--ink-2); }
+
+  figcaption {
+    font-size: 13.5px;
+    color: var(--muted);
+    margin-top: 14px;
+    max-width: 46rem;
+    line-height: 1.55;
+  }
+
+  /* ---------- results table ---------- */
+
+  .table-scroll { overflow-x: auto; }
+
+  table {
+    border-collapse: collapse;
+    width: 100%;
+    min-width: 30rem;
+    font-size: 14.5px;
+  }
+
+  th, td {
+    text-align: left;
+    padding: 11px 14px;
+    border-bottom: 1px solid var(--line-soft);
+  }
+
+  thead th {
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: 0.07em;
+    text-transform: uppercase;
+    color: var(--muted);
+    font-weight: 500;
+    border-bottom: 1px solid var(--line);
+  }
+
+  tbody th {
+    font-family: var(--mono);
+    font-weight: 400;
+    font-size: 13px;
+    color: var(--ink-2);
+    white-space: nowrap;
+  }
+
+  /* ---------- trade-off cards ---------- */
+
+  .two {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 22px;
+  }
+
+  .card {
+    background: var(--surface);
+    border: 1px solid var(--line);
+    padding: 20px 22px;
+  }
+
+  .card h3 {
+    font-family: var(--serif);
+    font-size: 1.2rem;
+    font-weight: 600;
+    margin-bottom: 4px;
+  }
+
+  .card .sub {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    color: var(--accent);
+    margin: 0 0 14px;
+  }
+
+  ul.points {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+    font-size: 14.5px;
+    line-height: 1.55;
+  }
+
+  ul.points li {
+    padding-left: 20px;
+    position: relative;
+    color: var(--ink-2);
+  }
+  ul.points li::before {
+    content: "+";
+    position: absolute;
+    left: 0;
+    top: 0;
+    font-family: var(--mono);
+    color: var(--ok);
+  }
+  ul.points li.cost::before { content: "\2212"; color: var(--fail); }
+
+  /* ---------- the ask ---------- */
+
+  .ask {
+    border-top: 2px solid var(--ink);
+    padding-top: 24px;
+  }
+
+  ol.questions {
+    margin: 0;
+    padding-left: 1.3em;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+    font-size: 15.5px;
+    color: var(--ink-2);
+    max-width: 42rem;
+  }
+  ol.questions li::marker { font-family: var(--mono); font-size: 13px; color: var(--accent); }
+
+  .repro {
+    margin-top: 32px;
+    font-size: 13.5px;
+    color: var(--muted);
+  }
+
+  @media (max-width: 860px) {
+    .three, .panels, .two { grid-template-columns: minmax(0, 1fr); }
+  }
+</style>
+
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Tatami &middot; Phase 1 &middot; decision needed</p>
+    <h1>Splitting generated.mli</h1>
+    <p class="standfirst">We want one <code>.mli</code> per module instead of one file holding all of them. Referential integrity is what makes that hard, because the foreign key and the join form a cycle &mdash; and OCaml compilation units cannot be mutually recursive. Two ways out, both verified.</p>
+    <div class="meta">
+      <span><b>Checked with</b> ocamlc 5.5.0</span>
+      <span><b>Files</b> examples/split-mli/</span>
+      <span><b>Status</b> nothing implemented yet</span>
+    </div>
+  </header>
+
+  <section class="col">
+    <span class="sec-num">01</span>
+    <h2>Why the file can&rsquo;t just be cut apart</h2>
+    <p class="lede">Today every module lands in one file, so <code>module rec</code> lets them refer to each other freely. As soon as the document contains a collection, those references form a genuine cycle:</p>
+    <pre><code><span class="cmt">(* generated.mli, as emitted today *)</span>
+module rec Xs : sig
+  type t = { id : id; parent_id : <span class="hl">Root.id</span>; idx : int; n : int }   <span class="cmt">(* Xs &rarr; Root *)</span>
+end
+and Root : sig
+  val xs : t -&gt; <span class="hl">Xs.t</span> list                                      <span class="cmt">(* Root &rarr; Xs *)</span>
+end</code></pre>
+    <p style="margin-top:16px"><code>Xs</code> names <code>Root.id</code> &mdash; that is the foreign key. <code>Root</code> names <code>Xs.t</code> &mdash; that is the join. <strong>The cycle is the referential integrity.</strong> It is fine inside one file and impossible across two, so splitting means deliberately removing one of the two arrows.</p>
+  </section>
+
+  <section>
+    <div class="col">
+      <span class="sec-num">02</span>
+      <h2>Cutting it apart unchanged fails both ways round</h2>
+      <p class="lede">There is no ordering that rescues it. Each attempt fails on the half of the cycle the other one satisfied:</p>
+    </div>
+    <div class="two" style="margin-top:20px">
+      <div class="variant">
+        <p class="filename">ocamlc -c b.mli xs.mli root.mli</p>
+        <pre class="err"><code>File "xs.mli", line 2:
+type t = { id : id; parent_id : <span class="bad">Root</span>.id; ... }
+                                <span class="bad">^^^^</span>
+Error: <span class="bad">Unbound module Root</span></code></pre>
+      </div>
+      <div class="variant">
+        <p class="filename">ocamlc -c b.mli root.mli xs.mli</p>
+        <pre class="err"><code>File "root.mli", line 5:
+val xs : t -&gt; <span class="bad">Xs</span>.t list
+              <span class="bad">^^</span>
+Error: <span class="bad">Unbound module Xs</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <span class="sec-num">03</span>
+      <h2>The edge each option removes</h2>
+    </div>
+    <figure style="margin-top:18px">
+      <div class="panels">
+
+        <div class="panel">
+          <h3>Today &mdash; one file</h3>
+          <svg viewBox="0 0 260 250" role="img" aria-label="Root and Xs each reference the other, forming a cycle that only module rec permits.">
+            <defs>
+              <marker id="a1" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="#A83B2A"></path>
+              </marker>
+            </defs>
+            <rect x="60" y="22" width="140" height="42" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="130" y="48" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">root.mli</text>
+            <rect x="60" y="176" width="140" height="42" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="130" y="202" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">xs.mli</text>
+
+            <line x1="100" y1="176" x2="100" y2="70" stroke="#A83B2A" stroke-width="1.4" marker-end="url(#a1)"></line>
+            <text x="93" y="112" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="11" fill="#A83B2A">parent_id</text>
+
+            <line x1="162" y1="64" x2="162" y2="170" stroke="#A83B2A" stroke-width="1.4" marker-end="url(#a1)"></line>
+            <text x="169" y="112" text-anchor="start" font-family="IBM Plex Mono, monospace" font-size="11" fill="#A83B2A">val xs</text>
+
+            <text x="130" y="140" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="10.5" fill="#A83B2A">cycle</text>
+          </svg>
+        </div>
+
+        <div class="panel">
+          <h3>Option A &mdash; shared ids</h3>
+          <svg viewBox="0 0 260 250" role="img" aria-label="Option A removes the Xs to Root reference by moving every key type into a shared Ids module, leaving only downward references.">
+            <defs>
+              <marker id="a2" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+              </marker>
+            </defs>
+            <rect x="60" y="22" width="140" height="42" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="130" y="48" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">root.mli</text>
+            <rect x="60" y="116" width="140" height="42" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="130" y="142" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">xs.mli</text>
+            <rect x="60" y="196" width="140" height="38" rx="2" fill="none" stroke="currentColor" stroke-width="1.4" stroke-dasharray="0"></rect>
+            <text x="130" y="220" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">ids.mli</text>
+
+            <line x1="100" y1="64" x2="100" y2="110" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></line>
+            <text x="93" y="92" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">val xs</text>
+
+            <line x1="100" y1="158" x2="100" y2="190" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></line>
+            <text x="93" y="180" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">parent_id</text>
+
+            <path d="M 200 43 L 232 43 L 232 215 L 206 215" fill="none" stroke="currentColor" stroke-width="1.4" marker-end="url(#a2)"></path>
+            <text x="238" y="132" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor" transform="rotate(90 238 132)">type id</text>
+
+            <line x1="46" y1="176" x2="46" y2="70" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 3" opacity="0.4"></line>
+            <text x="46" y="126" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor" opacity="0.55">&times;</text>
+          </svg>
+        </div>
+
+        <div class="panel">
+          <h3>Option B &mdash; accessor moves</h3>
+          <svg viewBox="0 0 260 250" role="img" aria-label="Option B removes the Root to Xs reference by moving the collection accessor onto the child, leaving only the upward foreign key.">
+            <defs>
+              <marker id="a3" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto-start-reverse">
+                <path d="M 0 0 L 10 5 L 0 10 z" fill="currentColor"></path>
+              </marker>
+            </defs>
+            <rect x="60" y="22" width="140" height="42" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="130" y="48" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">root.mli</text>
+            <rect x="60" y="176" width="140" height="42" rx="2" fill="none" stroke="currentColor" stroke-width="1.4"></rect>
+            <text x="130" y="202" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor">xs.mli</text>
+
+            <line x1="100" y1="176" x2="100" y2="70" stroke="currentColor" stroke-width="1.4" marker-end="url(#a3)"></line>
+            <text x="93" y="106" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">parent_id</text>
+            <text x="93" y="124" text-anchor="end" font-family="IBM Plex Mono, monospace" font-size="11" fill="currentColor">of_root</text>
+
+            <line x1="162" y1="64" x2="162" y2="170" stroke="currentColor" stroke-width="1.2" stroke-dasharray="3 3" opacity="0.4"></line>
+            <text x="162" y="121" text-anchor="middle" font-family="IBM Plex Mono, monospace" font-size="13" fill="currentColor" opacity="0.55">&times;</text>
+          </svg>
+        </div>
+
+      </div>
+      <figcaption><code>root.mli</code> and <code>xs.mli</code> sit in the same place in all three panels, so the difference is the arrow that disappears. A dashed line with &times; marks the reference each option removes. Red marks the pair of references that form the cycle; every solid arrow that remains points one way only.</figcaption>
+    </figure>
+  </section>
+
+  <section class="col">
+    <span class="sec-num">04</span>
+    <h2>The design note&rsquo;s own example can&rsquo;t decide this</h2>
+    <div class="note">
+      <p><code>{ "a": 1, "b": { "c": 1, "d": 2 } }</code> &mdash; &sect;2.1 Step 1 &mdash; has a nested object but <strong>no collection</strong>, so there is no cycle in it.</p>
+      <p>Split naively, under option A, under option B: <strong>all three compile.</strong> The note&rsquo;s example is in the repo as the reference everything is measured against, but the comparison below uses the same document with one repeated substructure added, because that is the only shape where the two proposals differ.</p>
+    </div>
+    <p style="margin-top:18px" class="lede">The document used throughout the rest of this page:</p>
+    <pre><code>{ "a": 1, "b": { "c": 1, "d": 2 }, <span class="hl">"xs": [ { "n": 1 }, { "n": 2 } ]</span> }</code></pre>
+  </section>
+
+  <section>
+    <div class="col">
+      <span class="sec-num">05</span>
+      <h2>What each one actually emits</h2>
+      <p class="lede">The <code>b.mli</code> module is identical in all three and is left out here. Full files are in <code>examples/split-mli/d2-with-collection/</code>.</p>
+    </div>
+
+    <div class="three" style="margin-top:22px">
+
+      <div class="variant">
+        <div class="variant-head">
+          <h3>Today</h3>
+          <span class="pill fail">one file</span>
+        </div>
+        <p class="filename">generated.mli</p>
+        <pre><code>module rec Xs : sig
+  type id
+  type t = { id : id;
+    parent_id : <span class="hl">Root.id</span>;
+    idx : int; n : int }
+  val get : id -&gt; t
+end
+
+and B : sig ... end
+
+and Root : sig
+  type id
+  type t = { id : id; a : int;
+             b : B.id }
+  val get : id -&gt; t
+  val b : t -&gt; B.t
+  val xs : t -&gt; <span class="hl">Xs.t</span> list
+end</code></pre>
+        <p class="order">order &mdash; <b>n/a, single unit</b></p>
+      </div>
+
+      <div class="variant">
+        <div class="variant-head">
+          <h3>Option A</h3>
+          <span class="pill ok">compiles</span>
+        </div>
+        <p class="filename">ids.mli</p>
+        <pre><code><span class="cmt">(* every table's key type *)</span>
+type xs
+type b
+type root</code></pre>
+        <p class="filename" style="margin-top:6px">xs.mli</p>
+        <pre><code>type id = Ids.xs
+type t = { id : id;
+  parent_id : <span class="hl">Ids.root</span>;
+  idx : int; n : int }
+val get : id -&gt; t</code></pre>
+        <p class="filename" style="margin-top:6px">root.mli</p>
+        <pre><code>type id = Ids.root
+type t = { id : id; a : int;
+           b : B.id }
+val get : id -&gt; t
+val b : t -&gt; B.t
+val xs : t -&gt; Xs.t list</code></pre>
+        <p class="order">order &mdash; <b>ids, xs, b, root</b><br>deepest-first, unchanged</p>
+      </div>
+
+      <div class="variant">
+        <div class="variant-head">
+          <h3>Option B</h3>
+          <span class="pill ok">compiles</span>
+        </div>
+        <p class="filename">root.mli</p>
+        <pre><code>type id
+type t = { id : id; a : int;
+           b : B.id }
+val get : id -&gt; t
+val b : t -&gt; B.t</code></pre>
+        <p class="filename" style="margin-top:6px">xs.mli</p>
+        <pre><code>type id
+type t = { id : id;
+  parent_id : <span class="hl">Root.id</span>;
+  idx : int; n : int }
+val get : id -&gt; t
+val <span class="hl">of_root</span> : Root.id -&gt; t list</code></pre>
+        <p class="order">order &mdash; <b>b, root, xs</b><br>needs a topological sort</p>
+      </div>
+
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <span class="sec-num">06</span>
+      <h2>What the compiler says</h2>
+      <p class="lede">Every row is <code>ocamlc -c</code> on the real files. D1 is the design note&rsquo;s document; D2 adds the collection.</p>
+    </div>
+    <div class="table-scroll" style="margin-top:18px">
+      <table>
+        <thead>
+          <tr>
+            <th scope="col">Variant</th>
+            <th scope="col">D1 &mdash; no collection</th>
+            <th scope="col">D2 &mdash; with collection</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <th scope="row">naive split</th>
+            <td><span class="pill ok">compiles</span></td>
+            <td><span class="pill fail">fails, both orders</span></td>
+          </tr>
+          <tr>
+            <th scope="row">option A</th>
+            <td><span class="pill ok">compiles</span></td>
+            <td><span class="pill ok">compiles</span></td>
+          </tr>
+          <tr>
+            <th scope="row">option B</th>
+            <td><span class="pill ok">compiles</span></td>
+            <td><span class="pill ok">compiles</span></td>
+          </tr>
+        </tbody>
+      </table>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <span class="sec-num">07</span>
+      <h2>Referential integrity holds either way</h2>
+      <p class="lede">This is the thing worth checking, and it does <strong>not</strong> separate the two. Both consumers below were type-checked against the generated <code>.cmi</code> files under each option.</p>
+    </div>
+
+    <div class="two" style="margin-top:20px">
+      <div class="variant">
+        <div class="variant-head">
+          <h3>The join, both directions</h3>
+          <span class="pill ok">accepted &times;2</span>
+        </div>
+        <p class="filename">use.ml &mdash; option A</p>
+        <pre><code>let children (r : Root.t) : Xs.t list =
+  Root.xs r
+let owner (x : Xs.t) : Root.t =
+  Root.get x.Xs.parent_id</code></pre>
+        <p class="filename" style="margin-top:6px">use.ml &mdash; option B</p>
+        <pre><code>let children (r : Root.t) : Xs.t list =
+  Xs.of_root r.Root.id
+let owner (x : Xs.t) : Root.t =
+  Root.get x.Xs.parent_id</code></pre>
+      </div>
+
+      <div class="variant">
+        <div class="variant-head">
+          <h3>Forging a key</h3>
+          <span class="pill fail">rejected &times;2</span>
+        </div>
+        <p class="filename">forge.ml &mdash; option A</p>
+        <pre class="err"><code>let bad : <span class="bad">Ids.root</span> = 0
+<span class="cmt">Error: The constant 0 has type int
+  but an expression was expected of
+  type Ids.root</span></code></pre>
+        <p class="filename" style="margin-top:6px">forge.ml &mdash; option B</p>
+        <pre class="err"><code>let bad : <span class="bad">Root.id</span> = 0
+<span class="cmt">Error: The constant 0 has type int
+  but an expression was expected of
+  type Root.id</span></code></pre>
+      </div>
+    </div>
+  </section>
+
+  <section>
+    <div class="col">
+      <span class="sec-num">08</span>
+      <h2>What actually separates them</h2>
+    </div>
+    <div class="two" style="margin-top:20px">
+
+      <div class="card">
+        <h3>Option A</h3>
+        <p class="sub">a shared ids.mli</p>
+        <ul class="points">
+          <li>Accessors stay on the parent, matching the design note&rsquo;s &sect;2.1 correspondence &mdash; <em>joining on a foreign key becomes an accessor function</em>.</li>
+          <li>Emit order stays deepest-first, which is the order tables already come out in. No new sorting code.</li>
+          <li>A foreign key into a nested object still reads <code>b : B.id</code>, exactly as the note writes it. Only collection back-references change.</li>
+          <li><code>Root.id</code> stays usable everywhere &mdash; it is a transparent alias for the abstract <code>Ids.root</code>.</li>
+          <li class="cost">One extra generated file, and <code>Ids</code> becomes a reserved module name that a table called <code>ids</code> would collide with.</li>
+        </ul>
+      </div>
+
+      <div class="card">
+        <h3>Option B</h3>
+        <p class="sub">the accessor moves to the child</p>
+        <ul class="points">
+          <li>No extra file. Every <code>id</code> stays abstract inside its own module, exactly as now.</li>
+          <li><code>Xs.of_root</code> reads like the query it lowers to &mdash; <code>select * from xs where parent_id = ?</code> &mdash; which may matter more for the Phase 2 work than it does here.</li>
+          <li class="cost"><code>Root.xs r</code> becomes <code>Xs.of_root r.Root.id</code>. The join reads from the child, which is the opposite of where the note puts it.</li>
+          <li class="cost">Emit order stops being deepest-first: nested objects order parent-after-child, collections order parent-before-child. Needs a real topological sort instead of the current length sort.</li>
+        </ul>
+      </div>
+
+    </div>
+  </section>
+
+  <section class="ask col">
+    <span class="sec-num">09</span>
+    <h2>What we need to decide</h2>
+    <ol class="questions">
+      <li>Where should the join accessor live &mdash; on the parent (<code>Root.xs</code>) or on the child (<code>Xs.of_root</code>)?</li>
+      <li>Is one extra generated module, <code>ids.mli</code>, acceptable in the output?</li>
+      <li>For the query-optimisation work: does <code>Xs.of_root : Root.id -&gt; t list</code> carry more useful information than <code>Root.xs : t -&gt; Xs.t list</code>, or less?</li>
+    </ol>
+    <p class="repro">Everything here is hand-written to compare the two before either is built &mdash; nothing in <code>Tatami/</code> has changed. Run <code>examples/split-mli/check.sh</code> to reproduce every result on this page.</p>
+  </section>
+
+</div>
+
+
+<style>
+  @page { size: A4 portrait; margin: 13mm 12mm 14mm; }
+
+  @media print {
+    html, body { background: #fff !important; }
+
+    body { font-size: 10.4pt; line-height: 1.5; }
+
+    /* a real gutter inside the page margin: without it the rightmost column's
+       border and the ordered-list markers land on the clip boundary */
+    .wrap { max-width: none; padding-inline: 4mm; padding-block: 0; }
+
+    /* the side-by-side comparisons are the point of the page: keep them */
+    .three  { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 12px !important; }
+    .panels { grid-template-columns: repeat(3, minmax(0, 1fr)) !important; gap: 10px !important; }
+    .two    { grid-template-columns: repeat(2, minmax(0, 1fr)) !important; gap: 14px !important; }
+
+    pre { font-size: 7.9pt; line-height: 1.5; padding: 9px 10px; overflow: visible; }
+    .three pre { font-size: 7.4pt; padding: 8px; }
+    .card { padding: 12px 15px; }
+    .ask { padding-top: 18px; }
+    .repro { margin-top: 16px; }
+    ul.points { font-size: 9.2pt; gap: 7px; }
+    ol.questions { font-size: 10.4pt; padding-left: 1.7em; }
+    table { min-width: 0; font-size: 9.6pt; }
+    th, td { padding: 8px 10px; }
+
+    header.masthead { padding-block: 0 16px; margin-bottom: 26px; }
+    h1 { font-size: 27pt; }
+    .standfirst { font-size: 11.6pt; }
+    section { margin-bottom: 19px; }
+    h2 { font-size: 15.5pt; }
+    figcaption { font-size: 9.4pt; }
+
+    h1, h2, h3, .sec-num { break-after: avoid; }
+    pre, table, figure, .panel, .card, .note, .variant-head { break-inside: avoid; }
+    .masthead { break-after: avoid; }
+
+    /* "What each one actually emits" is the comparison everything else builds
+       to; give it a page so its three columns are not split from their heads */
+    .wrap > section:nth-of-type(5) { break-before: page; }
+
+    /* the published copy's address, in the masthead where it is seen first
+       rather than as a footer that would claim a page of its own */
+    .meta::after {
+      content: "Source claude.ai/code/artifact/0380906b-a557-4fab-a501-444c2d58a4ce";
+      color: var(--muted);
+    }
+  }
+</style>
+</body>
+</html>

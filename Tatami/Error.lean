@@ -11,7 +11,7 @@ inductive Error where
   | unsupportedAtThisStage (path : String) (found : String)
   | typeConflict (path : String) (left right : String)
   | reservedColumnName (name : String) (column : String)
-  | reservedAccessorName (name : String)
+  | reservedAccessorName (name : String) (generated : String)
   | moduleNameClash (name : String)
   | nestedArray (path : String)
   | mixedElements (path : String)
@@ -19,6 +19,7 @@ inductive Error where
   | markingMatchedNothing (path : String)
   | mapEntryNotSupported (path : String) (found : String)
   | illFormedSignature (wherein : String)
+  | reservedModuleName (path : String)
 
 def Error.toString : Error → String
   | .notObjectOrArray found =>
@@ -31,8 +32,8 @@ def Error.toString : Error → String
       s!"the member {path} holds both {left} and {right}, which have no common type."
   | .reservedColumnName name column =>
       s!"the member {name} collides with the generated {column} column."
-  | .reservedAccessorName name =>
-      s!"the member {name} holds an object, so it needs an accessor of that name, which collides with the generated get."
+  | .reservedAccessorName name generated =>
+      s!"the member {name} needs an accessor of that name, which collides with the generated {generated}."
   | .moduleNameClash name =>
       s!"two tables would both be called {name}."
   | .nestedArray path =>
@@ -45,6 +46,8 @@ def Error.toString : Error → String
       s!"the configuration marks {path} as a map, but no object was found there."
   | .mapEntryNotSupported path found =>
       s!"the member at {path} is {found}. Map entries may be objects or scalars."
+  | .reservedModuleName path =>
+      s!"the table at {path} would be called Ids, which is the module holding every table's key type. Rename the member it is reached through."
   | .illFormedSignature wherein =>
       s!"the signature generated for {wherein} repeats a field, value or module name, so it would not compile. This is a bug in tatami; please report the input that produced it."
 

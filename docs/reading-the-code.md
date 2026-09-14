@@ -1,6 +1,6 @@
 # Reading the Lean implementation
 
-1489 lines across twelve files. Here is the order to read it in — each step
+1632 lines across twelve files. Here is the order to read it in — each step
 answers one question, and most have something you can run.
 
 ---
@@ -15,8 +15,9 @@ echo '{ "a": 1, "a": 2 }'                  | ./.lake/build/bin/tatami
 ```
 
 Ten minutes of this and the rest of the code has somewhere to attach. You will
-see the three shapes it produces — a plain module, a `module rec` group, and a
-rejection.
+see what it produces: an `.mli` **and** an `.ml` for every module, plus the
+shared `ids` pair, and a rejection. Add `-o DIR` to write them out instead of
+printing them — `examples/design-note/build.sh` compiles and runs a set.
 
 ## Step 1 — The spine: `Main.lean:12`, `pipeline`
 
@@ -110,14 +111,17 @@ get right.
 
 ## Step 5 — The other half: `Ocaml.lean` → `Gen.lean` → `Print.lean`
 
-- **`Ocaml.lean`** (53 lines) — the output language, all of it. It cannot
-  express a function body or any expression. That is deliberate; the docstring
-  says why.
+- **`Ocaml.lean`** — the output language, all of it: `TyExpr` for types,
+  `Expr` for the five things an emitted body can be, `Decl`, `Module` (a
+  signature *and* an implementation), `File`. Read the docstring first — it
+  says why the bodies are data rather than text, and the reason is Phase 2.
 - **`Gen.lean:55`, `genModule`** — the design note's correspondence written as
   code. Read it beside §2.1 Step 4 of `tatami.pdf`; it is a line-by-line match.
 - **`Gen.lean:32`, `moduleName`** — how paths become module names.
-- **`Print.lean`** (51 lines) — deliberately dull. This is the step nothing can
-  vouch for.
+- **`Print.lean`** — deliberately dull, and the step nothing can vouch for.
+  `File.units` is the part to read: it decides the file names and the order
+  the units must be compiled in, which is load-bearing now that each module is
+  its own compilation unit.
 
 ## Step 6 — The two supporting files
 
@@ -181,7 +185,7 @@ the walk.
 
 | File | Lines | |
 |---|---:|---|
-| `Main.lean` | 90 | the pipeline, CLI, and `--json` report |
+| `Main.lean` | 108 | the pipeline, CLI, and `--json` report |
 | `Tatami/Doc.lean` | 464 | the document type and JSON reader |
 | `Tatami/Path.lean` | 72 | positions; a path identifies a table |
 | `Tatami/Ty.lean` | 68 | types and the join |
@@ -189,7 +193,7 @@ the walk.
 | `Tatami/Infer.lean` | 300 | the walk (four mutuals) and the accumulation |
 | `Tatami/Schema.lean` | 28 | the handoff |
 | `Tatami/Mangle.lean` | 87 | names |
-| `Tatami/Ocaml.lean` | 86 | the output language |
-| `Tatami/Gen.lean` | 135 | the correspondence, in code |
-| `Tatami/Print.lean` | 51 | output language to text |
-| `Tatami/Error.lean` | 53 | every rejection |
+| `Tatami/Ocaml.lean` | 110 | the output language |
+| `Tatami/Gen.lean` | 187 | the correspondence, in code |
+| `Tatami/Print.lean` | 97 | output language to text |
+| `Tatami/Error.lean` | 56 | every rejection |
