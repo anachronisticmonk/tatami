@@ -30,7 +30,7 @@ echo "shredding $CORPUS"
 echo "creating tables"
 psql < "$here/schema.sql"
 
-for t in owner repository topic run job label step; do
+for t in repo run job step; do
   printf '  copy %-11s' "$t"
   psql -c "COPY $t FROM STDIN" < "$TSV/$t.tsv"
   printf '%9s rows\n' "$(psql -tAc "select count(*) from $t")"

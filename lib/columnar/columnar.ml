@@ -152,53 +152,26 @@ let load path =
     | Some s -> table s
     | None -> failwith ("no schema for " ^ n)
   in
-  let repo = of_name "repository" and own = of_name "owner"
-  and top = of_name "topic" and run = of_name "run"
-  and job = of_name "job" and lab = of_name "label" and step = of_name "step" in
-  let topic_id = ref 0 and label_id = ref 0 in
+  let repo = of_name "repo" and run = of_name "run"
+  and job = of_name "job" and step = of_name "step" in
 
   ignore
     (Corpus.iter_json path ~f:(fun r ->
          let rid = gi "id" r in
-         let o = member "owner" r in
-         let oid = gi "id" o in
-         put_int (col own "id") oid;
-         put_text (col own "login") (gs "login" o);
-         put_text (col own "kind") (gs "kind" o);
-         put_int (col own "followers") (gi "followers" o);
-         opt_text (col own "email") "email" o;
-
          put_int (col repo "id") rid;
          put_text (col repo "name") (gs "name" r);
          put_text (col repo "org") (gs "org" r);
-         put_text (col repo "default_branch") (gs "default_branch" r);
-         put_int (col repo "is_private") (if gb "is_private" r then 1 else 0);
-         put_int (col repo "stars") (gi "stars" r);
-         put_int (col repo "created_at") (gi "created_at" r);
-         opt_text (col repo "description") "description" r;
-         put_int (col repo "owner_id") oid;
-
-         List.iteri
-           (fun i v ->
-             incr topic_id;
-             put_int (col top "id") !topic_id;
-             put_int (col top "repository_id") rid;
-             put_int (col top "idx") i;
-             put_text (col top "value") (to_string v))
-           (arr "topics" r);
+         put_int (col repo "is_private") (if gb "private" r then 1 else 0);
 
          List.iteri
            (fun ri u ->
              let uid = gi "id" u in
              put_int (col run "id") uid;
-             put_int (col run "repository_id") rid;
+             put_int (col run "repo_id") rid;
              put_int (col run "idx") ri;
-             put_int (col run "number") (gi "number" u);
-             put_text (col run "commit_sha") (gs "commit_sha" u);
              put_text (col run "branch") (gs "branch" u);
              put_text (col run "status") (gs "status" u);
-             put_int (col run "started_at") (gi "started_at" u);
-             put_int (col run "duration_ms") (gi "duration_ms" u);
+             put_int (col run "ms") (gi "ms" u);
              opt_text (col run "trigger") "trigger" u;
 
              List.iteri
@@ -207,21 +180,10 @@ let load path =
                  put_int (col job "id") jid;
                  put_int (col job "run_id") uid;
                  put_int (col job "idx") ji;
-                 put_text (col job "name") (gs "name" j);
-                 put_text (col job "runner_os") (gs "runner_os" j);
+                 put_text (col job "os") (gs "os" j);
                  put_text (col job "status") (gs "status" j);
-                 put_int (col job "duration_ms") (gi "duration_ms" j);
-                 put_int (col job "queued_ms") (gi "queued_ms" j);
-                 opt_int (col job "exit_code") "exit_code" j;
-
-                 List.iteri
-                   (fun i v ->
-                     incr label_id;
-                     put_int (col lab "id") !label_id;
-                     put_int (col lab "job_id") jid;
-                     put_int (col lab "idx") i;
-                     put_text (col lab "value") (to_string v))
-                   (arr "labels" j);
+                 put_int (col job "ms") (gi "ms" j);
+                 opt_int (col job "exit") "exit" j;
 
                  List.iteri
                    (fun si s ->
@@ -229,19 +191,17 @@ let load path =
                      put_int (col step "job_id") jid;
                      put_int (col step "idx") si;
                      put_text (col step "name") (gs "name" s);
-                     put_text (col step "status") (gs "status" s);
-                     put_int (col step "duration_ms") (gi "duration_ms" s);
-                     put_float (col step "cost_per_ms") (gf "cost_per_ms" s);
-                     put_int (col step "log_bytes") (gi "log_bytes" s);
-                     put_int (col step "memory_mb") (gi "memory_mb" s);
+                     put_int (col step "ms") (gi "ms" s);
+                     put_float (col step "rate") (gf "rate" s);
                      opt_text (col step "error") "error" s)
                    (arr "steps" j))
                (arr "jobs" u))
            (arr "runs" r)));
 
   let freeze t = (t.t_name, List.map (fun (_, b) -> finish b) t.cols) in
-  let ts = List.map freeze [ repo; own; top; run; job; lab; step ] in
-  { tables = ts; rows = List.map (fun (n, cs) -> (n, match cs with [] -> 0 | c :: _ -> Data.length c)) ts }
+  let ts = List.map freeze [ repo; run; job; step ] in
+  { tables = ts;
+    rows = List.map (fun (n, cs) -> (n, match cs with [] -> 0 | c :: _ -> Data.length c)) ts }
 
 let footprint (_ : t) =
   Gc.full_major ();
@@ -250,31 +210,31 @@ let footprint (_ : t) =
 (* ---- the queries --------------------------------------------------------- *)
 
 (* Every scan below reads one or two arrays end to end and touches nothing
-   else. The other eight columns of a step are not in the way, not in the cache
-   line, and not paged in. *)
+   else. The other columns of a step are not in the way, not in the cache line,
+   and not paged in. *)
 
-let scan t ms =
-  let d = ints t "step" "duration_ms" in
+let scan t threshold =
+  let d = ints t "step" "ms" in
   let n = ref 0 in
   for i = 0 to Array.length d - 1 do
-    if Array.unsafe_get d i > ms then incr n
+    if Array.unsafe_get d i > threshold then incr n
   done;
   Workload.Count !n
 
 (* Two dense arrays walked in step. Both columns are total in the .mli, so
    there is no mask to consult on either and no branch for absence -- and the
    product they compute needs no mask of its own for the same reason. *)
-let computed t ms =
-  let d = ints t "step" "duration_ms" and c = floats t "step" "cost_per_ms" in
+let computed t threshold =
+  let d = ints t "step" "ms" and c = floats t "step" "rate" in
   let acc = ref 0. in
   for i = 0 to Array.length d - 1 do
     let x = Array.unsafe_get d i in
-    if x > ms then acc := !acc +. (float_of_int x *. Array.unsafe_get c i)
+    if x > threshold then acc := !acc +. (float_of_int x *. Array.unsafe_get c i)
   done;
   Workload.Sum_float !acc
 
 let by_status t =
-  let s = texts t "step" "status" and d = ints t "step" "duration_ms" in
+  let s = texts t "step" "name" and d = ints t "step" "ms" in
   let tbl = Hashtbl.create 8 in
   for i = 0 to Array.length d - 1 do
     let k = Array.unsafe_get s i and v = Array.unsafe_get d i in
@@ -291,34 +251,24 @@ let idset ids =
   Array.iter (fun i -> Hashtbl.replace h i ()) ids;
   h
 
-let filter_ids ~parent ~child_key ~child_id keep =
-  ignore parent;
+let children ~key ~id keep =
   let out = ref [] in
-  for i = Array.length child_key - 1 downto 0 do
-    if Hashtbl.mem keep (Array.unsafe_get child_key i) then
-      out := Array.unsafe_get child_id i :: !out
+  for i = Array.length key - 1 downto 0 do
+    if Hashtbl.mem keep (Array.unsafe_get key i) then out := Array.unsafe_get id i :: !out
   done;
   idset (Array.of_list !out)
 
 (* The reassembly, and the case this layout should lose. There is no
-   repository-shaped object here: finding one document's steps means scanning
-   run, then job, then step, three full passes to gather what row-major had
+   repo-shaped object here: finding one document's steps means scanning run,
+   then job, then step -- three full passes to gather what row-major had
    contiguously all along. *)
 let document t id =
-  let rid = ints t "repository" "id" in
-  let present = Array.exists (fun x -> x = id) rid in
-  if not present then Workload.Missing
+  let rid = ints t "repo" "id" in
+  if not (Array.exists (fun x -> x = id) rid) then Workload.Missing
   else
-    let one = idset [| id |] in
-    let runs =
-      filter_ids ~parent:one ~child_key:(ints t "run" "repository_id")
-        ~child_id:(ints t "run" "id") one
-    in
-    let jobs =
-      filter_ids ~parent:runs ~child_key:(ints t "job" "run_id")
-        ~child_id:(ints t "job" "id") runs
-    in
-    let sk = ints t "step" "job_id" and sd = ints t "step" "duration_ms" in
+    let runs = children ~key:(ints t "run" "repo_id") ~id:(ints t "run" "id") (idset [| id |]) in
+    let jobs = children ~key:(ints t "job" "run_id") ~id:(ints t "job" "id") runs in
+    let sk = ints t "step" "job_id" and sd = ints t "step" "ms" in
     let steps = ref 0 and ms = ref 0 in
     for i = 0 to Array.length sk - 1 do
       if Hashtbl.mem jobs (Array.unsafe_get sk i) then (
@@ -326,30 +276,22 @@ let document t id =
         ms := !ms + Array.unsafe_get sd i)
     done;
     Workload.Row
-      (List.map string_of_int
-         [ Hashtbl.length runs; Hashtbl.length jobs; !steps; !ms ])
+      (List.map string_of_int [ Hashtbl.length runs; Hashtbl.length jobs; !steps; !ms ])
 
 (* Three hops, and every one of them a scan. Row-major walks pointers it
    already holds; this has to rebuild the relationship from keys. *)
 let three_hop t org =
-  let o = texts t "repository" "org" and rid = ints t "repository" "id" in
+  let o = texts t "repo" "org" and rid = ints t "repo" "id" in
   let keep = Hashtbl.create 1024 in
   for i = 0 to Array.length o - 1 do
     if String.equal (Array.unsafe_get o i) org then
       Hashtbl.replace keep (Array.unsafe_get rid i) ()
   done;
-  let runs =
-    filter_ids ~parent:keep ~child_key:(ints t "run" "repository_id")
-      ~child_id:(ints t "run" "id") keep
-  in
-  let jobs =
-    filter_ids ~parent:runs ~child_key:(ints t "job" "run_id")
-      ~child_id:(ints t "job" "id") runs
-  in
-  let sk = ints t "step" "job_id" and sd = ints t "step" "duration_ms" in
+  let runs = children ~key:(ints t "run" "repo_id") ~id:(ints t "run" "id") keep in
+  let jobs = children ~key:(ints t "job" "run_id") ~id:(ints t "job" "id") runs in
+  let sk = ints t "step" "job_id" and sd = ints t "step" "ms" in
   let total = ref 0 in
   for i = 0 to Array.length sk - 1 do
-    if Hashtbl.mem jobs (Array.unsafe_get sk i) then
-      total := !total + Array.unsafe_get sd i
+    if Hashtbl.mem jobs (Array.unsafe_get sk i) then total := !total + Array.unsafe_get sd i
   done;
   Workload.Sum_int !total

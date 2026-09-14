@@ -204,8 +204,7 @@ let load_tests =
           Alcotest.(check string) "table" "step" s.table;
           Alcotest.(check (list string))
             "columns"
-            [ "id"; "job_id"; "idx"; "name"; "status"; "duration_ms";
-              "cost_per_ms"; "log_bytes"; "memory_mb"; "error" ]
+            [ "id"; "job_id"; "idx"; "name"; "ms"; "rate"; "error" ]
             (Schema.names s));
       (* A foreign key is a dense int that remembers where it points. *)
       Alcotest.test_case "a cross-module key is read as a key" `Quick (fun () ->
@@ -222,7 +221,7 @@ let load_tests =
           let db = Schema.load_dir "../schema" in
           Alcotest.(check (list string))
             "tables"
-            [ "job"; "label"; "owner"; "repository"; "run"; "step"; "topic" ]
+            [ "job"; "repo"; "run"; "step" ]
             (List.map (fun (t : Schema.t) -> t.table) db);
           let keys =
             List.concat_map
@@ -234,8 +233,7 @@ let load_tests =
           in
           Alcotest.(check (list string))
             "references"
-            [ "job->run"; "label->job"; "repository->owner"; "run->repository";
-              "step->job"; "topic->repository" ]
+            [ "job->run"; "run->repo"; "step->job" ]
             keys) ]
 
 (* ---- query printing ----------------------------------------------------- *)

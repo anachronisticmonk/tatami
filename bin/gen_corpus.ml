@@ -1,38 +1,37 @@
-(* The corpus: CI build telemetry as one large JSON array.
+(* The corpus: a CI service's build history, as one JSON array.
 
-   Shape, and why this one. Every level is an array, which is the case the Lean
-   model handles with [coll] and which the first attempt never exercised. One
-   nested object as well, so [ref] appears too.
+     repo                        A   a project someone is building
+     `- runs      object[]       B   one build, triggered by a commit
+        `- jobs   object[]       C   one machine's share of that build
+           `- steps object[]     D   one command inside that job
 
-     repository                          A
-     |- owner            object          ref:  its own table, parent holds a key
-     |- topics           string[]        coll: scalar array, its own table
-     `- runs             object[]        B
-        `- jobs          object[]        C
-           |- labels     string[]        coll: scalar array
-           `- steps      object[]        D
+   Four levels, three hops, every level an array. Kept deliberately small --
+   nineteen fields in total -- so that a document can be read at a glance and
+   a query written without consulting a schema.
 
-   repository -> runs -> jobs -> steps is three hops. Seven tables once shredded.
+   [ms] and [rate] on a step are the pair the computed query multiplies: how
+   long the step ran, and what a millisecond on that runner costs. Both are
+   total, so their product is known to need no validity array before a row is
+   read.
 
-   Written by hand into a buffer rather than through Yojson: at this size the
-   tree would not fit in memory, and nothing here needs a tree. The reader is
-   free to use Yojson -- that is the baseline being measured.
+   Written by hand into a buffer rather than through Yojson: at 1.5 GB the tree
+   would not fit, and nothing here needs a tree.
 
-   Nullable fields appear in both of JSON's two forms, absent and explicit
-   null, because Phase 1 must infer [option] from either. Roughly half each. *)
+   Nullable fields appear in both of JSON's forms, absent and explicit null,
+   because Phase 1 has to infer [option] from either. *)
 
 let usage =
   "gen_corpus [--bytes 1.5G | --rows N] [--seed N] [--out FILE]\n\
   \  --bytes  stop once the file reaches this size (K/M/G suffix)\n\
-  \  --rows   stop after this many repositories instead\n\
+  \  --rows   stop after this many repos instead\n\
   \  --seed   same seed gives the same corpus, byte for byte\n\
   \  --out    default corpus/ci.json, - for stdout"
 
 (* ---- a reproducible generator ------------------------------------------- *)
 
 (* xorshift64*, written out rather than taken from Random, so the corpus does
-   not change if the stdlib's generator ever does. The Postgres loader reads
-   this same file, so reproducibility is what keeps the two stores identical. *)
+   not change if the stdlib's generator ever does. Everything downstream reads
+   this same file, so reproducibility is what keeps the stores identical. *)
 let state = ref 0x2545F4914F6CDD1DL
 
 let seed s = state := if Int64.equal s 0L then 0x2545F4914F6CDD1DL else s
@@ -54,26 +53,24 @@ let chance n = rand 100 < n
 
 (* ---- vocabulary ---------------------------------------------------------- *)
 
-let orgs = [| "acme"; "globex"; "initech"; "umbrella"; "hooli"; "soylent"; "stark" |]
-let words = [| "api"; "core"; "web"; "sync"; "auth"; "batch"; "edge"; "store"; "index";
-               "queue"; "proxy"; "render"; "parse"; "graph"; "shard" |]
-let branches = [| "main"; "develop"; "release"; "hotfix"; "staging" |]
-let statuses = [| "success"; "failure"; "cancelled"; "timed_out"; "skipped" |]
-let oses = [| "ubuntu-22.04"; "ubuntu-20.04"; "macos-14"; "windows-2022" |]
-let triggers = [| "push"; "pull_request"; "schedule"; "workflow_dispatch" |]
-let step_names = [| "checkout"; "setup"; "restore-cache"; "install"; "build"; "unit-test";
-                    "integration-test"; "lint"; "typecheck"; "package"; "upload"; "deploy" |]
-let topics = [| "ocaml"; "rust"; "database"; "compiler"; "cli"; "web"; "async";
-                "distributed"; "parser"; "gpu"; "columnar"; "json" |]
-let label_pool = [| "self-hosted"; "gpu"; "large"; "spot"; "arm64"; "x64"; "isolated" |]
-
-let hex = "0123456789abcdef"
+let orgs = [| "acme"; "globex"; "initech"; "hooli"; "stark" |]
+let words = [| "api"; "core"; "web"; "sync"; "auth"; "edge"; "store"; "queue" |]
+let branches = [| "main"; "develop"; "release" |]
+let statuses = [| "ok"; "failed"; "cancelled"; "timeout" |]
+let oses = [| "linux"; "macos"; "windows" |]
+let triggers = [| "push"; "pr"; "schedule" |]
+(* A step's duration depends on what the step is, which is both true of real
+   builds and what makes an aggregate over them say something. checkout is
+   always quick; test is the one that hurts. *)
+let steps = [| "checkout"; "build"; "test"; "lint"; "package"; "deploy" |]
+let step_lo = [|     500;    20_000;  10_000;   1_000;    5_000;    2_000 |]
+let step_hi = [|   5_000;   300_000; 900_000;  30_000;   60_000;  120_000 |]
 
 (* ---- writing ------------------------------------------------------------- *)
 
 let buf = Buffer.create (1 lsl 22)
 
-(* Our vocabulary is alphanumeric, but error messages carry quotes on purpose:
+(* The vocabulary is alphanumeric, but error messages carry quotes on purpose:
    a reader that cannot handle an escape would otherwise pass by luck. *)
 let str s =
   Buffer.add_char buf '"';
@@ -82,7 +79,6 @@ let str s =
       match c with
       | '"' -> Buffer.add_string buf "\\\""
       | '\\' -> Buffer.add_string buf "\\\\"
-      | '\n' -> Buffer.add_string buf "\\n"
       | c when Char.code c < 0x20 -> Buffer.add_string buf (Printf.sprintf "\\u%04x" (Char.code c))
       | c -> Buffer.add_char buf c)
     s;
@@ -90,35 +86,40 @@ let str s =
 
 let key k = str k; Buffer.add_char buf ':'
 let int k v = key k; Buffer.add_string buf (string_of_int v)
-let flt k v = key k; Buffer.add_string buf (Printf.sprintf "%.6g" v)
+let flt k v = key k; Buffer.add_string buf (Printf.sprintf "%.5g" v)
 let bool k v = key k; Buffer.add_string buf (if v then "true" else "false")
 let text k v = key k; str v
 let comma () = Buffer.add_char buf ','
 
-(* A nullable field in both of JSON's forms. [absent] omits the key entirely,
-   which is the harder case for inference and the more common one in practice. *)
-let opt_text k = function
-  | None -> if chance 50 then (key k; Buffer.add_string buf "null") else ()
-  | Some v -> text k v
+(* Half the absences are an explicit null and half are the key simply not being
+   there. Both mean the same thing and both have to be inferred. *)
+let null k = key k; Buffer.add_string buf "null"
 
-let opt_int k = function
-  | None -> if chance 50 then (key k; Buffer.add_string buf "null") else ()
-  | Some v -> int k v
+let sep = ref false
+let field f = if !sep then comma (); f (); sep := true
 
-(* [sep] tracks whether a comma is needed, since an omitted nullable key must
-   not leave a dangling one. *)
-let field sep f = if !sep then comma (); f (); sep := true
-let maybe sep f =
-  let before = Buffer.length buf in
-  if !sep then comma ();
-  let after_comma = Buffer.length buf in
+let maybe k v write =
+  match v with
+  | Some x -> field (fun () -> write k x)
+  | None -> if chance 50 then field (fun () -> null k)
+
+let obj f =
+  let outer = !sep in
+  sep := false;
+  Buffer.add_char buf '{';
   f ();
-  if Buffer.length buf = after_comma then Buffer.truncate buf before else sep := true
+  Buffer.add_char buf '}';
+  sep := outer
 
-let sha () =
-  let b = Bytes.create 40 in
-  for i = 0 to 39 do Bytes.set b i hex.[rand 16] done;
-  Bytes.to_string b
+let list k n f =
+  field (fun () ->
+      key k;
+      Buffer.add_char buf '[';
+      for i = 0 to n - 1 do
+        if i > 0 then comma ();
+        f i
+      done;
+      Buffer.add_char buf ']')
 
 let name () = Printf.sprintf "%s-%s" (pick words) (pick words)
 
@@ -128,121 +129,41 @@ let ids = ref 0
 let fresh () = incr ids; !ids
 
 let gen_step () =
-  let s = ref false in
-  Buffer.add_char buf '{';
-  field s (fun () -> int "id" (fresh ()));
-  field s (fun () -> text "name" (pick step_names));
-  field s (fun () -> text "status" (pick statuses));
-  field s (fun () -> int "duration_ms" (1 + rand 60_000));
-  (* the float the computed-column query multiplies by *)
-  field s (fun () -> flt "cost_per_ms" (0.00001 +. (float_of_int (rand 400) /. 1_000_000.)));
-  field s (fun () -> int "log_bytes" (rand 2_000_000));
-  field s (fun () -> int "memory_mb" (64 + rand 8000));
-  maybe s (fun () ->
-      opt_text "error"
-        (if chance 18 then
-           Some (Printf.sprintf "exit %d: \"%s\" not found" (1 + rand 125) (name ()))
-         else None));
-  Buffer.add_char buf '}'
+  let k = rand (Array.length steps) in
+  obj (fun () ->
+      field (fun () -> int "id" (fresh ()));
+      field (fun () -> text "name" steps.(k));
+      field (fun () -> int "ms" (step_lo.(k) + rand (step_hi.(k) - step_lo.(k))));
+      field (fun () -> flt "rate" (0.0001 +. (float_of_int (rand 900) /. 1_000_000.)));
+      maybe "error"
+        (if chance 15 then Some (Printf.sprintf "\"%s\" not found" (name ())) else None)
+        text)
 
 let gen_job () =
-  let s = ref false in
-  Buffer.add_char buf '{';
-  field s (fun () -> int "id" (fresh ()));
-  field s (fun () -> text "name" (name ()));
-  field s (fun () -> text "runner_os" (pick oses));
-  field s (fun () -> text "status" (pick statuses));
-  field s (fun () -> int "duration_ms" (100 + rand 900_000));
-  field s (fun () -> int "queued_ms" (rand 120_000));
-  maybe s (fun () -> opt_int "exit_code" (if chance 70 then Some (rand 128) else None));
-  field s (fun () ->
-      key "labels";
-      Buffer.add_char buf '[';
-      let n = rand 4 in
-      for i = 0 to n - 1 do
-        if i > 0 then comma ();
-        str (pick label_pool)
-      done;
-      Buffer.add_char buf ']');
-  field s (fun () ->
-      key "steps";
-      Buffer.add_char buf '[';
-      let n = 3 + rand 6 in
-      for i = 0 to n - 1 do
-        if i > 0 then comma ();
-        gen_step ()
-      done;
-      Buffer.add_char buf ']');
-  Buffer.add_char buf '}'
+  obj (fun () ->
+      field (fun () -> int "id" (fresh ()));
+      field (fun () -> text "os" (pick oses));
+      field (fun () -> text "status" (pick statuses));
+      field (fun () -> int "ms" (100 + rand 900_000));
+      maybe "exit" (if chance 70 then Some (rand 128) else None) int;
+      list "steps" (2 + rand 4) (fun _ -> gen_step ()))
 
 let gen_run () =
-  let s = ref false in
-  Buffer.add_char buf '{';
-  field s (fun () -> int "id" (fresh ()));
-  field s (fun () -> int "number" (1 + rand 5000));
-  field s (fun () -> text "commit_sha" (sha ()));
-  field s (fun () -> text "branch" (pick branches));
-  field s (fun () -> text "status" (pick statuses));
-  field s (fun () -> int "started_at" (1_600_000_000 + rand 200_000_000));
-  field s (fun () -> int "duration_ms" (1000 + rand 3_600_000));
-  maybe s (fun () -> opt_text "trigger" (if chance 80 then Some (pick triggers) else None));
-  field s (fun () ->
-      key "jobs";
-      Buffer.add_char buf '[';
-      let n = 1 + rand 4 in
-      for i = 0 to n - 1 do
-        if i > 0 then comma ();
-        gen_job ()
-      done;
-      Buffer.add_char buf ']');
-  Buffer.add_char buf '}'
+  obj (fun () ->
+      field (fun () -> int "id" (fresh ()));
+      field (fun () -> text "branch" (pick branches));
+      field (fun () -> text "status" (pick statuses));
+      field (fun () -> int "ms" (1000 + rand 3_600_000));
+      maybe "trigger" (if chance 80 then Some (pick triggers) else None) text;
+      list "jobs" (1 + rand 3) (fun _ -> gen_job ()))
 
-let gen_owner () =
-  let s = ref false in
-  Buffer.add_char buf '{';
-  field s (fun () -> int "id" (fresh ()));
-  field s (fun () -> text "login" (pick orgs ^ string_of_int (rand 900)));
-  field s (fun () -> text "kind" (if chance 30 then "user" else "org"));
-  field s (fun () -> int "followers" (rand 50_000));
-  maybe s (fun () ->
-      opt_text "email"
-        (if chance 60 then Some (Printf.sprintf "%s@%s.example" (pick words) (pick orgs))
-         else None));
-  Buffer.add_char buf '}'
-
-let gen_repository () =
-  let s = ref false in
-  Buffer.add_char buf '{';
-  field s (fun () -> int "id" (fresh ()));
-  field s (fun () -> text "name" (name ()));
-  field s (fun () -> text "org" (pick orgs));
-  field s (fun () -> text "default_branch" (pick branches));
-  field s (fun () -> bool "is_private" (chance 35));
-  field s (fun () -> int "stars" (rand 40_000));
-  field s (fun () -> int "created_at" (1_400_000_000 + rand 300_000_000));
-  maybe s (fun () ->
-      opt_text "description"
-        (if chance 75 then Some (Printf.sprintf "%s for %s" (name ()) (pick orgs)) else None));
-  field s (fun () -> key "owner"; gen_owner ());
-  field s (fun () ->
-      key "topics";
-      Buffer.add_char buf '[';
-      let n = rand 6 in
-      for i = 0 to n - 1 do
-        if i > 0 then comma ();
-        str (pick topics)
-      done;
-      Buffer.add_char buf ']');
-  field s (fun () ->
-      key "runs";
-      Buffer.add_char buf '[';
-      let n = 1 + rand 6 in
-      for i = 0 to n - 1 do
-        if i > 0 then comma ();
-        gen_run ()
-      done;
-      Buffer.add_char buf ']');
-  Buffer.add_char buf '}'
+let gen_repo () =
+  obj (fun () ->
+      field (fun () -> int "id" (fresh ()));
+      field (fun () -> text "name" (name ()));
+      field (fun () -> text "org" (pick orgs));
+      field (fun () -> bool "private" (chance 35));
+      list "runs" (1 + rand 4) (fun _ -> gen_run ()))
 
 (* ---- driver -------------------------------------------------------------- *)
 
@@ -274,9 +195,11 @@ let () =
   args (List.tl (Array.to_list Sys.argv));
   if !target_bytes = 0 && !target_rows = 0 then target_bytes := 64_000_000;
 
-  let oc = if !out = "-" then stdout else (
-    (try Unix.mkdir (Filename.dirname !out) 0o755 with Unix.Unix_error _ -> ());
-    open_out_bin !out)
+  let oc =
+    if !out = "-" then stdout
+    else (
+      (try Unix.mkdir (Filename.dirname !out) 0o755 with Unix.Unix_error _ -> ());
+      open_out_bin !out)
   in
   let written = ref 0 in
   let flush_buf () =
@@ -287,13 +210,14 @@ let () =
   let t0 = Unix.gettimeofday () in
   Buffer.add_char buf '[';
   let repos = ref 0 in
-  let continue_ () =
+  let more () =
     if !target_rows > 0 then !repos < !target_rows
     else !written + Buffer.length buf < !target_bytes
   in
-  while continue_ () do
+  while more () do
     if !repos > 0 then comma ();
-    gen_repository ();
+    sep := false;
+    gen_repo ();
     incr repos;
     if Buffer.length buf > (1 lsl 21) then flush_buf ()
   done;
@@ -301,6 +225,6 @@ let () =
   Buffer.add_char buf '\n';
   flush_buf ();
   if !out <> "-" then close_out oc;
-  let dt = Unix.gettimeofday () -. t0 in
-  Printf.eprintf "%d repositories, %d objects, %.2f GB, %.1fs\n%!" !repos !ids
-    (float_of_int !written /. 1e9) dt
+  Printf.eprintf "%d repos, %d objects, %.2f GB, %.1fs\n%!" !repos !ids
+    (float_of_int !written /. 1e9)
+    (Unix.gettimeofday () -. t0)

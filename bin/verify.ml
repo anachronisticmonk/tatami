@@ -18,26 +18,22 @@ let corpus = ref "corpus/ci.json"
 
 type tally = {
   mutable repos : int;
-  mutable owners : int;
-  mutable topics : int;
   mutable runs : int;
   mutable jobs : int;
-  mutable labels : int;
   mutable steps : int;
   mutable private_repos : int;
-  mutable stars : int;
-  mutable queued : int;
+  mutable run_ms : int;
+  mutable job_ms : int;
   mutable step_ms : int;
-  mutable log_bytes : int;
   mutable errors : int;
-  mutable exit_codes : int;
+  mutable exits : int;
+  mutable triggers : int;
   mutable cost : float;
 }
 
 let zero () =
-  { repos = 0; owners = 0; topics = 0; runs = 0; jobs = 0; labels = 0; steps = 0;
-    private_repos = 0; stars = 0; queued = 0; step_ms = 0; log_bytes = 0;
-    errors = 0; exit_codes = 0; cost = 0. }
+  { repos = 0; runs = 0; jobs = 0; steps = 0; private_repos = 0; run_ms = 0;
+    job_ms = 0; step_ms = 0; errors = 0; exits = 0; triggers = 0; cost = 0. }
 
 let arr k j = match member k j with `List l -> l | _ -> []
 let gi k j = to_int (member k j)
@@ -49,27 +45,24 @@ let from_json path =
   ignore
     (Corpus.iter_json path ~f:(fun repo ->
          t.repos <- t.repos + 1;
-         t.owners <- t.owners + 1;
-         t.stars <- t.stars + gi "stars" repo;
-         if to_bool (member "is_private" repo) then
+         if to_bool (member "private" repo) then
            t.private_repos <- t.private_repos + 1;
-         t.topics <- t.topics + List.length (arr "topics" repo);
          List.iter
            (fun run ->
              t.runs <- t.runs + 1;
+             t.run_ms <- t.run_ms + gi "ms" run;
+             if present "trigger" run then t.triggers <- t.triggers + 1;
              List.iter
                (fun job ->
                  t.jobs <- t.jobs + 1;
-                 t.queued <- t.queued + gi "queued_ms" job;
-                 if present "exit_code" job then t.exit_codes <- t.exit_codes + 1;
-                 t.labels <- t.labels + List.length (arr "labels" job);
+                 t.job_ms <- t.job_ms + gi "ms" job;
+                 if present "exit" job then t.exits <- t.exits + 1;
                  List.iter
                    (fun st ->
                      t.steps <- t.steps + 1;
-                     let ms = gi "duration_ms" st in
+                     let ms = gi "ms" st in
                      t.step_ms <- t.step_ms + ms;
-                     t.log_bytes <- t.log_bytes + gi "log_bytes" st;
-                     t.cost <- t.cost +. (float_of_int ms *. gf "cost_per_ms" st);
+                     t.cost <- t.cost +. (float_of_int ms *. gf "rate" st);
                      if present "error" st then t.errors <- t.errors + 1)
                    (arr "steps" job))
                (arr "jobs" run))
@@ -88,21 +81,18 @@ let one_float sql =
 
 let from_sql () =
   let t = zero () in
-  t.repos <- one_int "select count(*) from repository";
-  t.owners <- one_int "select count(*) from owner";
-  t.topics <- one_int "select count(*) from topic";
+  t.repos <- one_int "select count(*) from repo";
   t.runs <- one_int "select count(*) from run";
   t.jobs <- one_int "select count(*) from job";
-  t.labels <- one_int "select count(*) from label";
   t.steps <- one_int "select count(*) from step";
-  t.private_repos <- one_int "select count(*) from repository where is_private";
-  t.stars <- one_int "select coalesce(sum(stars),0) from repository";
-  t.queued <- one_int "select coalesce(sum(queued_ms),0) from job";
-  t.step_ms <- one_int "select coalesce(sum(duration_ms),0) from step";
-  t.log_bytes <- one_int "select coalesce(sum(log_bytes),0) from step";
+  t.private_repos <- one_int "select count(*) from repo where is_private";
+  t.run_ms <- one_int "select coalesce(sum(ms),0) from run";
+  t.job_ms <- one_int "select coalesce(sum(ms),0) from job";
+  t.step_ms <- one_int "select coalesce(sum(ms),0) from step";
   t.errors <- one_int "select count(*) from step where error is not null";
-  t.exit_codes <- one_int "select count(*) from job where exit_code is not null";
-  t.cost <- one_float "select coalesce(sum(duration_ms * cost_per_ms),0) from step";
+  t.exits <- one_int "select count(*) from job where exit is not null";
+  t.triggers <- one_int "select count(*) from run where trigger is not null";
+  t.cost <- one_float "select coalesce(sum(ms * rate),0) from step";
   t
 
 let () =
@@ -126,22 +116,19 @@ let () =
   in
   Printf.printf "\n  %-16s %14s %14s\n" "" "json" "postgres";
   print_endline (String.make 50 '-');
-  cmp "repository" j.repos s.repos;
-  cmp "owner" j.owners s.owners;
-  cmp "topic" j.topics s.topics;
+  cmp "repo" j.repos s.repos;
   cmp "run" j.runs s.runs;
   cmp "job" j.jobs s.jobs;
-  cmp "label" j.labels s.labels;
   cmp "step" j.steps s.steps;
   print_endline (String.make 50 '-');
   cmp "private repos" j.private_repos s.private_repos;
-  cmp "sum stars" j.stars s.stars;
-  cmp "sum queued_ms" j.queued s.queued;
+  cmp "sum run ms" j.run_ms s.run_ms;
+  cmp "sum job ms" j.job_ms s.job_ms;
   cmp "sum step ms" j.step_ms s.step_ms;
-  cmp "sum log_bytes" j.log_bytes s.log_bytes;
   cmp "steps w/ error" j.errors s.errors;
-  cmp "jobs w/ exit" j.exit_codes s.exit_codes;
-  cmpf "sum ms*cost" j.cost s.cost;
+  cmp "jobs w/ exit" j.exits s.exits;
+  cmp "runs w/ trigger" j.triggers s.triggers;
+  cmpf "sum ms*rate" j.cost s.cost;
   print_endline (String.make 50 '-');
   if !bad = 0 then print_endline "  the two stores hold the same data\n"
   else Printf.printf "  %d disagreements\n\n" !bad;

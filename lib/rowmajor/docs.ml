@@ -49,7 +49,7 @@ let document path id =
                  (fun job ->
                    incr jobs;
                    List.iter
-                     (fun s -> incr steps; ms := !ms + gi "duration_ms" s)
+                     (fun s -> incr steps; ms := !ms + gi "ms" s)
                      (arr "steps" job))
                  (arr "jobs" run))
              (arr "runs" repo);
@@ -60,20 +60,20 @@ let document path id =
 
 let scan path ms =
   let n = ref 0 in
-  iter_steps path (fun s -> if gi "duration_ms" s > ms then incr n);
+  iter_steps path (fun s -> if gi "ms" s > ms then incr n);
   Tatami.Workload.Count !n
 
 let computed path ms =
   let acc = ref 0. in
   iter_steps path (fun s ->
-      let d = gi "duration_ms" s in
-      if d > ms then acc := !acc +. (float_of_int d *. gf "cost_per_ms" s));
+      let d = gi "ms" s in
+      if d > ms then acc := !acc +. (float_of_int d *. gf "rate" s));
   Tatami.Workload.Sum_float !acc
 
 let by_status path =
   let tbl = Hashtbl.create 8 in
   iter_steps path (fun s ->
-      let k = gs "status" s and d = gi "duration_ms" s in
+      let k = gs "name" s and d = gi "ms" s in
       let cur = try Hashtbl.find tbl k with Not_found -> 0 in
       if d > cur then Hashtbl.replace tbl k d);
   Tatami.Workload.Groups
@@ -89,7 +89,7 @@ let three_hop path org =
                List.iter
                  (fun job ->
                    List.iter
-                     (fun s -> total := !total + gi "duration_ms" s)
+                     (fun s -> total := !total + gi "ms" s)
                      (arr "steps" job))
                  (arr "jobs" run))
              (arr "runs" repo)));
