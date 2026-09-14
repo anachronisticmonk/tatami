@@ -14,6 +14,13 @@ open Tatami
 module S = Tiny_httpd
 
 let port = match Sys.getenv_opt "TATAMI_PORT" with Some p -> int_of_string p | None -> 8000
+
+(* Loopback by default, because a development server should not appear on the
+   network because someone started it. In a container it has to be 0.0.0.0:
+   published ports forward to the container's external interface, so a server
+   bound to 127.0.0.1 is reachable only from inside the container it is in --
+   which looks exactly like a working server and a broken port mapping. *)
+let addr = match Sys.getenv_opt "TATAMI_ADDR" with Some a -> a | None -> "127.0.0.1"
 let corpus = ref "corpus/small.json"
 let web_dir = match Sys.getenv_opt "TATAMI_WEB" with Some p -> p | None -> "web"
 let results = ref "bench/results.jsonl"
@@ -153,10 +160,26 @@ let boot () =
    would sit between the reader and that without adding to it. *)
 let answer_json a = `String (Workload.to_string a)
 
-let time f =
-  let t0 = Unix.gettimeofday () in
-  let a = f () in
-  (a, (Unix.gettimeofday () -. t0) *. 1000.)
+(* Warmed, then the median of a few.
+
+   A single cold run is not a measurement: the first pass over a store touches
+   memory nothing has touched yet, and whichever store goes first pays for it.
+   Timed that way the page reported a thirty-six fold win on a query the
+   benchmark puts at three, which would have been a lie told by the interface
+   rather than by anybody. *)
+let time ?(n = 5) f =
+  ignore (f ());
+  let rec go k acc =
+    if k = 0 then acc
+    else
+      let t0 = Unix.gettimeofday () in
+      let a = f () in
+      go (k - 1) (((Unix.gettimeofday () -. t0) *. 1000., a) :: acc)
+  in
+  let rs = go n [] in
+  let sorted = List.sort (fun (x, _) (y, _) -> compare x y) rs in
+  let ms, a = List.nth sorted (n / 2) in
+  (a, ms)
 
 (* [type a] ties the module's abstract [t] to the store value handed in;
    without it S.t escapes its scope and the two cannot be related. *)
@@ -174,6 +197,7 @@ let run_query name param =
   match (!rec_store, !col_store) with
   | Some r, Some c ->
       let param = if name = "document" && param = "" then !doc_id else param in
+      (* both warmed before either is timed, so neither pays for the other *)
       let ra, rt = time (pick (module Rowmajor.Records) r name param) in
       let ca, ct = time (pick (module Columnar) c name param) in
       json
@@ -182,7 +206,8 @@ let run_query name param =
             ("agree", `Bool (Workload.equal ra ca));
             ("records", `Assoc [ ("ms", `Float rt); ("answer", answer_json ra) ]);
             ("columnar", `Assoc [ ("ms", `Float ct); ("answer", answer_json ca) ]);
-            ("ratio", `Float (rt /. ct)) ])
+            ("ratio", `Float (rt /. ct));
+            ("samples", `Int 5) ])
   | _ -> fail 503 "stores not loaded"
 
 (* ---- collected measurements ---------------------------------------------- *)
@@ -207,7 +232,7 @@ let () =
   in
   args (List.tl (Array.to_list Sys.argv));
   boot ();
-  let server = S.create ~port () in
+  let server = S.create ~addr ~port () in
   let get p h = S.add_route_handler ~meth:`GET server p h in
   let post p h = S.add_route_handler ~meth:`POST server p h in
 
@@ -228,5 +253,5 @@ let () =
       | Failure m -> fail 400 m
       | e -> fail 500 (Printexc.to_string e));
 
-  Printf.printf "tatami: http://localhost:%d\n%!" port;
+  Printf.printf "tatami: listening on %s:%d\n%!" addr port;
   S.run_exn server

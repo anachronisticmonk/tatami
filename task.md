@@ -158,3 +158,13 @@ never actually implemented last time.
       `bench/results.jsonl`, so runs accumulate rather than overwrite~~
 - [ ] T9.5 Collect across more sizes, and add a selectivity sweep — the
       experiment most likely to falsify the type-driven placement rule
+
+## T10 · One command
+
+- [x] ~~T10.1 `Dockerfile`: multi-stage, opam builder to debian-slim, 33 MB~~
+- [x] ~~T10.2 A 1,000-repo corpus baked in, so `docker run` needs no arguments
+      and no network~~
+- [x] ~~T10.3 `TATAMI_ROWS` / `TATAMI_BYTES` regenerate a larger corpus at
+      startup, from the same seed~~
+- [x] ~~T10.4 `docker-compose.yml` for the half the tabs do not show: Postgres,
+      and checking the shredding against SQL~~

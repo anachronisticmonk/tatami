@@ -137,6 +137,24 @@ At 1.5 GB: 795,348 repos, 1,987,784 runs, 3,974,581 jobs, 13,911,204 steps.
 
 ---
 
+## Running it
+
+The whole back end, with no toolchain and no arguments:
+
+```sh
+docker run --rm -p 8000:8000 tatami/backend
+```
+
+That serves three tabs on <http://localhost:8000> — the data and what it
+shreds into, the corpus queried by both stores side by side, and the
+measurements charted. A 1,000-repo corpus is baked into the image so it works
+offline; `-e TATAMI_ROWS=50000` or `-e TATAMI_BYTES=200M` generates a larger
+one at startup from the same seed.
+
+Postgres is not in that image. The tabs are served from the two in-memory
+stores, and the database is only needed to check the shredding against SQL —
+`docker compose up` brings both if you want that half.
+
 ## Getting it
 
 `corpus/small.json` is checked in — 1,000 repos, 1.7 MB, enough to read and to

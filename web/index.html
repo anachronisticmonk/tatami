@@ -183,7 +183,7 @@ Promise.all([fetch('/api/sample').then(r => r.json()),
     const max = Math.max(d.records.ms, d.columnar.ms) || 1;
     const row = (name, o, colour) => `
       <div style="margin:8px 0 2px"><b>${name}</b>
-        <span class="hint">${o.ms.toFixed(2)}ms</span></div>
+        <span class="hint">${o.ms.toFixed(3)}ms &middot; median of 5</span></div>
       <div style="height:14px;background:var(--code);border:1px solid var(--line);border-radius:3px">
         <div style="width:${o.ms / max * 100}%;height:100%;background:${colour};border-radius:2px"></div></div>`;
     $('#qout').innerHTML = `
