@@ -13,12 +13,12 @@ structure Table where
   /-- the path this table came from; it is the table's identity and the
       source of its module name -/
   path : Path
-  /-- set when rows sit in a collection: the table they point back to -/
+  /-- set when rows sit in a collection: the table they point back to.
+      Derived from `path`, not observed: a table's rows sit in exactly one
+      collection, the one its path ends in. -/
   parent : Option Path
-  /-- the table is also reached other than through that collection, so the
-      back-reference and position are not always present -/
-  parentOptional : Bool
-  /-- rows are keyed by a string rather than positioned by an index -/
+  /-- rows are keyed by a string rather than positioned by an index. Also
+      derived from `path` -- true exactly when it ends in a map entry. -/
   keyed : Bool
   columns : List Column
   deriving Repr

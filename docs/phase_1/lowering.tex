@@ -335,28 +335,35 @@ and Root : sig ... val users : t -> Users.t list end
 \paragraph{A self-referential shape} looks like a fixed number of nested ones
 --- how many depends on how deep the sample went. A comment thread two levels
 deep yields three modules; three levels yields four; and a document deeper
-than the sample has no table to go in. Marked, the path folds into the
-ancestor it repeats, and both become one table:
+than the sample has no table to go in. \ourcall{} This is \emph{not} marked,
+and the nesting is taken at face value:
 
 \begin{lstlisting}[style=ml]
-module Root : sig
+module rec Comments_replies_replies : sig ... end
+and Comments_replies : sig
   type id
-  type t = { id : id; parent_id : id option; idx : int option; text : string }
+  type t = { id : id; parent_id : Comments.id; idx : int; text : string }
   val get : id -> t
-  val replies : t -> t list
+  val replies : t -> Comments_replies_replies.t list
 end
+and Comments : sig ... val replies : t -> Comments_replies.t list end
+and Root : sig ... val comments : t -> Comments.t list end
 \end{lstlisting}
 
-The back-reference and the index are optional here because the same table is
-reached two ways: as a document root, which has no parent, and as a reply,
-which does. That is the general rule --- a table reached both inside and
-outside a collection has an optional back-reference.
+A \texttt{recursive} marking did exist, folding a path into the ancestor it
+repeats so that both became one table. It was removed. The reason is
+\S\ref{sec:gaps}: a table reached from two different places cannot carry a
+single \texttt{parent\_id}, and the folded table always is --- rows arrive
+both from the collection at the root and from a peer row. Without folding, a
+table is identified by its path alone, so its parent and its position column
+are functions of that path rather than of the documents, and the question
+cannot arise. The cost is the sample-dependence above, and it is recorded as
+a known gap rather than settled.
 
 \paragraph{The markings are a file.}
 
 \begin{lstlisting}[style=json]
-{ "maps": [".users"],
-  "recursive": [ { "path": ".replies[]", "folds_into": "." } ] }
+{ "maps": [".users"] }
 \end{lstlisting}
 
 \noindent
@@ -540,6 +547,20 @@ round-trip statement can only hold up to those.
         The reader is a trusted boundary either way, like the printer.
   \item \textbf{Only one input form.} A single document, or a top-level array
         of them. JSON Lines and concatenated JSON are not read.
+  \item \textbf{Self-referential shapes are taken at face value.} There is no
+        marking that folds a repeated path into the ancestor it repeats, so a
+        comment thread $n$ levels deep yields $n+1$ tables and a document
+        deeper than the sample has no table to go in. The schema is therefore
+        a function of the sample for such shapes, which is the one place this
+        tool does not keep the promise it makes elsewhere.
+
+        The marking is the right design; what it needs first is a parent
+        representation able to name more than one source, since a folded
+        table's rows arrive both from the collection at the root and from a
+        peer row. A variant --- \texttt{Of\_root of Root.id | Of\_comments of
+        Comments.id} --- carries that, and carries the position with it, which
+        would settle the same question for \texttt{idx} versus \texttt{key}.
+        Neither has been built.
 \end{enumerate}
 
 \end{document}

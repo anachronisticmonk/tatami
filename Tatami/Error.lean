@@ -19,7 +19,6 @@ inductive Error where
   | markingMatchedNothing (path : String)
   | mapEntryNotSupported (path : String) (found : String)
   | illFormedSignature (wherein : String)
-  | ambiguousParent (path : String) (first second : String)
 
 def Error.toString : Error → String
   | .notObjectOrArray found =>
@@ -46,8 +45,6 @@ def Error.toString : Error → String
       s!"the configuration marks {path} as a map, but no object was found there."
   | .mapEntryNotSupported path found =>
       s!"the member at {path} is {found}. Map entries may be objects or scalars."
-  | .ambiguousParent path first second =>
-      s!"the rows of {path} are reached from both {first} and {second}, so they cannot carry a single parent key. Two recursive markings folding different collections into one table will do this."
   | .illFormedSignature wherein =>
       s!"the signature generated for {wherein} repeats a field, value or module name, so it would not compile. This is a bug in tatami; please report the input that produced it."
 
