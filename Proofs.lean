@@ -47,10 +47,12 @@ What is stated here, and where each stands.
 
 **Not covered, though it sounds as if it were.**
 * `File.WellFormed` constrains names only, not references. A `qualified M n`
-  naming a module that does not exist, or one declared later in a file that
-  is not `module rec`, satisfies it and still does not compile. "The emitted
-  OCaml compiles" needs a scoping clause and `File.recursive` computed from
-  every cross-module reference.
+  naming a module that does not exist, or one that is compiled *after* the
+  unit naming it, satisfies this definition and still does not compile. Each
+  module is now its own `.mli`, so the ordering obligation is real and
+  external: `File.units` emits `Ids` first and the rest deepest-first, and
+  nothing states that this order is a topological sort of the references.
+  "The emitted OCaml compiles" needs that, plus a scoping clause.
 
 **Out of reach, and not for want of effort.**
 * Anything about the data surviving. The program emits a description of

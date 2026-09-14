@@ -4,6 +4,11 @@ import Lean.Data.Json
 open Lean Tatami
 
 structure Outcome where
+  /-- what the root table is called, which the report needs too -/
+  root : String
+  /-- every unit as (file name, contents), in compile order -/
+  units : List (String × String)
+  /-- the same units in one text, for a terminal -/
   ocaml : String
   tables : Tables
   documents : Nat
@@ -17,8 +22,10 @@ def pipeline (cfg : Config) (input : String) : Except String Outcome :=
         (do
           let docs ← documents j
           let tables ← inferCorpus cfg docs
-          let file ← gen (toSchema tables)
-          return { ocaml := file.print, tables := tables, documents := docs.length }
+          let root := rootModuleName cfg.root
+          let file ← gen root (toSchema tables)
+          return { root := root, units := file.units, ocaml := file.print
+                 , tables := tables, documents := docs.length }
           : Except Error Outcome)
       with
       | .error e => .error e.toString
@@ -26,12 +33,12 @@ def pipeline (cfg : Config) (input : String) : Except String Outcome :=
 
 private def nat (n : Nat) : Json := .num ⟨(n : Int), 0⟩
 
-def columnJson (kv : String × Obs) : Json :=
+def columnJson (root : String) (kv : String × Obs) : Json :=
   let (key, obs) := kv
   Json.mkObj
     [ ("key", .str key)
     , ("name", .str (mangle key))
-    , ("type", .str (fieldTyExpr obs.field).print)   -- as it appears in the .mli
+    , ("type", .str (fieldTyExpr root obs.field).print)   -- as it appears in the .mli
     , ("values", nat obs.values)
     , ("nulls", nat obs.nulls)
     , ("absent", nat obs.absent)
@@ -40,14 +47,14 @@ def columnJson (kv : String × Obs) : Json :=
     , ("renamed", .bool (mangle key != key))
     , ("neverTyped", .bool (obs.ty == .bot)) ]
 
-def tableJson (pt : Path × TableObs) : Json :=
+def tableJson (root : String) (pt : Path × TableObs) : Json :=
   let (p, t) := pt
   let sorted := (t.members.toArray.qsort (fun a b => a.1 < b.1)).toList
   Json.mkObj
     [ ("path", .str (Path.toString p))
-    , ("module", .str (moduleName p))
+    , ("module", .str (moduleName root p))
     , ("visits", nat t.visits)
-    , ("columns", .arr (sorted.map columnJson).toArray) ]
+    , ("columns", .arr (sorted.map (columnJson root)).toArray) ]
 
 def reportJson : Except String Outcome → Json
   | .error msg => Json.mkObj [("ok", .bool false), ("error", .str msg)]
@@ -59,18 +66,24 @@ def reportJson : Except String Outcome → Json
       Json.mkObj
         [ ("ok", .bool true)
         , ("ocaml", .str o.ocaml)
+        , ("files", .arr (o.units.map (fun u =>
+            Json.mkObj [("name", .str u.1), ("ocaml", .str u.2)])).toArray)
         , ("documents", nat o.documents)
-        , ("tables", .arr (ordered.map tableJson).toArray) ]
+        , ("tables", .arr (ordered.map (tableJson o.root)).toArray) ]
 
-/-- `tatami [--json] [--config FILE] [INPUT]` -/
+/-- `tatami [--json] [--config FILE] [-o DIR] [INPUT]`
+
+    One `.mli` per module. With `-o` they are written there; without it they
+    all go to stdout, each behind its own `(* name *)` banner. -/
 def main (args : List String) : IO UInt32 := do
   let jsonMode := args.contains "--json"
   let rest := args.filter (fun a => a != "--json")
-  let rec split : List String → Option String × List String
-    | "--config" :: f :: tl => let (_, r) := split tl; (some f, r)
-    | a :: tl => let (c, r) := split tl; (c, a :: r)
-    | [] => (none, [])
-  let (configFile, files) := split rest
+  let rec split : List String → Option String × Option String × List String
+    | "--config" :: f :: tl => let (_, o, r) := split tl; (some f, o, r)
+    | "-o" :: d :: tl => let (c, _, r) := split tl; (c, some d, r)
+    | a :: tl => let (c, o, r) := split tl; (c, o, a :: r)
+    | [] => (none, none, [])
+  let (configFile, outDir, files) := split rest
   let configText ← match configFile with
     | some f => IO.FS.readFile f
     | none => pure ""
@@ -86,5 +99,13 @@ def main (args : List String) : IO UInt32 := do
     return 0
   else
     match result with
-    | .ok o => IO.print o.ocaml; return 0
+    | .ok o =>
+        match outDir with
+        | none => IO.print o.ocaml
+        | some dir =>
+            IO.FS.createDirAll dir
+            for (name, text) in o.units do
+              IO.FS.writeFile (dir ++ "/" ++ name) text
+            IO.println s!"wrote {o.units.length} files to {dir}/"
+        return 0
     | .error msg => (← IO.getStderr).putStrLn msg; return 1

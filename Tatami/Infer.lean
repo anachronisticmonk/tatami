@@ -16,6 +16,24 @@ inductive Seen where
   | null
   | value (ty : Ty) (big : Bool)
 
+/-- The canonical uuid form: 8-4-4-4-12 hex digits with hyphens.
+
+    Checked on the text, so a member is typed `uuid` only when every value
+    seen there had this shape. One ordinary string and `Ty.join` widens it
+    back to `str`, which is what keeps this a type rather than a guess. -/
+def isUuid (s : String) : Bool :=
+  let cs := s.toList
+  if cs.length != 36 then false
+  else
+    let hex (c : Char) : Bool :=
+      ('0' ≤ c && c ≤ '9') || ('a' ≤ c && c ≤ 'f') || ('A' ≤ c && c ≤ 'F')
+    let rec go : Nat → List Char → Bool
+      | _, [] => true
+      | i, c :: tl =>
+          (if i == 8 || i == 13 || i == 18 || i == 23 then c == '-' else hex c)
+          && go (i + 1) tl
+    go 0 cs
+
 /-- A number is an integer only if it was written without a decimal point
     and fits OCaml's native `int`; otherwise it is a float. The design note
     does not discuss numbers, so this rule is ours. -/
@@ -23,7 +41,7 @@ def seeScalar (path : String) (j : Doc) : Except Error Seen :=
   match j with
   | .null => .ok .null
   | .bool _ => .ok (.value .bool false)
-  | .str _ => .ok (.value .str false)
+  | .str v => .ok (.value (if isUuid v then .uuid else .str) false)
   | .num lit =>
       -- written with a decimal point or an exponent, so a float
       if lit.any (fun c => c == '.' || c == 'e' || c == 'E') then

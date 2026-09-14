@@ -122,28 +122,33 @@ nullable & \texttt{option} field \\
 \end{center}
 
 \noindent
-Step~3 shows the generated signature for one worked example. Our output for
-that input is byte-for-byte identical to the listing in the note:
+Step~3 shows the generated signature for one worked example, as a single
+\texttt{generated.mli} holding both modules. \ourcall{} We emit one
+\texttt{.mli} \emph{and} one \texttt{.ml} per module, plus \texttt{ids}; 
+\S\ref{sec:units} says why they are separate files and \S\ref{sec:impl} what
+is in the implementations. Module for module the content is the note's, with
+the key type named rather than declared, and with the per-field getter
+\S3 of the note requires:
 
 \begin{lstlisting}[style=json]
 { "a": 1, "b": { "c": 1, "d": 2 } }
 \end{lstlisting}
 
 \begin{lstlisting}[style=ml]
-(* generated.mli *)
+(* b.mli *)                              (* b.ml *)
+type id = Ids.b                          type id = Ids.b
+type t = { id : id; c : int; d : int }   type t = { id : id; c : int; d : int }
+val get : id -> t                        let get _ = failwith "B.get: no row source"
+val c : t -> int                         let c r = r.c
+val d : t -> int                         let d r = r.d
 
-module B : sig
-  type id
-  type t = { id : id; c : int; d : int }
-  val get : id -> t
-end
-
-module Root : sig
-  type id
-  type t = { id : id; a : int; b : B.id }
-  val get : id -> t
-  val b : t -> B.t
-end
+(* root.mli *)                           (* root.ml *)
+type id = Ids.root                       type id = Ids.root
+type t = { id : id; a : int;             type t = { id : id; a : int;
+           b : B.id }                               b : B.id }
+val get : id -> t                        let get _ = failwith "Root.get: ..."
+val a : t -> int                         let a r = r.a
+val b : t -> B.t                         let b r = B.get r.b
 \end{lstlisting}
 
 The note also states, without showing it, that ``nested and repeated
@@ -263,28 +268,18 @@ accessor returning a list.
 \end{lstlisting}
 
 \begin{lstlisting}[style=ml]
-(* generated.mli *)
+(* ids.mli *)      (* items.mli *)
+type items         type id = Ids.items
+type root          type t = { id : id; parent_id : Ids.root; idx : int;
+                              qty : int; sku : string }
+                   val get : id -> t
 
-module rec Items : sig
-  type id
-  type t = { id : id; parent_id : Root.id; idx : int; qty : int; sku : string }
-  val get : id -> t
-end
-
-and Root : sig
-  type id
-  type t = { id : id; id_5fno : int }
-  val get : id -> t
-  val items : t -> Items.t list
-end
+(* root.mli *)
+type id = Ids.root
+type t = { id : id; id_5fno : int }
+val get : id -> t
+val items : t -> Items.t list
 \end{lstlisting}
-
-\paragraph{Why \texttt{module rec}.} An array makes the references cyclic:
-\texttt{Root} reaches \texttt{Items}, and \texttt{Items} carries a key back to
-\texttt{Root}. No ordering of plain module declarations satisfies both, so a
-schema containing any array is emitted as a mutually recursive group. A schema
-without arrays is emitted as plain modules, which is what keeps the note's own
-example byte-identical.
 
 \paragraph{The index is not optional.} JSON array order is significant.
 Without \texttt{idx}, \texttt{["a","b"]} and \texttt{["b","a"]} would shred
@@ -294,12 +289,12 @@ identically and the order could not be recovered.
 \texttt{value} column in place of the element's members:
 
 \begin{lstlisting}[style=ml]
-module rec Tags : sig
-  type id
-  type t = { id : id; parent_id : Root.id; idx : int; value : string }
-  val get : id -> t
-end
-and Root : sig ... val tags : t -> Tags.t list end
+(* tags.mli *)
+type id = Ids.tags
+type t = { id : id; parent_id : Ids.root; idx : int; value : string }
+val get : id -> t
+
+(* root.mli *)  ... val tags : t -> Tags.t list
 \end{lstlisting}
 
 \paragraph{An array whose elements were never seen} --- empty in every
@@ -313,6 +308,129 @@ that the member was missing rather than empty. Both give an empty list. This
 is a deliberate collapse, and the alternative --- a presence column in the
 parent --- would invent a column the note does not sanction.
 
+\section{One file per module}\label{sec:units}
+
+The design note shows both modules in a single \texttt{generated.mli}.
+\ourcall{} We emit one \texttt{.mli} and one \texttt{.ml} per module, because
+that is what a consumer compiles against module by module, and one shared
+\texttt{ids} pair. \texttt{-o DIR} writes them; without it they go to standard
+output, each behind its own \texttt{(* name *)} banner. They are emitted in
+compile order: \texttt{ids} first, then each module's signature immediately
+before its implementation, deepest-first.
+
+\paragraph{The obstacle.} An array makes the references cyclic:
+\texttt{Root} names \texttt{Items.t} for the accessor, and \texttt{Items}
+names \texttt{Root.id} for the foreign key. In one file \texttt{module rec}
+absorbs that. Across files nothing can: OCaml compilation units cannot be
+mutually recursive, and cutting the file apart unchanged fails in both
+possible orders, each time on the half of the cycle the other order
+satisfied. The cycle is the referential integrity, so it cannot simply be
+dropped --- one of the two references has to be re-routed.
+
+\paragraph{Options.} \textbf{(a)} Put every table's key type in a generated
+\texttt{ids.mli}. A foreign key then names \texttt{Ids.root} rather than
+\texttt{Root.id}, so the child never mentions its parent, the accessor stays
+on the parent as the note's correspondence has it, and the emit order is
+unchanged --- \texttt{ids} first, then deepest-first. \textbf{(b)} Move the
+collection accessor to the child, so \texttt{Root.xs} becomes
+\texttt{Xs.of\_root : Root.id -> t list}. No extra file and every \texttt{id}
+stays abstract in its own module, but the join reads from the child rather
+than the parent, and the emit order stops being deepest-first: nested objects
+order parent-after-child and collections order parent-before-child, so it
+would need a topological sort.
+
+\paragraph{Chosen: (a).} Both were built and compiled with
+\texttt{ocamlc}~5.5.0 before choosing; both keep the foreign key unforgeable,
+so referential integrity did not decide it. (a) was taken because it leaves
+the note's correspondence and the existing emit order intact. The files and
+the comparison are in \texttt{examples/split-mli/}.
+
+\paragraph{Abstraction survives the move.} \texttt{ids.mli} declares the key
+types abstract, so nothing outside can fabricate one; \texttt{type id =
+Ids.root} inside \texttt{root.mli} is a transparent alias, so
+\texttt{Root.get} still accepts the \texttt{parent\_id} read off a child row.
+The cost is that \texttt{Ids} is now a reserved module name: a member that
+would produce a table called \texttt{Ids} is refused.
+
+\section{Implementations}\label{sec:impl}
+
+The note's \S3 shows Phase 1 emitting a body beside every signature ---
+\texttt{val a : Root.t -> int} with \texttt{let a r = r.a} --- and describes
+Phase 2 as ``a source-to-source pass over that generated code''. So Phase 1
+emits \texttt{.ml} as well, and a getter for every column rather than only
+for the members that hold objects. Without that getter Phase 2 would have
+nothing to rewrite for a scalar field.
+
+\paragraph{Reading a row is a projection; reaching one is a hole.}
+\ourcall{} There is no shredder, so nothing populates a table. Every accessor
+that only \emph{reads} an existing row is real:
+
+\begin{center}
+\begin{tabular}{ll}
+\hline
+\textbf{accessor} & \textbf{body} \\
+\hline
+a scalar column & \texttt{let a r = r.a} \\
+a foreign key & \texttt{let b r = B.get r.b} \\
+a nullable foreign key & \texttt{let b r = Option.map B.get r.b} \\
+a collection & \texttt{let xs r = Xs.of\_root r.id} \\
+\hline
+\texttt{get} & \texttt{failwith "M.get: no row source"} \\
+\texttt{of\_}$p$ & \texttt{failwith "Xs.of\_root: no row source"} \\
+\hline
+\end{tabular}
+\end{center}
+
+\noindent
+Every accessor is real code. The two holes below the line are the only two
+operations that must \emph{find} rows rather than read one, and both sit in
+the module that owns those rows.
+
+\paragraph{Why the collection lookup lives in the child.} A foreign key is
+stored in the parent, so following one is a projection and a \texttt{get}:
+\texttt{r.b} is already a \texttt{B.id}. A collection has no such field ---
+there is no single key to hold --- so the key goes the other way and each
+child row carries \texttt{parent\_id}. The parent therefore has nothing to
+pass to \texttt{Xs.get}, and \texttt{get} could not answer anyway: it keys on
+\texttt{id} and returns one row, while the question keys on
+\texttt{parent\_id} and returns a list. \ourcall{} So each collection table
+also declares
+
+\begin{lstlisting}[style=ml]
+val of_root : Ids.root -> t list
+\end{lstlisting}
+
+\noindent
+and the parent's accessor delegates to it. The alternative --- exposing the
+child's rows so the parent can filter them --- would make every table
+readable in bulk and give up the property that a row is reachable only
+through a key. In SQL terms \texttt{get} is
+\texttt{where id = ?} and \texttt{of\_root} is \texttt{where parent\_id = ?}:
+two lookups on the child's table, on the two columns the child owns.
+
+\paragraph{The expression language.} \texttt{Tatami.Ocaml} gained an
+\texttt{Expr} type for these bodies. It has five constructors --- a variable,
+a projection, a qualified name, a string, an application --- and cannot
+compute anything. The reason is Phase 2: a source-to-source pass over data is
+a function \texttt{Module -> Module} whose effect is statable, while a pass
+over text is not.
+
+\paragraph{There is no way to make a key.} \texttt{ids.mli} declares the key
+types abstract and offers nothing else, so a key can be obtained only from a
+row and a row only from one of the two holes. \ourcall{} An earlier version
+exposed \texttt{val unsafe\_root : int -> root} per table, on the reasoning
+that the implementations are separate compilation units and so cannot see
+through the abstraction the way a single file's implementation could. Nothing
+generated ever called one --- every path that reaches a row is a hole, so no
+emitted body constructs a key --- while it did let a consumer build a foreign
+key naming a row that does not exist. It is gone.
+
+Whatever eventually fills the holes will need to construct keys. The place
+for that is a wrapped library whose public interface omits \texttt{Ids}, so
+the injection is unreachable by construction rather than by naming
+convention; it is not a decision to take before knowing what constructs
+rows.
+
 \section{Markings}
 
 Two shapes cannot be read off the data, and both are supplied by the user
@@ -324,12 +442,12 @@ produces one module per user, and a third user adds a third module. Marked, it
 produces one table whose rows are keyed by the member name:
 
 \begin{lstlisting}[style=ml]
-module rec Users : sig
-  type id
-  type t = { id : id; parent_id : Root.id; key : string; name : string }
-  val get : id -> t
-end
-and Root : sig ... val users : t -> Users.t list end
+(* users.mli *)
+type id = Ids.users
+type t = { id : id; parent_id : Ids.root; key : string; name : string }
+val get : id -> t
+
+(* root.mli *)  ... val users : t -> Users.t list
 \end{lstlisting}
 
 \paragraph{A self-referential shape} looks like a fixed number of nested ones
@@ -536,15 +654,25 @@ round-trip statement can only hold up to those.
 \section{Known gaps}\label{sec:gaps}
 
 \begin{enumerate}
-  \item \textbf{\texttt{observeObject} and the reader are \texttt{partial}.}
-        Lean cannot see that a member of an object is smaller than the object,
-        so the recursion is not structural, and the reader's recursion on a
-        shrinking input is not visible either. A \texttt{partial} definition
-        is opaque to proof, so \texttt{observeObject} must become total before
-        anything about inference can be proved --- a size measure on
-        \texttt{Doc} and the lemma that members are smaller. This is now
-        expressible, which it was not while the parser handed back a tree map.
-        The reader is a trusted boundary either way, like the printer.
+  \item \textbf{One \texttt{partial} definition is left.}
+        \texttt{Path.parseGo}, which reads a path back out of the
+        configuration file. It blocks nothing currently stated, but it is why
+        \texttt{Path.parse} cannot appear in a theorem. Both of the ones that
+        mattered are gone: \texttt{observeObject} is total on
+        \texttt{Doc.size}, and the reader's \texttt{pValue} carries the length
+        decrease in its return type.
+  \item \textbf{There is no row source.} \texttt{get} and every collection
+        accessor are emitted as \texttt{failwith}. Phase 1 describes the
+        tables and never produces one, so the generated code can read a row it
+        is handed but cannot find one. Everything else in an implementation is
+        a real projection.
+  \item \textbf{The emitted code cannot be run, only compiled.} A consequence
+        of the two above rather than a separate gap, but worth stating
+        plainly: with no row source and no way to make a key, nothing can
+        construct a value of any generated type. What Phase 1 claims is that
+        the signatures and implementations typecheck and that the foreign keys
+        are intact, and \texttt{examples/design-note/build.sh} checks exactly
+        that.
   \item \textbf{Only one input form.} A single document, or a top-level array
         of them. JSON Lines and concatenated JSON are not read.
   \item \textbf{Self-referential shapes are taken at face value.} There is no

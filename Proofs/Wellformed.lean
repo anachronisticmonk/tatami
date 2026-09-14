@@ -16,12 +16,14 @@ condition as a `Bool`, which `gen` tests of its own output before returning
 it. `okB_sound` connects the two, and `gen_wellFormed` follows.
 
 **What this does not cover.** Nothing here constrains *references*: a
-`qualified M n` naming a module that does not exist, or one declared later in
-a file that is not `module rec`, is well formed by this definition and still
-does not compile. Making "the emitted OCaml compiles" the true reading of
-this theorem needs a scoping clause, and needs `File.recursive` to be
-computed from every cross-module reference rather than from collection
-back-references alone.
+`qualified M n` naming a module that does not exist, or one compiled after
+the unit that names it, is well formed by this definition and still does not
+compile. Since each module became its own `.mli`, that second failure is the
+live one: OCaml units cannot be mutually recursive, so `gen` puts every key
+type in `Ids` to keep the references acyclic and `File.units` emits `Ids`
+first, then deepest-first. Nothing here says that order is a topological sort
+of the references actually emitted. Making "the emitted OCaml compiles" the
+true reading of this theorem needs that, and a scoping clause.
 -/
 
 namespace Tatami
@@ -83,7 +85,7 @@ theorem certify_wellFormed {f g : File} (h : certify f = .ok g) : g.WellFormed :
     names through `genModule`. That is deliberate: it makes the theorem hold
     of every `Schema`, including ones inference would never build, and it
     does not depend on `mangle_injective`. -/
-theorem gen_wellFormed (s : Schema) (f : File) (h : gen s = .ok f) :
+theorem gen_wellFormed (root : String) (s : Schema) (f : File) (h : gen root s = .ok f) :
     f.WellFormed := by
   unfold gen at h
   split at h

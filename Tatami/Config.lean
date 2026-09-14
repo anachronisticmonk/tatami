@@ -19,6 +19,10 @@ namespace Tatami
 structure Config where
   /-- objects whose members are data: each becomes a row keyed by its name -/
   maps : List Path := []
+  /-- what to call the root table. Every other table is named for the members
+      along its path; the root path has none, so its name is invented and
+      `Root` is only a fallback. This is where a better one comes from. -/
+  root : Option String := none
   deriving Inhabited
 
 def Config.empty : Config := {}
@@ -27,7 +31,7 @@ def Config.isMap (c : Config) (p : Path) : Bool := c.maps.contains p
 
 /-- Read the markings from JSON:
 
-    { "maps": [".users"] } -/
+    { "maps": [".users"], "root": "repo" } -/
 def Config.ofDoc : Doc → Except String Config
   | .obj members => do
       let mut cfg : Config := {}
@@ -42,6 +46,12 @@ def Config.ofDoc : Doc → Except String Config
                 | _ => throw "maps must be a list of path strings"
               cfg := { cfg with maps := ps }
           | _ => throw "maps must be a list"
+        else if k == "root" then
+          match v with
+          | .str n =>
+              if n.trimAscii.isEmpty then throw "root must not be empty"
+              cfg := { cfg with root := some n }
+          | _ => throw "root must be a string"
         else if k == "recursive" then
           throw "recursive markings are no longer supported: a table is identified by its path, so nothing folds into an ancestor"
         else throw s!"unknown configuration key {k}"
