@@ -13,7 +13,7 @@
 DROP TABLE IF EXISTS step, job, run, repo CASCADE;
 
 CREATE TABLE repo (
-  id         integer PRIMARY KEY,
+  id         uuid    PRIMARY KEY,
   name       text    NOT NULL,
   org        text    NOT NULL,
   is_private boolean NOT NULL      -- JSON key "private", an OCaml keyword
@@ -24,7 +24,7 @@ CREATE TABLE repo (
 -- information the array carried and a table would otherwise lose.
 CREATE TABLE run (
   id      integer PRIMARY KEY,
-  repo_id integer NOT NULL,
+  repo_id uuid    NOT NULL,
   idx     integer NOT NULL,
   branch  text    NOT NULL,
   status  text    NOT NULL,

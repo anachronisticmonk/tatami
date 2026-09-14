@@ -84,14 +84,14 @@ let () =
 
   let n =
     Corpus.iter_json !corpus ~f:(fun r ->
-        let rid = gi "id" r in
-        wi t_repo rid; sep t_repo; esc t_repo (gs "name" r); sep t_repo;
+        let rid = gs "id" r in
+        esc t_repo rid; sep t_repo; esc t_repo (gs "name" r); sep t_repo;
         esc t_repo (gs "org" r); sep t_repo; wb t_repo (gb "private" r); eol t_repo;
 
         List.iteri
           (fun ri u ->
             let uid = gi "id" u in
-            wi t_run uid; sep t_run; wi t_run rid; sep t_run; wi t_run ri;
+            wi t_run uid; sep t_run; esc t_run rid; sep t_run; wi t_run ri;
             sep t_run; esc t_run (gs "branch" u); sep t_run;
             esc t_run (gs "status" u); sep t_run; wi t_run (gi "ms" u);
             sep t_run; wot t_run (os "trigger" u); eol t_run;

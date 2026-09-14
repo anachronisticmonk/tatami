@@ -33,16 +33,15 @@ let best ?(n = 5) f =
 
 let corpus = ref "corpus/ci.json"
 
-(* A repository from the middle of the corpus, not the first one. Row-major
-   scans until it finds the document, so asking for id 1 would time the first
-   comparison rather than the lookup. Ids are handed out across the whole
-   corpus rather than per table, so they have to be read rather than guessed. *)
-let middle_repository path =
-  let ids = ref [] and n = ref 0 in
+(* A repo from the middle of the corpus, not the first one. Row-major scans
+   until it finds the document, so asking for the first would time one
+   comparison rather than a lookup. A repo id is a uuid, so it has to be read
+   out of the corpus rather than guessed at. *)
+let middle_repo path =
+  let ids = ref [] in
   ignore
     (Tatami.Corpus.iter_json path ~f:(fun r ->
-         incr n;
-         ids := Yojson.Safe.Util.(to_int (member "id" r)) :: !ids));
+         ids := Yojson.Safe.Util.(to_string (member "id" r)) :: !ids));
   let a = Array.of_list (List.rev !ids) in
   a.(Array.length a / 2)
 let repeats = ref 5
@@ -57,7 +56,7 @@ type result = {
   answers : (string * Tatami.Workload.answer) list;
 }
 
-let doc_id = ref 1
+let doc_id = ref ""
 
 let measure (module S : Tatami.Workload.STORE) =
   Gc.full_major ();
@@ -91,8 +90,8 @@ let () =
   in
   args (List.tl (Array.to_list Sys.argv));
 
-  doc_id := middle_repository !corpus;
-  Printf.printf "corpus %s, document id %d\n" !corpus !doc_id;
+  doc_id := middle_repo !corpus;
+  Printf.printf "corpus %s, document %s\n" !corpus !doc_id;
 
   (* json first: it holds nothing, so it is the cheapest to have resident while
      the others are still being built. *)

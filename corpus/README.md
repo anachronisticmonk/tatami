@@ -13,6 +13,8 @@ repo        a project someone is building
 Each step records how long it ran (`ms`) and what a millisecond cost on that
 runner (`rate`). Four levels, three hops, every level an array.
 
+A repo is identified by a uuid; runs, jobs and steps by integers.
+
 The full 1.5 GB version is not checked in — regenerate it, byte for byte:
 
 ```sh

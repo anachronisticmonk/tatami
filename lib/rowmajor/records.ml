@@ -39,7 +39,7 @@ type run = {
 }
 
 type repo = {
-  p_id : int;
+  p_id : string;
   p_name : string;
   p_org : string;
   p_private : bool;
@@ -76,7 +76,7 @@ let run j =
     r_ms = gi "ms" j; r_trigger = os "trigger" j; r_jobs = arr "jobs" j job }
 
 let repo j =
-  { p_id = gi "id" j; p_name = gs "name" j; p_org = gs "org" j;
+  { p_id = gs "id" j; p_name = gs "name" j; p_org = gs "org" j;
     p_private = gb "private" j; p_runs = arr "runs" j run }
 
 (* ---- the store ----------------------------------------------------------- *)
@@ -112,7 +112,7 @@ let document (t : t) id =
   (try
      Array.iter
        (fun p ->
-         if p.p_id = id then (
+         if String.equal p.p_id id then (
            let runs = ref 0 and jobs = ref 0 and steps = ref 0 and ms = ref 0 in
            Array.iter
              (fun r ->

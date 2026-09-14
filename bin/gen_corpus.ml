@@ -123,6 +123,24 @@ let list k n f =
 
 let name () = Printf.sprintf "%s-%s" (pick words) (pick words)
 
+(* A version 4 uuid, drawn from the same generator as everything else so the
+   corpus stays reproducible. Sixteen bytes, with the version and variant bits
+   set as the format requires, formatted 8-4-4-4-12. *)
+let uuid () =
+  let b = Bytes.create 16 in
+  for i = 0 to 1 do
+    let x = next () in
+    for j = 0 to 7 do
+      Bytes.set b ((i * 8) + j)
+        (Char.chr (Int64.to_int (Int64.logand (Int64.shift_right_logical x (j * 8)) 0xFFL)))
+    done
+  done;
+  Bytes.set b 6 (Char.chr ((Char.code (Bytes.get b 6) land 0x0f) lor 0x40));
+  Bytes.set b 8 (Char.chr ((Char.code (Bytes.get b 8) land 0x3f) lor 0x80));
+  let h i = Printf.sprintf "%02x" (Char.code (Bytes.get b i)) in
+  Printf.sprintf "%s%s%s%s-%s%s-%s%s-%s%s-%s%s%s%s%s%s" (h 0) (h 1) (h 2) (h 3)
+    (h 4) (h 5) (h 6) (h 7) (h 8) (h 9) (h 10) (h 11) (h 12) (h 13) (h 14) (h 15)
+
 (* ---- the document -------------------------------------------------------- *)
 
 let ids = ref 0
@@ -159,7 +177,7 @@ let gen_run () =
 
 let gen_repo () =
   obj (fun () ->
-      field (fun () -> int "id" (fresh ()));
+      field (fun () -> text "id" (uuid ()));
       field (fun () -> text "name" (name ()));
       field (fun () -> text "org" (pick orgs));
       field (fun () -> bool "private" (chance 35));

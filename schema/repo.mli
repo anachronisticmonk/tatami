@@ -13,7 +13,12 @@
 type t
 type id
 
-val id : t -> id
+(* A uuid rather than a counter: a repo is the thing customers name and link
+   to, so its identity has to be stable and unguessable. Storage-wise that
+   makes it text -- variable width, no arithmetic, compared byte for byte --
+   and every key pointing at it is text too. Runs, jobs and steps keep integer
+   ids; they are only ever reached through their parent. *)
+val id : t -> uuid
 val name : t -> string
 val org : t -> string
 val is_private : t -> bool

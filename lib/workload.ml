@@ -54,7 +54,7 @@ module type STORE = sig
      their total duration. Row-major holds that subtree contiguously and walks
      it; the columnar side has no repository-shaped thing at all and must find
      the runs, then their jobs, then their steps. The case columns should lose. *)
-  val document : t -> int -> answer
+  val document : t -> string -> answer
 
   (* How many steps ran longer than [ms]. A scan of one column out of ten. *)
   val scan : t -> int -> answer

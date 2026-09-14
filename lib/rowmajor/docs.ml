@@ -40,7 +40,7 @@ let document path id =
   let found = ref Tatami.Workload.Missing in
   ignore
     (Tatami.Corpus.iter_json path ~f:(fun repo ->
-         if !found = Tatami.Workload.Missing && gi "id" repo = id then (
+         if !found = Tatami.Workload.Missing && String.equal (gs "id" repo) id then (
            let runs = ref 0 and jobs = ref 0 and steps = ref 0 and ms = ref 0 in
            List.iter
              (fun run ->

@@ -4,11 +4,6 @@ type scalar =
   | Int (*an int array: unboxed machine comparison*)
   | Float
   | Bool
-  (*NOTE a foreign key. Stored exactly as Int is -- one dense int array, no
-    tag, no indirection -- so nothing downstream has to special-case it. What
-    it carries beyond Int is which table the number points into, which is the
-    only thing a join needs and the one thing [int] would have thrown away. *)
-  | Key of string
 
 (*NOTE a column can either be something like base + i * width Dense *)
 (*     or can be offsets[i] *)
@@ -26,7 +21,12 @@ type layout =
 
 (* one .mli descirbes one table so reading order.mli produces one of these *)
 (* when join arrives a schema would become a list of them *)
-type column = {name : string; layout: layout}
+(*NOTE [refers_to] is which table a key points into -- the only thing a join
+  needs, and the one thing the storage type would have thrown away. It is kept
+  beside the layout rather than inside it because a key's *storage* and its
+  *target* are independent: repo.id is a uuid and so run.repo_id is text, while
+  job.id is an int and so step.job_id is dense. *)
+type column = {name : string; layout: layout; refers_to : string option}
 
 type t = {table : string; columns: column list}
 
@@ -36,11 +36,7 @@ let column t name = List.find_opt (fun c -> c.name = name) t.columns
 (* given a table, it will give you all column names *)
 let names t = List.map (fun c -> c.name) t.columns
 
-let scalar_to_string = function
-  | Int -> "int"
-  | Float -> "float"
-  | Bool -> "bool"
-  | Key t -> String.capitalize_ascii t ^ ".id"
+let scalar_to_string = function Int -> "int" | Float -> "float" | Bool -> "bool"
 let shape_to_string  = function Dense s -> scalar_to_string s | Var -> "string"
 
 let layout_to_string = function
@@ -68,9 +64,13 @@ let split_arrow s =
   in
   go 0
 
-(*NOTE [Owner.id] is a key into the owner table. Phase 1 writes the reference
+(*NOTE [Repo.id] is a key into the repo table. Phase 1 writes the reference
   into the type rather than leaving it to a naming convention, so the schema
-  reader can see it without being told which columns are keys. *)
+  reader can see it without being told which columns are keys.
+
+  The layout cannot be settled here: it is whatever the *target's* id column
+  is, and that lives in another file. [load_dir] resolves it. Until then a key
+  is left as a dense int, which is right for every key except one. *)
 let key_of_type s =
   let n = String.length s in
   if n > 3 && String.sub s (n - 3) 3 = ".id" then
@@ -81,11 +81,12 @@ let key_of_type s =
   else None
 
 let layout_of_type s =
-  match key_of_type s with
-  | Some table -> Some (Plain (Dense (Key table)))
-  | None ->
   match s with
     | "int" -> Some (Plain (Dense Int))
+    (*NOTE a uuid is text as far as storage is concerned: variable width, no
+      arithmetic, compared by bytes. That it means something to a human is not
+      a fact about the column. *)
+    | "uuid" -> Some (Plain Var)
     | "float" -> Some (Plain (Dense Float))
     | "bool" -> Some (Plain (Dense Bool))
     | "string" -> Some (Plain Var)
@@ -109,8 +110,15 @@ let parse_line line =
         String.trim (String.sub line (i + 1) (String.length line - i - 1))
           in
           match (String.split_on_char ' ' lhs, split_arrow rhs) with
-          | [ "val"; name ], Some ("t", ret) ->
-            Option.map (fun layout -> {name; layout})(layout_of_type ret)
+          | [ "val"; name ], Some ("t", ret) -> (
+            match key_of_type ret with
+            | Some table ->
+              (* layout provisional; load_dir adopts the target's *)
+              Some {name; layout = Plain (Dense Int); refers_to = Some table}
+            | None ->
+              Option.map
+                (fun layout -> {name; layout; refers_to = None})
+                (layout_of_type ret))
           | _ -> None)
 
 (*NOTE table name*)
@@ -120,6 +128,31 @@ let load path =
   {table = Filename.remove_extension (Filename.basename path); columns}
 
 
+let table tables name = List.find_opt (fun t -> t.table = name) tables
+
+(*NOTE a key is stored the way the thing it points at is stored. Resolved once
+  the whole directory is read, because the answer is in another file. *)
+let resolve tables =
+  let id_layout name =
+    match table tables name with
+    | None -> None
+    | Some t -> Option.map (fun c -> c.layout) (column t "id")
+  in
+  List.map
+    (fun t ->
+      { t with
+        columns =
+          List.map
+            (fun c ->
+              match c.refers_to with
+              | None -> c
+              | Some target -> (
+                  match id_layout target with
+                  | Some l -> {c with layout = l}
+                  | None -> c))
+            t.columns })
+    tables
+
 (*NOTE one .mli is one table, so a corpus of seven tables is seven files read
   together. Order is the directory's, sorted, so a schema is the same however
   the filesystem chooses to list it. *)
@@ -128,10 +161,8 @@ let load_dir dir =
   |> List.filter (fun f -> Filename.check_suffix f ".mli")
   |> List.sort compare
   |> List.map (fun f -> load (Filename.concat dir f))
+  |> resolve
 
 (*NOTE the table a key points into, given the column that holds it. *)
-let target = function
-  | {layout = Plain (Dense (Key t)) | Nullable (Dense (Key t)); _} -> Some t
-  | _ -> None
+let target c = c.refers_to
 
-let table tables name = List.find_opt (fun t -> t.table = name) tables

@@ -41,8 +41,7 @@ let builder (c : Schema.column) =
   in
   let v =
     match shape with
-    | Schema.Dense Schema.Int | Schema.Dense Schema.Bool | Schema.Dense (Schema.Key _) ->
-        Data.Ints (Array.make 1024 0)
+    | Schema.Dense Schema.Int | Schema.Dense Schema.Bool -> Data.Ints (Array.make 1024 0)
     | Schema.Dense Schema.Float -> Data.Floats (Array.make 1024 0.)
     | Schema.Var -> Data.Texts (Array.make 1024 "")
   in
@@ -157,8 +156,8 @@ let load path =
 
   ignore
     (Corpus.iter_json path ~f:(fun r ->
-         let rid = gi "id" r in
-         put_int (col repo "id") rid;
+         let rid = gs "id" r in
+         put_text (col repo "id") rid;
          put_text (col repo "name") (gs "name" r);
          put_text (col repo "org") (gs "org" r);
          put_int (col repo "is_private") (if gb "private" r then 1 else 0);
@@ -167,7 +166,7 @@ let load path =
            (fun ri u ->
              let uid = gi "id" u in
              put_int (col run "id") uid;
-             put_int (col run "repo_id") rid;
+             put_text (col run "repo_id") rid;
              put_int (col run "idx") ri;
              put_text (col run "branch") (gs "branch" u);
              put_text (col run "status") (gs "status" u);
@@ -243,8 +242,8 @@ let by_status t =
   done;
   Workload.Groups (List.sort compare (Hashtbl.fold (fun k v a -> (k, v) :: a) tbl []))
 
-(* A set of ints, for following a key from one table to the next. This is the
-   join row-major does not have to do: it already holds the children inside the
+(* A set of keys, for following one from table to table. This is the join
+   row-major does not have to do: it already holds the children inside the
    parent, where the columnar store holds them in a different array entirely. *)
 let idset ids =
   let h = Hashtbl.create (Array.length ids * 2) in
@@ -263,10 +262,12 @@ let children ~key ~id keep =
    then job, then step -- three full passes to gather what row-major had
    contiguously all along. *)
 let document t id =
-  let rid = ints t "repo" "id" in
-  if not (Array.exists (fun x -> x = id) rid) then Workload.Missing
+  let rid = texts t "repo" "id" in
+  if not (Array.exists (fun x -> String.equal x id) rid) then Workload.Missing
   else
-    let runs = children ~key:(ints t "run" "repo_id") ~id:(ints t "run" "id") (idset [| id |]) in
+    let keep = Hashtbl.create 2 in
+    Hashtbl.replace keep id ();
+    let runs = children ~key:(texts t "run" "repo_id") ~id:(ints t "run" "id") keep in
     let jobs = children ~key:(ints t "job" "run_id") ~id:(ints t "job" "id") runs in
     let sk = ints t "step" "job_id" and sd = ints t "step" "ms" in
     let steps = ref 0 and ms = ref 0 in
@@ -281,13 +282,13 @@ let document t id =
 (* Three hops, and every one of them a scan. Row-major walks pointers it
    already holds; this has to rebuild the relationship from keys. *)
 let three_hop t org =
-  let o = texts t "repo" "org" and rid = ints t "repo" "id" in
+  let o = texts t "repo" "org" and rid = texts t "repo" "id" in
   let keep = Hashtbl.create 1024 in
   for i = 0 to Array.length o - 1 do
     if String.equal (Array.unsafe_get o i) org then
       Hashtbl.replace keep (Array.unsafe_get rid i) ()
   done;
-  let runs = children ~key:(ints t "run" "repo_id") ~id:(ints t "run" "id") keep in
+  let runs = children ~key:(texts t "run" "repo_id") ~id:(ints t "run" "id") keep in
   let jobs = children ~key:(ints t "job" "run_id") ~id:(ints t "job" "id") runs in
   let sk = ints t "step" "job_id" and sd = ints t "step" "ms" in
   let total = ref 0 in

@@ -72,8 +72,7 @@ let slot n (c : Schema.column) =
   in
   let values =
     match shape with
-    | Schema.Dense Schema.Int | Schema.Dense Schema.Bool | Schema.Dense (Schema.Key _) ->
-      Ints (Array.make n 0)
+    | Schema.Dense Schema.Int | Schema.Dense Schema.Bool -> Ints (Array.make n 0)
     | Schema.Dense Schema.Float -> Floats (Array.make n 0.)
     | Schema.Var -> Texts (Array.make n "")
   in

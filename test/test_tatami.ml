@@ -99,9 +99,9 @@ let layout_of_type_tests =
 let orders : Schema.t =
   { table = "orders";
     columns =
-      [ { name = "id"; layout = Schema.Plain (Schema.Dense Schema.Int) };
-        { name = "qty"; layout = Schema.Plain (Schema.Dense Schema.Int) };
-        { name = "note"; layout = Schema.Nullable Schema.Var } ] }
+      [ { name = "id"; layout = Schema.Plain (Schema.Dense Schema.Int); refers_to = None };
+        { name = "qty"; layout = Schema.Plain (Schema.Dense Schema.Int); refers_to = None };
+        { name = "note"; layout = Schema.Nullable Schema.Var; refers_to = None } ] }
 
 let lookup_tests =
   [ Alcotest.test_case "column found" `Quick (fun () ->
@@ -206,15 +206,34 @@ let load_tests =
             "columns"
             [ "id"; "job_id"; "idx"; "name"; "ms"; "rate"; "error" ]
             (Schema.names s));
-      (* A foreign key is a dense int that remembers where it points. *)
-      Alcotest.test_case "a cross-module key is read as a key" `Quick (fun () ->
-          let s = Schema.load "../schema/step.mli" in
-          match Schema.column s "job_id" with
-          | Some c ->
-              Alcotest.(check string) "prints as" "Job.id"
-                (Schema.layout_to_string c.layout);
-              Alcotest.(check (option string)) "points at" (Some "job") (Schema.target c)
-          | None -> Alcotest.fail "job_id missing");
+      (* A key remembers where it points, and is stored the way the thing it
+         points at is stored. job.id is an int, so step.job_id is dense. *)
+      Alcotest.test_case "a key adopts its target's storage" `Quick (fun () ->
+          let db = Schema.load_dir "../schema" in
+          match Schema.table db "step" with
+          | None -> Alcotest.fail "no step table"
+          | Some s -> (
+              match Schema.column s "job_id" with
+              | Some c ->
+                  Alcotest.(check string) "stored as" "int"
+                    (Schema.layout_to_string c.layout);
+                  Alcotest.(check (option string)) "points at" (Some "job")
+                    (Schema.target c)
+              | None -> Alcotest.fail "job_id missing"));
+      (* repo.id is a uuid, so the key pointing at it is text and not an int.
+         That is the whole reason storage and target are kept apart. *)
+      Alcotest.test_case "a key to a uuid is text" `Quick (fun () ->
+          let db = Schema.load_dir "../schema" in
+          match Schema.table db "run" with
+          | None -> Alcotest.fail "no run table"
+          | Some s -> (
+              match Schema.column s "repo_id" with
+              | Some c ->
+                  Alcotest.(check string) "stored as" "string"
+                    (Schema.layout_to_string c.layout);
+                  Alcotest.(check (option string)) "points at" (Some "repo")
+                    (Schema.target c)
+              | None -> Alcotest.fail "repo_id missing"));
       (* Seven .mli files, seven tables, and the whole corpus is reachable
          from repository by following keys. *)
       Alcotest.test_case "the whole schema directory" `Quick (fun () ->
@@ -520,11 +539,11 @@ let data_tests =
 let orders_schema : Schema.t =
   { table = "orders";
     columns =
-      [ { name = "id"; layout = Schema.Plain (Schema.Dense Schema.Int) };
-        { name = "qty"; layout = Schema.Plain (Schema.Dense Schema.Int) };
-        { name = "price"; layout = Schema.Plain (Schema.Dense Schema.Float) };
-        { name = "sku"; layout = Schema.Plain Schema.Var };
-        { name = "note"; layout = Schema.Nullable Schema.Var } ] }
+      [ { name = "id"; layout = Schema.Plain (Schema.Dense Schema.Int); refers_to = None };
+        { name = "qty"; layout = Schema.Plain (Schema.Dense Schema.Int); refers_to = None };
+        { name = "price"; layout = Schema.Plain (Schema.Dense Schema.Float); refers_to = None };
+        { name = "sku"; layout = Schema.Plain Schema.Var; refers_to = None };
+        { name = "note"; layout = Schema.Nullable Schema.Var; refers_to = None } ] }
 
 let cols_named ns =
   List.filter_map (Schema.column orders_schema) ns
@@ -570,7 +589,7 @@ let slot_shape (s : Data.slot) =
 let allocates layout expected () =
   Alcotest.(check string)
     expected expected
-    (slot_shape (Data.slot 3 { name = "c"; layout }))
+    (slot_shape (Data.slot 3 { name = "c"; layout; refers_to = None }))
 
 (* The .mli decides the shape of memory, not just what the loop does. A Plain
    column has no validity array at all -- there is nothing to skip because
@@ -594,10 +613,10 @@ let slot_tests =
 (* ---- storing one value -------------------------------------------------- *)
 
 let qty_col : Schema.column =
-  { name = "qty"; layout = Schema.Plain (Schema.Dense Schema.Int) }
+  { name = "qty"; layout = Schema.Plain (Schema.Dense Schema.Int); refers_to = None }
 
 let note_col : Schema.column =
-  { name = "note"; layout = Schema.Nullable Schema.Var }
+  { name = "note"; layout = Schema.Nullable Schema.Var; refers_to = None }
 
 let store_tests =
   [ Alcotest.test_case "an int lands in the array" `Quick (fun () ->
@@ -614,7 +633,7 @@ let store_tests =
         | _ -> Alcotest.fail "expected a text slot");
     Alcotest.test_case "a float lands in the array" `Quick (fun () ->
         let c : Schema.column =
-          { name = "price"; layout = Schema.Plain (Schema.Dense Schema.Float) }
+          { name = "price"; layout = Schema.Plain (Schema.Dense Schema.Float); refers_to = None }
         in
         let s = Data.slot 3 c in
         Data.store c s 2 (Pgx.Value.of_float 49.5);

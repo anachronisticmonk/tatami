@@ -29,7 +29,7 @@ is what makes it a document and not a table.
 
 ```json
 {
-  "id": 1,
+  "id": "9ac9d5ae-2851-4e0a-a319-340bc52ed89a",
   "name": "edge-api",
   "org": "stark",
   "private": true,
@@ -62,8 +62,11 @@ About 900 bytes per repo. Nineteen fields in the whole schema.
 **Strings contain escapes.** `"\"edge-web\" not found"` — a reader that
 mishandles them breaks here rather than passing by luck.
 
-**Ids are unique across the whole corpus**, not per type. Repo 1, run 2, job 3,
-step 4.
+**A repo is identified by a uuid; everything below it by an integer.** A repo is
+the thing customers name and link to, so its identity is stable and
+unguessable. Runs, jobs and steps are only ever reached through their parent,
+so a counter is enough — and those counters are unique across the whole corpus
+rather than per table.
 
 ---
 
@@ -76,7 +79,8 @@ the array.
 ```
    repo                run                  job                  step
    ┌──────────┐        ┌──────────┐         ┌──────────┐         ┌──────────┐
-   │ id    PK │◀───────│ repo_id  │◀────────│ run_id   │◀────────│ job_id   │
+   │ id  uuid │◀───────│ repo_id  │◀────────│ run_id   │◀────────│ job_id   │
+   │       PK │        │   uuid   │         │   int    │         │   int    │
    │ name     │        │ id    PK │         │ id    PK │         │ id    PK │
    │ org      │        │ idx      │         │ idx      │         │ idx      │
    │is_private│        │ branch   │         │ os       │         │ name     │
@@ -94,16 +98,21 @@ information the array carried and a table would otherwise lose.
 One field is renamed on the way in: the JSON key `private` is an OCaml keyword,
 so the accessor is `is_private`.
 
+A key is stored the way the thing it points at is stored. `repo.id` is a uuid,
+so `run.repo_id` is a uuid too; `job.id` is an integer, so `step.job_id` is an
+integer. The schema reader works that out for itself by following the
+reference the `.mli` declares — `val repo_id : t -> Repo.id`.
+
 ### Types
 
 | table | column | type | |
 |---|---|---|---|
-| `repo` | `id` | int | primary key |
+| `repo` | `id` | uuid | primary key |
 | | `name` | string | |
 | | `org` | string | one of five |
 | | `is_private` | bool | JSON key `private` |
 | `run` | `id` | int | primary key |
-| | `repo_id` | int | → `repo.id` |
+| | `repo_id` | uuid | → `repo.id` |
 | | `idx` | int | position in `repo.runs` |
 | | `branch` | string | main, develop, release |
 | | `status` | string | ok, failed, cancelled, timeout |
