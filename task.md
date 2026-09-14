@@ -114,7 +114,7 @@ never actually implemented last time.
 - [~] T6.2 `lib/analysis.ml` deleted; `lib/dataflow.ml` — keep only if the new query
       path uses them; the constant/nullability lattice may survive, the
       filter/project plan probably does not
-- [~] T6.3 deleted, not yet rewritten:  `bin/bench.ml`, `bin/serve.ml`, `web/*` — rewrite against the new
+- [x] ~~T6.3 rewritten against the new shape: `bin/bench.ml`, `bin/serve.ml`, `web/*`~~ — rewrite against the new
       shape rather than patch
 - [x] ~~T6.4 `schema/orders.mli` and the old `orders` table
 
@@ -145,3 +145,16 @@ never actually implemented last time.
 - Whether the constant/nullability lattice earns a place in this attempt. It
   proves `a * b` needs no mask, which is a real result, but it needs the query
   language to have expressions first.
+
+
+## T9 · The demonstration  (localhost:8000)
+
+- [x] ~~T9.1 `Data` tab: one document beside the four tables it shreds into,
+      and the four `.mli` files with what the reader made of them~~
+- [x] ~~T9.2 `Query` tab: five shapes against the small corpus, both stores
+      answering side by side, agreement asserted on every run~~
+- [x] ~~T9.3 `Performance` tab: React, reading the collected measurements~~
+- [x] ~~T9.4 `bin/bench.exe --json` appends one object per run to
+      `bench/results.jsonl`, so runs accumulate rather than overwrite~~
+- [ ] T9.5 Collect across more sizes, and add a selectivity sweep — the
+      experiment most likely to falsify the type-driven placement rule

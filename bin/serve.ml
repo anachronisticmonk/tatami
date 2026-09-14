@@ -1,0 +1,232 @@
+(* The demonstration, on localhost:8000. Three tabs:
+
+     data          one document, and the four tables it shreds into
+     query         the small corpus, answered by both stores at once
+     performance   what has been measured, charted
+
+   The small corpus is loaded into *both* stores when the server starts and
+   held there. That is deliberate rather than incidental: a store that is
+   rebuilt per request never amortises anything, so a demonstration that
+   re-fetched would show the typed arrays at their worst and call it their
+   nature. *)
+
+open Tatami
+module S = Tiny_httpd
+
+let port = match Sys.getenv_opt "TATAMI_PORT" with Some p -> int_of_string p | None -> 8000
+let corpus = ref "corpus/small.json"
+let web_dir = match Sys.getenv_opt "TATAMI_WEB" with Some p -> p | None -> "web"
+let results = ref "bench/results.jsonl"
+
+let read_file path =
+  let ic = open_in_bin path in
+  Fun.protect ~finally:(fun () -> close_in ic)
+    (fun () -> really_input_string ic (in_channel_length ic))
+
+let json ?(code = 200) j =
+  S.Response.make_string
+    ~headers:[ ("Content-Type", "application/json") ]
+    ~code (Ok (Yojson.Safe.to_string j))
+
+let fail code msg = json ~code (`Assoc [ ("error", `String msg) ])
+
+let page path =
+  S.Response.make_string
+    ~headers:[ ("Content-Type", "text/html; charset=utf-8") ]
+    (Ok (read_file (Filename.concat web_dir path)))
+
+(* ---- the schema, as the .mli says it and as we read it ------------------- *)
+
+let column_json (c : Schema.column) =
+  `Assoc
+    [ ("name", `String c.name);
+      ("layout", `String (Schema.layout_to_string c.layout));
+      ( "nullable",
+        `Bool (match c.layout with Schema.Nullable _ -> true | Schema.Plain _ -> false) );
+      ("refers_to", match c.refers_to with None -> `Null | Some t -> `String t) ]
+
+let schema_json () =
+  let db = Schema.load_dir "schema" in
+  `List
+    (List.map
+       (fun (t : Schema.t) ->
+         `Assoc
+           [ ("table", `String t.table);
+             ("source", `String (read_file (Filename.concat "schema" (t.table ^ ".mli"))));
+             ("columns", `List (List.map column_json t.columns)) ])
+       db)
+
+(* ---- one document, and what it becomes ----------------------------------- *)
+
+(* The first repo in the corpus, verbatim, beside the rows it shreds into. The
+   two halves are the whole story of the project in one screen: the same data
+   as a tree, and as four tables. *)
+let sample () =
+  let doc = ref `Null in
+  (try
+     ignore
+       (Corpus.iter_json !corpus ~f:(fun j ->
+            if !doc = `Null then (doc := j; raise Exit)))
+   with Exit -> ());
+  let j = !doc in
+  let m k v = Yojson.Safe.Util.member k v in
+  let arr k v = match m k v with `List l -> l | _ -> [] in
+  let s k v = Yojson.Safe.Util.to_string (m k v) in
+  let i k v = Yojson.Safe.Util.to_int (m k v) in
+  let opt k v = match m k v with `Null -> `Null | x -> x in
+  let rid = s "id" j in
+  let runs = ref [] and jobs = ref [] and steps = ref [] in
+  List.iteri
+    (fun ri u ->
+      let uid = i "id" u in
+      runs :=
+        `Assoc
+          [ ("id", `Int uid); ("repo_id", `String rid); ("idx", `Int ri);
+            ("branch", m "branch" u); ("status", m "status" u); ("ms", m "ms" u);
+            ("trigger", opt "trigger" u) ]
+        :: !runs;
+      List.iteri
+        (fun ji jb ->
+          let jid = i "id" jb in
+          jobs :=
+            `Assoc
+              [ ("id", `Int jid); ("run_id", `Int uid); ("idx", `Int ji);
+                ("os", m "os" jb); ("status", m "status" jb); ("ms", m "ms" jb);
+                ("exit", opt "exit" jb) ]
+            :: !jobs;
+          List.iteri
+            (fun si st ->
+              steps :=
+                `Assoc
+                  [ ("id", m "id" st); ("job_id", `Int jid); ("idx", `Int si);
+                    ("name", m "name" st); ("ms", m "ms" st); ("rate", m "rate" st);
+                    ("error", opt "error" st) ]
+                :: !steps)
+            (arr "steps" jb))
+        (arr "jobs" u))
+    (arr "runs" j);
+  `Assoc
+    [ ("document", j);
+      ("repo",
+       `List [ `Assoc [ ("id", `String rid); ("name", m "name" j); ("org", m "org" j);
+                        ("is_private", m "private" j) ] ]);
+      ("run", `List (List.rev !runs));
+      ("job", `List (List.rev !jobs));
+      ("step", `List (List.rev !steps)) ]
+
+(* ---- both stores, resident ----------------------------------------------- *)
+
+let rec_store = ref None
+let col_store = ref None
+let doc_id = ref ""
+let stats = ref (`Assoc [])
+
+let boot () =
+  Printf.printf "loading %s\n%!" !corpus;
+  let t0 = Unix.gettimeofday () in
+  let r = Rowmajor.Records.load !corpus in
+  let t1 = Unix.gettimeofday () in
+  let c = Columnar.load !corpus in
+  let t2 = Unix.gettimeofday () in
+  rec_store := Some r;
+  col_store := Some c;
+  let ids = ref [] in
+  ignore (Corpus.iter_json !corpus ~f:(fun j ->
+      ids := Yojson.Safe.Util.(to_string (member "id" j)) :: !ids));
+  let a = Array.of_list (List.rev !ids) in
+  doc_id := a.(Array.length a / 2);
+  stats :=
+    `Assoc
+      [ ("corpus", `String (Filename.basename !corpus));
+        ("bytes", `Int (Unix.stat !corpus).st_size);
+        ("repos", `Int (Array.length a));
+        ("records_load_ms", `Float ((t1 -. t0) *. 1000.));
+        ("columnar_load_ms", `Float ((t2 -. t1) *. 1000.));
+        ("rows", `Assoc (List.map (fun (n, k) -> (n, `Int k)) (Columnar.(c.rows)))) ];
+  Printf.printf "  records %.0fms, columnar %.0fms\n%!" ((t1 -. t0) *. 1000.)
+    ((t2 -. t1) *. 1000.)
+
+(* ---- running a query ----------------------------------------------------- *)
+
+(* Five shapes rather than a query language. What is being demonstrated is that
+   the same question costs different amounts in the two layouts, and a parser
+   would sit between the reader and that without adding to it. *)
+let answer_json a = `String (Workload.to_string a)
+
+let time f =
+  let t0 = Unix.gettimeofday () in
+  let a = f () in
+  (a, (Unix.gettimeofday () -. t0) *. 1000.)
+
+(* [type a] ties the module's abstract [t] to the store value handed in;
+   without it S.t escapes its scope and the two cannot be related. *)
+let pick (type a) (module S : Workload.STORE with type t = a) (s : a) name param :
+    unit -> Workload.answer =
+  match name with
+  | "document" -> fun () -> S.document s param
+  | "scan" -> fun () -> S.scan s (int_of_string param)
+  | "computed" -> fun () -> S.computed s (int_of_string param)
+  | "by_status" -> fun () -> S.by_status s
+  | "three_hop" -> fun () -> S.three_hop s param
+  | _ -> failwith ("no query " ^ name)
+
+let run_query name param =
+  match (!rec_store, !col_store) with
+  | Some r, Some c ->
+      let param = if name = "document" && param = "" then !doc_id else param in
+      let ra, rt = time (pick (module Rowmajor.Records) r name param) in
+      let ca, ct = time (pick (module Columnar) c name param) in
+      json
+        (`Assoc
+          [ ("query", `String name); ("param", `String param);
+            ("agree", `Bool (Workload.equal ra ca));
+            ("records", `Assoc [ ("ms", `Float rt); ("answer", answer_json ra) ]);
+            ("columnar", `Assoc [ ("ms", `Float ct); ("answer", answer_json ca) ]);
+            ("ratio", `Float (rt /. ct)) ])
+  | _ -> fail 503 "stores not loaded"
+
+(* ---- collected measurements ---------------------------------------------- *)
+
+(* One JSON object per line, appended by bin/bench.exe. Served as an array. *)
+let bench_json () =
+  try
+    `List
+      (read_file !results |> String.split_on_char '\n'
+      |> List.filter (fun l -> String.trim l <> "")
+      |> List.map Yojson.Safe.from_string)
+  with Sys_error _ -> `List []
+
+(* ---- routes -------------------------------------------------------------- *)
+
+let () =
+  let rec args = function
+    | "--corpus" :: v :: r -> corpus := v; args r
+    | "--results" :: v :: r -> results := v; args r
+    | [] -> ()
+    | a :: _ -> prerr_endline ("unknown argument " ^ a); exit 2
+  in
+  args (List.tl (Array.to_list Sys.argv));
+  boot ();
+  let server = S.create ~port () in
+  let get p h = S.add_route_handler ~meth:`GET server p h in
+  let post p h = S.add_route_handler ~meth:`POST server p h in
+
+  get S.Route.return (fun _ -> page "index.html");
+  get S.Route.(exact "api" @/ exact "schema" @/ return) (fun _ -> json (schema_json ()));
+  get S.Route.(exact "api" @/ exact "sample" @/ return) (fun _ ->
+      try json (sample ()) with e -> fail 500 (Printexc.to_string e));
+  get S.Route.(exact "api" @/ exact "stats" @/ return) (fun _ -> json !stats);
+  get S.Route.(exact "api" @/ exact "bench" @/ return) (fun _ -> json (bench_json ()));
+  post S.Route.(exact "api" @/ exact "query" @/ return) (fun req ->
+      let body = String.trim (S.Request.body req) in
+      let name, param =
+        match String.index_opt body ' ' with
+        | Some i -> (String.sub body 0 i, String.sub body (i + 1) (String.length body - i - 1))
+        | None -> (body, "")
+      in
+      try run_query name param with
+      | Failure m -> fail 400 m
+      | e -> fail 500 (Printexc.to_string e));
+
+  Printf.printf "tatami: http://localhost:%d\n%!" port;
+  S.run_exn server

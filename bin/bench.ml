@@ -32,6 +32,7 @@ let best ?(n = 5) f =
   (median (List.map fst rs), snd (List.hd rs))
 
 let corpus = ref "corpus/ci.json"
+let results_path = ref ""
 
 (* A repo from the middle of the corpus, not the first one. Row-major scans
    until it finds the document, so asking for the first would time one
@@ -85,6 +86,7 @@ let () =
   let rec args = function
     | "--corpus" :: v :: r -> corpus := v; args r
     | "--repeats" :: v :: r -> repeats := int_of_string v; args r
+    | "--json" :: v :: r -> results_path := v; args r
     | [] -> ()
     | a :: _ -> prerr_endline ("unknown argument " ^ a); exit 2
   in
@@ -145,4 +147,35 @@ let () =
       let rec_t = get (List.nth results 1) and col_t = get (List.nth results 2) in
       Printf.printf " %9.2fx\n" (rec_t /. col_t))
     reference.timings;
-  print_newline ()
+  print_newline ();
+
+  (* ---- collected, so the page can chart runs against each other ---- *)
+  if !results_path <> "" then begin
+    let bytes = (Unix.stat !corpus).st_size in
+    let esc s = String.concat "\\\"" (String.split_on_char '"' s) in
+    let b = Buffer.create 4096 in
+    Buffer.add_string b
+      (Printf.sprintf
+         "{\"corpus\":\"%s\",\"bytes\":%d,\"repeats\":%d,\"stores\":["
+         (esc (Filename.basename !corpus)) bytes !repeats);
+    List.iteri
+      (fun i r ->
+        if i > 0 then Buffer.add_char b ',';
+        Buffer.add_string b
+          (Printf.sprintf "{\"name\":\"%s\",\"load_ms\":%.2f,\"mb\":%.1f,\"queries\":["
+             r.store (ms r.load_s) (r.words *. 8. /. 1e6));
+        List.iteri
+          (fun k (q, t) ->
+            if k > 0 then Buffer.add_char b ',';
+            Buffer.add_string b (Printf.sprintf "{\"q\":\"%s\",\"ms\":%.3f}" q (ms t)))
+          r.timings;
+        Buffer.add_string b "]}")
+      results;
+    Buffer.add_string b "]}";
+    (* one JSON object per line: appending a run never rewrites the earlier ones *)
+    let oc = open_out_gen [ Open_append; Open_creat ] 0o644 !results_path in
+    output_string oc (Buffer.contents b);
+    output_char oc '\n';
+    close_out oc;
+    Printf.printf "appended to %s\n" !results_path
+  end
