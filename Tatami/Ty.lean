@@ -11,12 +11,19 @@ namespace Tatami
     The design note settles the two ends of this -- a column becomes a record
     field, a nullable column an `option` field -- but not how a member seen as
     both an integer and a float should be typed. That ordering is ours: `bot`
-    sits under everything, `int` under `float`, and nothing else is
-    comparable. -/
+    sits under everything, `int` under `float`, `uuid` under `str`, and nothing
+    else is comparable.
+
+    `uuid` is a refinement of `str`, not a separate scalar: a member is typed
+    `uuid` only if every value ever seen there was uuid-shaped, and a single
+    ordinary string widens it back. That is the same monotone widening as
+    `int` to `float`, which is why it is a type rather than a marking -- more
+    data can only widen, never narrow. -/
 inductive Ty where
   | bot     -- observed, but never with a value
   | int
   | float
+  | uuid    -- a string, every occurrence of which was uuid-shaped
   | str
   | bool
   | ref : Path → Ty      -- a nested object: a key into its table
@@ -27,6 +34,7 @@ def Ty.toString : Ty → String
   | .bot => "unknown"
   | .int => "int"
   | .float => "float"
+  | .uuid => "uuid"
   | .str => "string"
   | .bool => "bool"
   | .ref p => "the object at " ++ Path.toString p
@@ -53,6 +61,9 @@ def Ty.join : Ty → Ty → Option Ty
   | .int, .float => some .float
   | .float, .int => some .float
   | .float, .float => some .float
+  | .uuid, .uuid => some .uuid
+  | .uuid, .str => some .str
+  | .str, .uuid => some .str
   | .str, .str => some .str
   | .bool, .bool => some .bool
   | .ref p, .ref q => if p = q then some (.ref p) else none

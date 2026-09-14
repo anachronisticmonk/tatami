@@ -19,7 +19,7 @@ inductive Error where
   | markingMatchedNothing (path : String)
   | mapEntryNotSupported (path : String) (found : String)
   | illFormedSignature (wherein : String)
-  | reservedModuleName (path : String)
+  | unusableKey (path : String) (why : String)
 
 def Error.toString : Error → String
   | .notObjectOrArray found =>
@@ -46,8 +46,8 @@ def Error.toString : Error → String
       s!"the configuration marks {path} as a map, but no object was found there."
   | .mapEntryNotSupported path found =>
       s!"the member at {path} is {found}. Map entries may be objects or scalars."
-  | .reservedModuleName path =>
-      s!"the table at {path} would be called Ids, which is the module holding every table's key type. Rename the member it is reached through."
+  | .unusableKey path why =>
+      s!"the member id at {path} cannot be the table's key: it is {why}. Rename it, or remove it and one will be generated."
   | .illFormedSignature wherein =>
       s!"the signature generated for {wherein} repeats a field, value or module name, so it would not compile. This is a bug in tatami; please report the input that produced it."
 

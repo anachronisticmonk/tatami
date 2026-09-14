@@ -217,6 +217,12 @@
     border: 1px solid var(--line); padding: 4px 8px; max-width: 100%;
   }
   .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field input[type="text"] {
+    margin-left: auto; font-family: var(--mono); font-size: 13px;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line); padding: 4px 8px; max-width: 14ch;
+  }
+  .field input[type="text"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .field select.set { border-color: var(--accent); color: var(--accent); }
   .field .fixed {
     margin-left: auto; font-family: var(--sans); font-size: 13px; color: var(--faint);
@@ -451,7 +457,7 @@
       var c = src[i];
       if (c === "{") return obj();
       if (c === "[") return arr();
-      if (c === '"') { str(); return { k: "str" }; }
+      if (c === '"') { return { k: "str", s: str() }; }   /* kept: uuid is a shape */
       if (c === "-" || (c >= "0" && c <= "9")) return num();
       if (src.startsWith("true", i)) { i += 4; return { k: "bool" }; }
       if (src.startsWith("false", i)) { i += 5; return { k: "bool" }; }
@@ -538,9 +544,15 @@
 
   function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
 
+  /* Every table is named for the members along its path. The root path has
+     none, so its name is invented and "Root" is only a fallback; the markings
+     are where a better one comes from. Set once per run, from the config. */
+  var ROOT_NAME = "Root";
+  function rootModuleName(n) { return n ? capitalize(mangle(n)) : "Root"; }
+
   function moduleName(p) {
     var names = pathNames(p);
-    return names.length === 0 ? "Root" : capitalize(names.map(mangle).join("_"));
+    return names.length === 0 ? ROOT_NAME : capitalize(names.map(mangle).join("_"));
   }
 
   /* ------------------------------------------------------------------
@@ -550,6 +562,7 @@
 
   function markings(cfg) {
     cfg = cfg || {};
+    ROOT_NAME = rootModuleName(cfg.root);
     if (cfg.recursive !== undefined)
       throw { msg: "recursive markings are no longer supported: a table is identified by " +
                    "its path, so nothing folds into an ancestor" };
@@ -576,6 +589,9 @@
     if (a.ty === b.ty) return a;
     if ((a.ty === "int" && b.ty === "float") || (a.ty === "float" && b.ty === "int"))
       return { ty: "float" };
+    /* uuid is a refinement of str: one ordinary string widens it back */
+    if ((a.ty === "uuid" && b.ty === "str") || (a.ty === "str" && b.ty === "uuid"))
+      return { ty: "str" };
     return null;
   }
 
@@ -590,9 +606,15 @@
              str: "a string", bool: "a boolean", "null": "null" }[v.k];
   }
 
+  /* The canonical uuid form: 8-4-4-4-12 hex digits with hyphens. A member is
+     typed uuid only when every value seen there had this shape. */
+  function isUuid(s) {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(s);
+  }
+
   function scalarSeen(v) {
     if (v.k === "null") return null;
-    if (v.k === "str") return { ty: "str" };
+    if (v.k === "str") return { ty: isUuid(v.s) ? "uuid" : "str" };
     if (v.k === "bool") return { ty: "bool" };
     if (/[.eE]/.test(v.raw)) return { ty: "float" };
     var big = false;
@@ -748,112 +770,110 @@
     var base = col.ty === "ref" ? ref(col.ref, "id")
              : col.ty === "coll" ? ref(col.ref, "t") + " list"
              : col.ty === "bot" ? "unit"
-             : col.ty === "str" ? "string" : col.ty;
+             : col.ty === "str" ? "string" : col.ty;   /* uuid passes through */
     return col.ty === "coll" ? base : base + (col.nullable ? " option" : "");
   }
 
   function lowerFirst(n) { return n.charAt(0).toLowerCase() + n.slice(1); }
   function fileNameOf(n) { return lowerFirst(n) + ".mli"; }
-  /* A table's key type inside Ids: its module name, lowercased. A foreign key
-     names a type here rather than in the module it points into, which is what
-     keeps the units acyclic -- OCaml units cannot be mutually recursive. */
   function idTypeName(p) { return lowerFirst(moduleName(p)); }
-  var IDS = "Ids";
+  /* the key column is named after its table, so a child's foreign key and the
+     parent's primary key spell the same thing */
+  function keyColumnName(p) { return idTypeName(p) + "_id"; }
+  function childLookup(parent) { return "of_" + idTypeName(parent); }
+
+  /* A unit must follow every unit it names: its parent, for the foreign key,
+     and the target of every ref column -- so the edges run both up and down
+     the document tree and a length sort is not enough. */
+  function orderTables(tables) {
+    var done = [], pending = tables.slice(), out = [];
+    function deps(t) {
+      var d = t.parent ? [pathString(t.parent)] : [];
+      t.members.forEach(function (m) { if (m.ty === "ref") d.push(pathString(m.ref)); });
+      return d;
+    }
+    while (pending.length) {
+      var ready = pending.filter(function (t) {
+        return deps(t).every(function (x) { return done.indexOf(x) >= 0; });
+      });
+      if (!ready.length) { out = out.concat(pending); break; }
+      ready.forEach(function (t) { out.push(t); done.push(t.key); });
+      pending = pending.filter(function (t) { return ready.indexOf(t) < 0; });
+    }
+    return out;
+  }
 
   function renderUnits(tables) {
     var names = tables.map(function (t) { return moduleName(t.path); });
     names.forEach(function (n, i) {
       if (names.indexOf(n) !== i) throw { msg: "two tables would both be called " + n + "." };
-      if (n === IDS)
-        throw { msg: "the table at " + tables[i].path + " would be called Ids, which is the " +
-                     "module holding every table's key type. Rename the member it is reached through." };
     });
 
-    /* Every table's key type, abstract, and nothing else. There is
-       deliberately no way to make one: every path that would reach a row is a
-       hole, so nothing generated ever needs to construct a key, and exposing
-       an injection would only let a consumer build a foreign key naming a row
-       that does not exist. */
-    var units = [
-      { name: "ids.mli",
-        text: "(* ids.mli *)\n\n" +
-              tables.map(function (t) { return "type " + idTypeName(t.path); }).join("\n") + "\n" },
-      { name: "ids.ml",
-        text: "(* ids.ml *)\n\n" +
-              tables.map(function (t) { return "type " + idTypeName(t.path) + " = int"; }).join("\n") + "\n" }
-    ];
+    var units = [];
+    orderTables(tables).forEach(function (t) {
+      var self = moduleName(t.path), keyName = keyColumnName(t.path);
+      function hole(what) { return 'failwith "' + self + "." + what + ': no row source"'; }
 
-    tables.forEach(function (t) {
-      var self = moduleName(t.path);
-      function ref(p, n) {
-        return moduleName(p) === self ? (n === "id" ? "id" : n) : moduleName(p) + "." + n;
-      }
-      /* Phase 1 emits no shredder, so every way of reaching a row is a hole;
-         every way of reading one is a projection. */
-      function hole(what) {
-        return 'failwith "' + self + "." + what + ': no row source"';
-      }
-      /* `get` keys on id, this keys on parent_id, and the child owns both.
-         The parent's accessor delegates to it. */
-      function childLookup(parent) { return "of_" + idTypeName(parent); }
+      /* the document's own id is the key if it has one, keeping its inferred
+         type; otherwise one is minted, and a minted key is a uuid */
+      var docKey = null;
+      t.members.forEach(function (m) { if (m.key === "id") docKey = m; });
+      var keyTy;
+      if (!docKey) keyTy = "uuid";
+      else if (docKey.nullable || docKey.ty === "ref" || docKey.ty === "coll" || docKey.ty === "bot")
+        throw { msg: "the member id at " + pathString(t.path) + " cannot be the table's key: it is " +
+                     (docKey.nullable ? "sometimes absent or null"
+                      : docKey.ty === "bot" ? "never given a value"
+                      : docKey.ty === "ref" ? "an object" : "an array") +
+                     ". Rename it, or remove it and one will be generated." };
+      else keyTy = ocamlType({ ty: docKey.ty, ref: docKey.ref, nullable: false }, self);
+      var usesUuid = !docKey || docKey.ty === "uuid";
 
-      var fields = ["id : id"], accessors = [], bodies = [];
-      var lookup = [], lookupImpl = [], lookupName = null;
-      var posName = t.keyed ? "key" : "idx";
+      var fields  = [keyName + " : " + keyTy];
+      var decls   = ["val " + keyName + " : t -> " + keyTy];
+      var bodies  = ["let " + keyName + " r = r." + keyName];
+      var taken   = [keyName, "get", "t", "id"];
+
       if (t.parent) {
-        var idTy = IDS + "." + idTypeName(t.parent), posTy = t.keyed ? "string" : "int";
-        fields.push("parent_id : " + idTy);
-        fields.push(posName + " : " + posTy);
-        lookupName = childLookup(t.parent);
-        lookup = ["val " + lookupName + " : " + idTy + " -> t list"];
-        lookupImpl = ["let " + lookupName + " _ = " + hole(lookupName)];
+        var pk = keyColumnName(t.parent), pkTy = moduleName(t.parent) + ".id";
+        var posName = t.keyed ? "key" : "idx", posTy = t.keyed ? "string" : "int";
+        var look = childLookup(t.parent);
+        fields.push(pk + " : " + pkTy, posName + " : " + posTy);
+        decls.push("val " + pk + " : t -> " + pkTy,
+                   "val " + posName + " : t -> " + posTy,
+                   "val " + look + " : " + pkTy + " -> t list");
+        bodies.push("let " + pk + " r = r." + pk,
+                    "let " + posName + " r = r." + posName,
+                    "let " + look + " _ = " + hole(look));
+        taken = taken.concat([pk, posName, look]);
       }
+
       t.members.forEach(function (m) {
+        if (m.key === "id") return;                 // consumed as the key
         var name = mangle(m.key);
-        if (name === "id" || (t.parent && (name === "parent_id" || name === posName)))
+        if (taken.indexOf(name) >= 0)
           throw { msg: "the member " + m.key + " collides with the generated " + name + " column." };
-        // every column now carries an accessor, so every column can collide
-        if (name === "get" || name === lookupName)
-          throw { msg: "the member " + m.key + " needs an accessor of that name, " +
-                       "which collides with the generated " + name + "." };
-        if (m.ty === "coll") {
-          accessors.push("val " + name + " : t -> " + ref(m.ref, "t") + " list");
-          // delegate: the rows are the child's, and so is the parent_id column
-          bodies.push("let " + name + " r = " + moduleName(m.ref) + "." +
-                      childLookup(t.path) + " r.id");
-          return;
-        }
-        fields.push(name + " : " + ocamlType(m, self));
-        if (m.ty === "ref") {
-          accessors.push("val " + name + " : t -> " + ref(m.ref, "t") +
-                         (m.nullable ? " option" : ""));
-          bodies.push("let " + name + " r = " + (m.nullable
-            ? "Option.map " + moduleName(m.ref) + ".get r." + name
-            : moduleName(m.ref) + ".get r." + name));
-        } else {
-          // the design note's `val a : Root.t -> int` / `let a r = r.a`; this
-          // is what Phase 2 rewrites into a yielding accessor
-          accessors.push("val " + name + " : t -> " + ocamlType(m, self));
-          bodies.push("let " + name + " r = r." + name);
-        }
+        if (m.ty === "coll") return;                // the elements carry the key back
+        if (m.ty === "uuid") usesUuid = true;
+        var ty = m.ty === "ref"
+          ? moduleName(m.ref) + ".id" + (m.nullable ? " option" : "")
+          : ocamlType(m, self);
+        fields.push(name + " : " + ty);
+        decls.push("val " + name + " : t -> " + ty);
+        bodies.push("let " + name + " r = r." + name);
       });
-      var types = "type id = " + IDS + "." + idTypeName(t.path) + "\n" +
-                  "type t = { " + fields.join("; ") + " }\n";
-      units.push({
-        name: fileNameOf(self),
-        text: "(* " + fileNameOf(self) + " *)\n\n" + types +
-              "val get : id -> t\n" +
-              (lookup.length ? lookup.join("\n") + "\n" : "") +
-              (accessors.length ? accessors.join("\n") + "\n" : "")
-      });
-      var implFile = lowerFirst(self) + ".ml";
-      units.push({
-        name: implFile,
-        text: "(* " + implFile + " *)\n\n" + types +
-              "let get _ = " + hole("get") + "\n" +
-              (lookupImpl.length ? lookupImpl.join("\n") + "\n" : "") +
-              (bodies.length ? bodies.join("\n") + "\n" : "")
-      });
+
+      /* uuid is not an OCaml type; it is a name for string that says what the
+         column holds, and the schema reader and the DDL both read it */
+      var alias = usesUuid ? "type uuid = string\n" : "";
+      var mli = fileNameOf(self), ml = lowerFirst(self) + ".ml";
+      units.push({ name: mli,
+        text: "(* " + mli + " *)\n\n" + alias + "type t\ntype id\nval get : id -> t\n" +
+              decls.join("\n") + "\n" });
+      units.push({ name: ml,
+        text: "(* " + ml + " *)\n\n" + alias + "type id = " + keyTy + "\n" +
+              "type t = { " + fields.join("; ") + " }\n" +
+              "let get _ = " + hole("get") + "\n" + bodies.join("\n") + "\n" });
     });
 
     return units;
@@ -918,15 +938,16 @@
 
   /* ---------------- the markings ---------------- */
 
-  var config = { maps: [] };
+  var config = { maps: [], root: "" };
 
   function configForWire() {
     var c = {};
     if (config.maps.length) c.maps = config.maps.slice();
+    if (config.root) c.root = config.root;
     return c;
   }
 
-  function markingCount() { return config.maps.length; }
+  function markingCount() { return config.maps.length + (config.root ? 1 : 0); }
 
   /* ---------------- the Shape tab ---------------- */
 
@@ -998,18 +1019,41 @@
       "</div>";
   }
 
+  /* The one name that is not in the document. Every other table is named for
+     a member; the root has none, so it is asked for rather than derived. */
+  function rootRow() {
+    return '<div class="field"><div class="field-top">' +
+      '<code class="path">.</code><span class="kind">root</span>' +
+      '<input id="rootname" data-root type="text" placeholder="Root" value="' +
+      esc(config.root) + '" spellcheck="false"></div>' +
+      '<p class="says">The root object has no member name to be called after, so ' +
+      '<b>' + esc(rootModuleName(config.root)) + '</b> is used. Name it for what a ' +
+      'document <i>is</i> &mdash; every child table keys back to it.</p>' +
+      '<div class="yields">now: module ' + esc(rootModuleName(config.root)) +
+      ', file ' + esc(rootModuleName(config.root).toLowerCase()) + '.mli</div></div>';
+  }
+
   function renderShape(tables) {
     var paths = markablePaths(tables);
-    shapeEl.innerHTML = paths.length
+    shapeEl.innerHTML = rootRow() + (paths.length
       ? paths.map(function (p) { return shapeRow(p, tables); }).join("")
-      : '<p class="empty">Nothing to choose: this document has no nested objects and no collections.</p>';
+      : '<p class="empty">Nothing else to choose: this document has no nested objects and no collections.</p>');
     var n = markingCount();
     $("n-shape").textContent = n ? String(n) : "";
     $("n-config").textContent = n ? "●" : "";
   }
 
+  shapeEl.addEventListener("input", function (e) {
+    if (!e.target.hasAttribute("data-root")) return;
+    config.root = e.target.value.trim();
+    files.forEach(function (f) { f.edited = false; });
+    renderConfigText();
+    run();
+  });
+
   shapeEl.addEventListener("change", function (e) {
     var t = e.target;
+    if (t.hasAttribute("data-root")) return;
     if (t.hasAttribute("data-map")) {
       var path = t.getAttribute("data-map");
       var i = config.maps.indexOf(path);
@@ -1036,7 +1080,7 @@
 
   cfgEl.addEventListener("input", function () {
     var text = cfgEl.value.trim();
-    if (!text) { config = { maps: [] }; cfgBad.className = "cfg-bad"; run(); return; }
+    if (!text) { config = { maps: [], root: "" }; cfgBad.className = "cfg-bad"; run(); return; }
     var parsed;
     try { parsed = JSON.parse(text); }
     catch (e) {
@@ -1051,14 +1095,14 @@
       cfgBad.className = "cfg-bad on";
       return;
     }
-    var unknown = keys.filter(function (k) { return k !== "maps"; });
+    var unknown = keys.filter(function (k) { return k !== "maps" && k !== "root"; });
     if (unknown.length) {
-      cfgBad.textContent = "unknown key " + unknown[0] + " — only maps is read";
+      cfgBad.textContent = "unknown key " + unknown[0] + " — only maps and root are read";
       cfgBad.className = "cfg-bad on";
       return;
     }
     cfgBad.className = "cfg-bad";
-    config = { maps: parsed.maps || [] };
+    config = { maps: parsed.maps || [], root: parsed.root || "" };
     files.forEach(function (f) { f.edited = false; });
     run();
   });
@@ -1361,7 +1405,7 @@
 
   document.querySelectorAll("button.chip").forEach(function (b) {
     b.addEventListener("click", function () {
-      config = { maps: [] };                   // an example is a fresh start
+      config = { maps: [], root: "" };         // an example is a fresh start
       files.forEach(function (f) { f.edited = false; });
       inEl.value = EXAMPLES[b.dataset.ex];
       renderConfigText();

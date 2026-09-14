@@ -85,7 +85,7 @@ theorem certify_wellFormed {f g : File} (h : certify f = .ok g) : g.WellFormed :
     names through `genModule`. That is deliberate: it makes the theorem hold
     of every `Schema`, including ones inference would never build, and it
     does not depend on `mangle_injective`. -/
-theorem gen_wellFormed (s : Schema) (f : File) (h : gen s = .ok f) :
+theorem gen_wellFormed (root : String) (s : Schema) (f : File) (h : gen root s = .ok f) :
     f.WellFormed := by
   unfold gen at h
   split at h

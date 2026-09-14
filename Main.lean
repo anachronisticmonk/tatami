@@ -4,6 +4,8 @@ import Lean.Data.Json
 open Lean Tatami
 
 structure Outcome where
+  /-- what the root table is called, which the report needs too -/
+  root : String
   /-- every unit as (file name, contents), in compile order -/
   units : List (String × String)
   /-- the same units in one text, for a terminal -/
@@ -20,8 +22,9 @@ def pipeline (cfg : Config) (input : String) : Except String Outcome :=
         (do
           let docs ← documents j
           let tables ← inferCorpus cfg docs
-          let file ← gen (toSchema tables)
-          return { units := file.units, ocaml := file.print
+          let root := rootModuleName cfg.root
+          let file ← gen root (toSchema tables)
+          return { root := root, units := file.units, ocaml := file.print
                  , tables := tables, documents := docs.length }
           : Except Error Outcome)
       with
@@ -30,12 +33,12 @@ def pipeline (cfg : Config) (input : String) : Except String Outcome :=
 
 private def nat (n : Nat) : Json := .num ⟨(n : Int), 0⟩
 
-def columnJson (kv : String × Obs) : Json :=
+def columnJson (root : String) (kv : String × Obs) : Json :=
   let (key, obs) := kv
   Json.mkObj
     [ ("key", .str key)
     , ("name", .str (mangle key))
-    , ("type", .str (fieldTyExpr obs.field).print)   -- as it appears in the .mli
+    , ("type", .str (fieldTyExpr root obs.field).print)   -- as it appears in the .mli
     , ("values", nat obs.values)
     , ("nulls", nat obs.nulls)
     , ("absent", nat obs.absent)
@@ -44,14 +47,14 @@ def columnJson (kv : String × Obs) : Json :=
     , ("renamed", .bool (mangle key != key))
     , ("neverTyped", .bool (obs.ty == .bot)) ]
 
-def tableJson (pt : Path × TableObs) : Json :=
+def tableJson (root : String) (pt : Path × TableObs) : Json :=
   let (p, t) := pt
   let sorted := (t.members.toArray.qsort (fun a b => a.1 < b.1)).toList
   Json.mkObj
     [ ("path", .str (Path.toString p))
-    , ("module", .str (moduleName p))
+    , ("module", .str (moduleName root p))
     , ("visits", nat t.visits)
-    , ("columns", .arr (sorted.map columnJson).toArray) ]
+    , ("columns", .arr (sorted.map (columnJson root)).toArray) ]
 
 def reportJson : Except String Outcome → Json
   | .error msg => Json.mkObj [("ok", .bool false), ("error", .str msg)]
@@ -66,7 +69,7 @@ def reportJson : Except String Outcome → Json
         , ("files", .arr (o.units.map (fun u =>
             Json.mkObj [("name", .str u.1), ("ocaml", .str u.2)])).toArray)
         , ("documents", nat o.documents)
-        , ("tables", .arr (ordered.map tableJson).toArray) ]
+        , ("tables", .arr (ordered.map (tableJson o.root)).toArray) ]
 
 /-- `tatami [--json] [--config FILE] [-o DIR] [INPUT]`
 

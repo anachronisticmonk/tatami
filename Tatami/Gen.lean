@@ -29,45 +29,24 @@ private def capitalize (s : String) : String :=
     injective, and it escapes `_` so a literal underscore in a member name
     cannot be mistaken for the separator. The element marker contributes no
     name -- an array's element table is named for the member holding it. -/
-def moduleName (p : Path) : String :=
+def moduleName (root : String) (p : Path) : String :=
   match Path.names p with
-  | [] => "Root"
+  | [] => root
   | segs => capitalize (String.intercalate "_" (segs.map mangle))
 
-/-- The module holding every table's key type.
+/-- The root table's name: the configured one, mangled like any other name so
+    that it is always a legal module name, or `Root` when none was given. -/
+def rootModuleName : Option String → String
+  | some n => capitalize (mangle n)
+  | none => "Root"
 
-    A foreign key names a type here rather than in the module it points into,
-    which is what keeps the units acyclic. Without it a collection's rows
-    would name their parent's `id` and the parent would name their `t`, and
-    OCaml compilation units cannot be mutually recursive. -/
-def idsModuleName : String := "Ids"
-
-/-- A table's key type inside `Ids`: its module name, lowercased. Distinct
-    module names give distinct type names, because a module name always
-    begins with a capital. -/
-def idTypeName (p : Path) : String :=
-  match (moduleName p).toList with
+/-- A table's name, lowercased: the stem its key column, its file and its
+    `of_` lookup are all built from. Distinct module names give distinct
+    stems, because a module name always begins with a capital. -/
+def idTypeName (root : String) (p : Path) : String :=
+  match (moduleName root p).toList with
   | c :: cs => String.ofList (c.toLower :: cs)
   | [] => "root"
-
-/-- Every table's key type, abstract, and nothing else.
-
-    There is deliberately no way to make one. An earlier version exposed an
-    injection per table, on the reasoning that the generated implementations
-    are separate compilation units and so cannot see through the abstraction.
-    Nothing generated ever called one: every path that would *reach* a row is
-    a hole, so no emitted body constructs a key. All it did was let a consumer
-    build a foreign key naming a row that does not exist.
-
-    So a key can be obtained only from a row, and a row only from `get` or
-    `of_`, which is the honest reading of "no row source": there is no way in
-    at all. Whatever fills those holes will need to construct keys, and the
-    place for that is a wrapped library whose public interface omits `Ids`,
-    not a naming convention. -/
-def idsModule (s : Schema) : Module :=
-  { name := idsModuleName
-  , decls := s.map fun t => .abstractType (idTypeName t.path)
-  , impl := s.map fun t => .typeAlias (idTypeName t.path) .int }
 
 /-- The lookup a collection's rows carry: every row whose `parent_id` is the
     given key. It is declared in the *child*, because that is where the rows
@@ -75,120 +54,162 @@ def idsModule (s : Schema) : Module :=
 
     `get` keys on `id`, this keys on `parent_id`, and the child owns both. The
     parent owns neither, which is why it cannot answer the question itself. -/
-def childLookupName (parent : Path) : String := "of_" ++ idTypeName parent
+def childLookupName (root : String) (parent : Path) : String := "of_" ++ idTypeName root parent
 
 /-- Generated columns, which a document member must not collide with. -/
 def parentColumn : String := "parent_id"
 def indexColumn : String := "idx"
 def keyColumn : String := "key"
 
-def tyExprOf : Ty → TyExpr
+def tyExprOf (root : String) : Ty → TyExpr
   | .bot => .unit
   | .int => .int
   | .float => .float
+  | .uuid => .named "uuid"
   | .str => .string
   | .bool => .bool
-  | .ref p => .qualified (moduleName p) "id"
-  | .coll p => .list (.qualified (moduleName p) "t")   -- never a field; see below
+  | .ref p => .qualified (moduleName root p) "id"
+  | .coll p => .list (.qualified (moduleName root p) "t")   -- never a field; see below
 
-def fieldTyExpr (f : Field) : TyExpr :=
-  let base := tyExprOf f.ty
+def fieldTyExpr (root : String) (f : Field) : TyExpr :=
+  let base := tyExprOf root f.ty
   if f.nullable then .option base else base
 
-def genModule (t : Table) : Except Error Module := do
-  let self := moduleName t.path
-  if self == idsModuleName then throw (.reservedModuleName (Path.toString t.path))
-  -- a type from another module needs qualifying; one from this module does not
-  let ref (p : Path) (n : String) : TyExpr :=
-    if moduleName p == self then (if n == "id" then .id else .named n)
-    else .qualified (moduleName p) n
-  -- where a row source would be. Phase 1 emits no shredder, so every way of
-  -- *reaching* a row is a hole; every way of *reading* one is a projection.
+/-- A table's key column, named after the table so that a child's foreign key
+    and the parent's primary key spell the same thing.
+
+    If the document carried an `id` member, that is the key and keeps the type
+    inference gave it. Otherwise one is minted, and a minted key is a uuid --
+    there is nothing in the data to take, so uniqueness has to come from the
+    generator. -/
+def keyColumnName (root : String) (p : Path) : String := idTypeName root p ++ "_id"
+
+def genModule (root : String) (t : Table) : Except Error Module := do
+  let self := moduleName root t.path
+  let keyName := keyColumnName root t.path
+  -- where a row source would be: reaching a row is a hole, reading one is not
   let hole (what : String) : Expr :=
     .app (.var "failwith") [.str s!"{self}.{what}: no row source"]
   let positionColumn := if t.keyed then keyColumn else indexColumn
-  let lookupName : Option String := t.parent.map childLookupName
-  let mut fields : List RecField := [{ name := "id", ty := .id }]
-  let mut lookup : List Decl := []
-  let mut lookupImpl : List Decl := []
-  -- rows that sit in a collection carry a key back and their position in it
+
+  -- the document's own `id` is the key if it has one; otherwise mint a uuid
+  let docKey := t.columns.find? (fun c => c.name == "id")
+  let keyTy : TyExpr ← match docKey with
+    | none => pure (.named "uuid")
+    | some c =>
+        if c.field.nullable then
+          throw (.unusableKey (Path.toString t.path) "sometimes absent or null")
+        else match c.field.ty with
+          | .ref _ => throw (.unusableKey (Path.toString t.path) "an object")
+          | .coll _ => throw (.unusableKey (Path.toString t.path) "an array")
+          | .bot => throw (.unusableKey (Path.toString t.path) "never given a value")
+          | ty => pure (tyExprOf root ty)
+  let mut usesUuid :=
+    docKey.isNone || (match docKey with | some c => c.field.ty == .uuid | none => false)
+
+  let mut fields : List RecField := [{ name := keyName, ty := keyTy }]
+  let mut decls : List Decl := [ .value keyName (.arrow (.named "t") keyTy) ]
+  let mut bodies : List Decl := [ .letValue keyName ["r"] (.field (.var "r") keyName) ]
+
+  -- rows that sit in a collection carry their parent's key and their position
   match t.parent with
   | some pp =>
-      -- the one place a unit must not name the module it points into: these
-      -- rows are reached *from* their parent, so naming it would be a cycle
-      let idTy : TyExpr := .qualified idsModuleName (idTypeName pp)
+      let pkName := keyColumnName root pp
+      let pkTy : TyExpr := .qualified (moduleName root pp) "id"
       let posTy : TyExpr := if t.keyed then .string else .int
-      fields := fields ++
-        [ { name := parentColumn, ty := idTy }
-        , { name := positionColumn, ty := posTy } ]
-      let nm := childLookupName pp
-      lookup := [ .value nm (.arrow idTy (.list (.named "t"))) ]
-      lookupImpl := [ .letValue nm ["_"] (hole nm) ]
+      fields := fields ++ [{ name := pkName, ty := pkTy }, { name := positionColumn, ty := posTy }]
+      decls := decls ++
+        [ .value pkName (.arrow (.named "t") pkTy)
+        , .value positionColumn (.arrow (.named "t") posTy)
+        , .value (childLookupName root pp) (.arrow pkTy (.list (.named "t"))) ]
+      bodies := bodies ++
+        [ .letValue pkName ["r"] (.field (.var "r") pkName)
+        , .letValue positionColumn ["r"] (.field (.var "r") positionColumn)
+        , .letValue (childLookupName root pp) ["_"] (hole (childLookupName root pp)) ]
   | none => pure ()
-  let mut accessors : List Decl := []
-  let mut bodies : List Decl := []
+
+  let generated : List String :=
+    [keyName, "get", "t", "id"]
+    ++ (match t.parent with
+        | some pp => [keyColumnName root pp, positionColumn, childLookupName root pp]
+        | none => [])
+
   for c in t.columns do
+    if c.name == "id" then continue        -- consumed as the key above
     let name := mangle c.name
-    if name == "id" then throw (.reservedColumnName c.name "id")
-    if t.parent.isSome && (name == parentColumn || name == positionColumn) then
-      throw (.reservedColumnName c.name name)
-    -- every column now carries an accessor, so every column can collide
-    if name == "get" then throw (.reservedAccessorName c.name "get")
-    -- unreachable for a schema inference built, since `mangle` escapes `_` and
-    -- so can never produce `of_root`; kept because `gen` is total on `Schema`,
-    -- the same reason `certify` checks the file it just built
-    if lookupName == some name then throw (.reservedAccessorName c.name name)
+    if generated.contains name then throw (.reservedColumnName c.name name)
     match c.field.ty with
-    | .coll p =>
-        -- no column: the elements point back here, so the parent holds nothing
-        accessors := accessors ++
-          [ .value name (.arrow (.named "t") (.list (ref p "t"))) ]
-        -- delegate: the rows are the child's, and so is the parent_id column
-        bodies := bodies ++
-          [ .letValue name ["r"]
-              (.app (.qual (moduleName p) (childLookupName t.path))
-                    [.field (.var "r") "id"]) ]
+    | .coll _ =>
+        -- nothing here: the elements carry the key back, and the accessor that
+        -- finds them is `of_` in their module, where the rows and the key are
+        pure ()
     | .ref p =>
-        fields := fields ++ [{ name := name, ty := if c.field.nullable then .option (ref p "id") else ref p "id" }]
-        let target : TyExpr := ref p "t"
-        accessors := accessors ++
-          [ .value name (.arrow (.named "t")
-              (if c.field.nullable then .option target else target)) ]
-        -- following a foreign key is a projection and a `get`
-        let follow : Expr :=
-          if c.field.nullable then
-            .app (.qual "Option" "map") [.qual (moduleName p) "get", .field (.var "r") name]
-          else
-            .app (.qual (moduleName p) "get") [.field (.var "r") name]
-        bodies := bodies ++ [ .letValue name ["r"] follow ]
-    | _ =>
-        fields := fields ++ [{ name := name, ty := fieldTyExpr c.field }]
-        -- the design note's `val a : Root.t -> int` / `let a r = r.a`; this is
-        -- what Phase 2 rewrites into a yielding accessor
-        accessors := accessors ++
-          [ .value name (.arrow (.named "t") (fieldTyExpr c.field)) ]
+        -- the key itself, not the row: `P.get` is where the lookup happens,
+        -- and it is also what lets the schema reader see this is a foreign key
+        let ty : TyExpr :=
+          let base : TyExpr := .qualified (moduleName root p) "id"
+          if c.field.nullable then .option base else base
+        fields := fields ++ [{ name := name, ty := ty }]
+        decls := decls ++ [ .value name (.arrow (.named "t") ty) ]
         bodies := bodies ++ [ .letValue name ["r"] (.field (.var "r") name) ]
+    | ty =>
+        if ty == .uuid then usesUuid := true
+        let fty := fieldTyExpr root c.field
+        fields := fields ++ [{ name := name, ty := fty }]
+        decls := decls ++ [ .value name (.arrow (.named "t") fty) ]
+        bodies := bodies ++ [ .letValue name ["r"] (.field (.var "r") name) ]
+
+  -- `uuid` is not an OCaml type; it is a name for `string` that says what the
+  -- column holds, and the schema reader and the DDL both read it
+  let uuidAlias : List Decl := if usesUuid then [ .typeAlias "uuid" .string ] else []
   return {
-    name := moduleName t.path
-    decls :=
-      [ .typeAlias "id" (.qualified idsModuleName (idTypeName t.path))
+    name := self
+    decls := uuidAlias ++
+      [ .abstractType "t"
+      , .abstractType "id"
+      , .value "get" (.arrow .id (.named "t")) ] ++ decls
+    impl := uuidAlias ++
+      [ .typeAlias "id" keyTy
       , .recordType "t" fields
-      , .value "get" (.arrow .id (.named "t")) ] ++ lookup ++ accessors
-    impl :=
-      [ .typeAlias "id" (.qualified idsModuleName (idTypeName t.path))
-      , .recordType "t" fields
-      , .letValue "get" ["_"] (hole "get") ] ++ lookupImpl ++ bodies
+      , .letValue "get" ["_"] (hole "get") ] ++ bodies
   }
 
+/-- The tables a unit names: its parent, for the foreign key, and the target
+    of every `ref` column. -/
+private def depsOf (t : Table) : List Path :=
+  (match t.parent with | some pp => [pp] | none => []) ++
+  t.columns.filterMap fun c => match c.field.ty with | .ref p => some p | _ => none
+
+private def orderGo : Nat → List Table → List Table → List Table
+  | 0, pending, acc => acc.reverse ++ pending
+  | _, [], acc => acc.reverse
+  | fuel + 1, pending, acc =>
+      let done := acc.map (·.path)
+      let ready := pending.filter fun t => (depsOf t).all fun d => done.contains d
+      match ready with
+      | [] => acc.reverse ++ pending
+      | _ =>
+        let rest := pending.filter fun t => !(ready.any fun r => r.path == t.path)
+        orderGo fuel rest (ready.reverse ++ acc)
+
+/-- Compilation order: a unit must follow every unit it names.
+
+    A collection's rows name their parent, for the foreign key; a `ref` column
+    names the table it points into, which is a child. So the edges run both up
+    and down the document tree and a length sort is no longer enough. The
+    graph is still acyclic -- a member is a `ref` or a collection, never both,
+    so no two tables can name each other. -/
+def orderTables (s : Schema) : Schema := orderGo s.length s []
+
 /-- Exposed, with `certify`, so `Proofs.Wellformed` can invert `gen`. -/
-def genRaw (s : Schema) : Except Error File := do
+def genRaw (root : String) (s : Schema) : Except Error File := do
   let mut mods : List Module := []
-  for t in s do
-    mods := mods ++ [← genModule t]
+  for t in orderTables s do
+    mods := mods ++ [← genModule root t]
   let names := mods.map (·.name)
   for n in names do
     if (names.filter (· == n)).length > 1 then throw (.moduleNameClash n)
-  return { modules := idsModule s :: mods }
+  return { modules := mods }
 
 /-- The generator checks its own output before handing it back, and refuses a
     file that repeats a name rather than emitting one that will not compile.
@@ -203,8 +224,8 @@ def genRaw (s : Schema) : Except Error File := do
 def certify (f : File) : Except Error File :=
   if f.okB then .ok f else .error (.illFormedSignature (f.badModule.getD "the file"))
 
-def gen (s : Schema) : Except Error File :=
-  match genRaw s with
+def gen (root : String) (s : Schema) : Except Error File :=
+  match genRaw root s with
   | .error e => .error e
   | .ok f => certify f
 
