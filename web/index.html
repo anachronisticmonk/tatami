@@ -279,6 +279,32 @@ function Sweep({points}) {
       'rows kept by the predicate'));
 }
 
+const WHAT = {
+  document:  ['everything about one repo', 'its runs, jobs and steps — a reassembly'],
+  scan:      ['steps over 30s', 'count over one column of seven'],
+  computed:  ['what the slow steps cost', 'sum(ms × rate) — two columns and arithmetic'],
+  by_status: ['slowest per command', 'group by a string column'],
+  three_hop: ['build time for one org', 'repo → run → job → step, three joins'],
+};
+
+/* Anything inside this band is noise, not a result. Whole-benchmark variance
+   measured between repeated runs is about 10-15%. */
+const NOISE = 1.3;
+
+/* Below this both answers are quicker than the clock can resolve, and a ratio
+   of two unmeasurable numbers is not a measurement. */
+const FLOOR = 0.01;
+
+function verdict(rec, col) {
+  if (!(rec > FLOOR) && !(col > FLOOR))
+    return ['too fast to measure', 'hint', ''];
+  const r = rec / col;
+  if (!isFinite(r)) return ['too fast to measure', 'hint', ''];
+  if (r >= NOISE) return ['columnar', 'win', r.toFixed(2) + '×'];
+  if (r <= 1 / NOISE) return ['row-major', 'loss', (1 / r).toFixed(2) + '×'];
+  return ['neither — inside noise', 'hint', ''];
+}
+
 function Perf({data}) {
   const [query, setQuery] = React.useState('computed');
   /* the file holds two kinds of record: benchmark runs, and selectivity
@@ -287,34 +313,93 @@ function Perf({data}) {
   const sweeps = data.filter(d => d.sweep && d.points);
   if (!runs.length) return h('div', {className: 'note'},
     'No measurements yet. Run: dune exec bin/bench.exe -- --corpus corpus/small.json --json bench/results.jsonl');
+
   const last = runs[runs.length - 1];
-  const qs = last.stores[0].queries.map(q => q.q);
-  const at = (store, q) => (last.stores.find(s => s.name === store).queries.find(x => x.q === q) || {}).ms;
+  const store = (run, n) => run.stores.find(s => s.name === n);
+  const at = (run, n, q) => (store(run, n).queries.find(x => x.q === q) || {}).ms;
+  const qs = store(last, 'records').queries.map(q => q.q);
+
+  /* What it costs to build, against what it saves per query: how many
+     questions before the shredding has paid for itself. */
+  const extra = store(last, 'columnar').load_ms - store(last, 'records').load_ms;
+  const cross = qs.map(q => {
+    const rec = at(last, 'records', q), col = at(last, 'columnar', q);
+    const saved = rec - col;
+    /* a saving smaller than the clock can see is not a saving */
+    return {q, saved, n: saved > FLOOR ? extra / saved : null};
+  }).filter(x => x.n !== null && x.n > 0).sort((a, b) => a.n - b.n);
+
   return h('div', {},
-    h('h2', {}, 'time per query — ' + last.corpus + ', ' + (last.bytes / 1e6).toFixed(0) + ' MB'),
+    h('div', {className: 'note'},
+      'These are frozen measurements from ', h('code', {}, 'bin/bench.exe'),
+      ', median of ', String(last.repeats), ' with a warm-up discarded — not a live run. ',
+      'The Query tab times the corpus this server is holding; these do not have to match.'),
+
+    h('h2', {}, 'who wins what — ' + last.corpus + ', ' + (last.bytes / 1e6).toFixed(0) + ' MB'),
+    h('div', {className: 'wrap'},
+      h('table', {},
+        h('thead', {}, h('tr', {},
+          ['query', 'what it asks', 'records', 'columnar', 'winner'].map(x =>
+            h('th', {key: x}, x)))),
+        h('tbody', {}, qs.map(q => {
+          const rec = at(last, 'records', q), col = at(last, 'columnar', q);
+          const [who, cls, by] = verdict(rec, col);
+          return h('tr', {key: q},
+            h('td', {className: 'mono'}, q),
+            h('td', {style: {whiteSpace: 'normal', color: 'var(--dim)', fontSize: 12}},
+              (WHAT[q] || ['', ''])[1]),
+            h('td', {className: 'num'}, rec > FLOOR ? rec.toFixed(2) + 'ms' : '<0.01ms'),
+            h('td', {className: 'num'}, col > FLOOR ? col.toFixed(2) + 'ms' : '<0.01ms'),
+            h('td', {}, h('span', {className: cls === 'hint' ? 'hint' : cls},
+              who + (cls === 'hint' ? '' : ' by ' + by))));
+        })))),
+    h('p', {className: 'lead', style: {marginTop: 8}},
+      'Anything within ', String(NOISE), '× is reported as neither: repeated whole runs ',
+      'vary by ten to fifteen percent, so a smaller difference is the machine, not the layout.'),
+
+    h('h2', {}, 'when does shredding pay for itself'),
     h('p', {className: 'lead'},
-      'Columnar wins the scans. Row-major wins anything that follows the nesting, because a repo already contains its runs, jobs and steps.'),
+      'Columnar costs ', h('b', {}, (extra / 1000).toFixed(1) + 's'),
+      ' more to build than records at this size. Against what it then saves per query, ',
+      'that is how many questions must be asked of one loaded corpus before it is ahead. ',
+      'Ask fewer and the row-major store was the right choice.'),
+    h('div', {className: 'card'},
+      cross.length
+        ? h(Bars, {rows: cross.map(x => ({label: x.q, queries: x.n})), keys: ['queries'],
+                   colours: ['var(--col)'], fmt: v => Math.ceil(v) + ''})
+        : h('div', {className: 'hint'}, 'nothing saves time at this size')),
+
+    h('h2', {}, 'time per query'),
     h('div', {className: 'key'},
       h('span', {}, h('i', {style: {background: 'var(--rec)'}}), 'records'),
       h('span', {}, h('i', {style: {background: 'var(--col)'}}), 'columnar')),
     h('div', {className: 'card'},
-      h(Bars, {rows: qs.map(q => ({label: q, records: at('records', q), columnar: at('columnar', q)})),
+      h(Bars, {rows: qs.map(q => ({label: q, records: at(last, 'records', q),
+                                   columnar: at(last, 'columnar', q)})),
                keys: ['records', 'columnar'], colours: ['var(--rec)', 'var(--col)'],
-               fmt: v => (v === undefined ? '–' : v.toFixed(2) + 'ms')})),
+               fmt: v => (v === undefined ? '–' : v.toFixed(2) + 'ms')}),
+      h('div', {className: 'hint', style: {marginTop: 6}},
+        'Re-parsing the JSON per query, which is the third thing measured, takes ',
+        (at(last, 'json', 'scan') / 1000).toFixed(1), 's for the same scan — ',
+        Math.round(at(last, 'json', 'scan') / at(last, 'columnar', 'scan')).toLocaleString(),
+        '× the columnar time. It is left off the chart because it would flatten everything else.')),
+
     h('h2', {}, 'how it scales'),
     h('div', {className: 'bar'},
       qs.map(q => h('button', {key: q, className: 'q' + (q === query ? ' on' : ''),
                                onClick: () => setQuery(q)}, q))),
-    h('div', {className: 'card'}, h(Line, {runs, query})),
+    h('div', {className: 'card'}, h(Line, {runs, query}),
+      h('div', {className: 'hint', style: {marginTop: 6}},
+        (WHAT[query] || ['', ''])[1])),
+
     h('h2', {}, 'what each store costs to build'),
     h('div', {className: 'card'},
       h(Bars, {rows: runs.map(r => ({label: (r.bytes / 1e6).toFixed(0) + ' MB',
-                 records: r.stores.find(s => s.name === 'records').load_ms,
-                 columnar: r.stores.find(s => s.name === 'columnar').load_ms})),
+                 records: store(r, 'records').load_ms,
+                 columnar: store(r, 'columnar').load_ms})),
                keys: ['records', 'columnar'], colours: ['var(--rec)', 'var(--col)'],
                fmt: v => (v / 1000).toFixed(1) + 's'})),
-    h('div', {className: 'note'},
-      'Shredding is the cost columnar pays up front. The crossover — how many queries before it repays — is the number that decides whether any of this is worth it.'),
+
     sweeps.length ? h('div', {},
       h('h2', {}, 'does selectivity change the winner?'),
       h('p', {className: 'lead'},
