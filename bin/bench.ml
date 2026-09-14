@@ -33,6 +33,7 @@ let best ?(n = 5) f =
 
 let corpus = ref "corpus/ci.json"
 let results_path = ref ""
+let sweep = ref false
 
 (* A repo from the middle of the corpus, not the first one. Row-major scans
    until it finds the document, so asking for the first would time one
@@ -82,11 +83,55 @@ let measure (module S : Tatami.Workload.STORE) =
     timings = List.map (fun (n, (t, _)) -> (n, t)) runs;
     answers = List.map (fun (n, (_, a)) -> (n, a)) runs }
 
+(* ---- selectivity ---------------------------------------------------------- *)
+
+(* The experiment most likely to falsify the whole idea.
+
+   A placement rule read off the types cannot see selectivity: whether
+   [ms > 30000] keeps one row in a thousand or half the table is a fact about
+   the data, and no signature mentions it. If the store that wins flips as
+   selectivity changes, then no type-level rule can be right, and the honest
+   conclusion is that a cost model is needed after all.
+
+   So the same query is run at thresholds spanning four orders of magnitude of
+   selectivity, and what is reported is whether the winner ever changes. *)
+let run_sweep records columnar =
+  let thresholds = [ 899_000; 700_000; 400_000; 200_000; 100_000; 30_000; 5_000; 1_000; 0 ] in
+  let total =
+    match Columnar.scan columnar 0 with Tatami.Workload.Count n -> n | _ -> 0
+  in
+  Printf.printf "\nselectivity sweep -- %d steps in the corpus\n" total;
+  Printf.printf "%10s %8s %11s %11s %9s %11s %11s %9s\n" "ms >" "kept" "scan:rec"
+    "scan:col" "ratio" "comp:rec" "comp:col" "ratio";
+  print_endline (String.make 86 '-');
+  let rows =
+    List.map
+      (fun th ->
+        let kept =
+          match Columnar.scan columnar th with Tatami.Workload.Count n -> n | _ -> 0
+        in
+        let pct = 100. *. float_of_int kept /. float_of_int (max 1 total) in
+        let sr, _ = best ~n:3 (fun () -> Rowmajor.Records.scan records th) in
+        let sc, _ = best ~n:3 (fun () -> Columnar.scan columnar th) in
+        let cr, _ = best ~n:3 (fun () -> Rowmajor.Records.computed records th) in
+        let cc, _ = best ~n:3 (fun () -> Columnar.computed columnar th) in
+        Printf.printf "%10d %7.2f%% %9.2fms %9.2fms %8.2fx %9.2fms %9.2fms %8.2fx\n" th pct
+          (ms sr) (ms sc) (sr /. sc) (ms cr) (ms cc) (cr /. cc);
+        Printf.sprintf "{\"threshold\":%d,\"kept\":%d,\"pct\":%.4f,\"scan_rec\":%.3f,\"scan_col\":%.3f,\"comp_rec\":%.3f,\"comp_col\":%.3f}"
+          th kept pct (ms sr) (ms sc) (ms cr) (ms cc))
+      thresholds
+  in
+  print_endline (String.make 86 '-');
+  print_endline
+    "  a type-level placement rule is only viable if the winner never flips down this column";
+  rows
+
 let () =
   let rec args = function
     | "--corpus" :: v :: r -> corpus := v; args r
     | "--repeats" :: v :: r -> repeats := int_of_string v; args r
     | "--json" :: v :: r -> results_path := v; args r
+    | "--sweep" :: r -> sweep := true; args r
     | [] -> ()
     | a :: _ -> prerr_endline ("unknown argument " ^ a); exit 2
   in
@@ -178,4 +223,16 @@ let () =
     output_char oc '\n';
     close_out oc;
     Printf.printf "appended to %s\n" !results_path
+  end;
+
+  if !sweep then begin
+    let r = Rowmajor.Records.load !corpus and c = Columnar.load !corpus in
+    let rows = run_sweep r c in
+    if !results_path <> "" then begin
+      let oc = open_out_gen [ Open_append; Open_creat ] 0o644 !results_path in
+      output_string oc
+        (Printf.sprintf "{\"sweep\":true,\"corpus\":\"%s\",\"bytes\":%d,\"points\":[%s]}\n"
+           (Filename.basename !corpus) (Unix.stat !corpus).st_size (String.concat "," rows));
+      close_out oc
+    end
   end

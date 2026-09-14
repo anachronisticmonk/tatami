@@ -15,92 +15,133 @@ open Tatami
 
 (* ---- building a column --------------------------------------------------- *)
 
-(* Grown by doubling rather than sized in advance: the row count is not known
-   until the corpus has been read, and counting it first would mean reading
-   1.5 GB twice. *)
+(* Grown in fixed chunks rather than by doubling.
+
+   The row count is not known until the corpus has been read, and counting it
+   first would mean parsing 1.5 GB twice -- the parse being the expensive part,
+   that cure is worse than the disease. Doubling was the first answer and it
+   scaled badly: every doubling copies the whole array, and a final trim copies
+   it once more, so filling n elements moves about 3n of them through the major
+   heap. At thirteen million elements that showed up as a 2.6x penalty over the
+   row-major store, which is most of what set the crossover.
+
+   Chunks move exactly n. Nothing is copied while filling; one exact array is
+   allocated at the end and each chunk blitted into it once. Peak memory is 2n
+   at that moment rather than 3n during a doubling. *)
+
+let chunk = 65536
+
 type builder = {
   b_name : string;
-  mutable v : Data.values;
-  mutable valid : bool array option;
-  mutable n : int;
+  (* completed chunks, newest first *)
+  mutable full : Data.values list;
+  mutable full_masks : bool array list;
+  mutable cur : Data.values;
+  mutable cur_mask : bool array option;
+  mutable in_cur : int;
+  mutable total : int;
 }
 
-let cap b =
-  match b.v with
-  | Data.Ints a -> Array.length a
-  | Data.Floats a -> Array.length a
-  | Data.Texts a -> Array.length a
+let fresh_values proto n =
+  match proto with
+  | Data.Ints _ -> Data.Ints (Array.make n 0)
+  | Data.Floats _ -> Data.Floats (Array.make n 0.)
+  | Data.Texts _ -> Data.Texts (Array.make n "")
 
 (* The whole claim of this module, in one function: the layout decides the
    array type, and the constructor decides whether a mask exists at all. *)
 let builder (c : Schema.column) =
-  let shape, valid =
+  let shape, masked =
     match c.layout with
-    | Schema.Plain s -> (s, None)
-    | Schema.Nullable s -> (s, Some (Array.make 1024 false))
+    | Schema.Plain s -> (s, false)
+    | Schema.Nullable s -> (s, true)
   in
-  let v =
+  let cur =
     match shape with
-    | Schema.Dense Schema.Int | Schema.Dense Schema.Bool -> Data.Ints (Array.make 1024 0)
-    | Schema.Dense Schema.Float -> Data.Floats (Array.make 1024 0.)
-    | Schema.Var -> Data.Texts (Array.make 1024 "")
+    | Schema.Dense Schema.Int | Schema.Dense Schema.Bool -> Data.Ints (Array.make chunk 0)
+    | Schema.Dense Schema.Float -> Data.Floats (Array.make chunk 0.)
+    | Schema.Var -> Data.Texts (Array.make chunk "")
   in
-  { b_name = c.name; v; valid; n = 0 }
+  { b_name = c.name; full = []; full_masks = [];
+    cur; cur_mask = (if masked then Some (Array.make chunk false) else None);
+    in_cur = 0; total = 0 }
 
-let grow b =
-  let m = 2 * cap b in
-  let blit make a = let x = make m in Array.blit a 0 x 0 b.n; x in
-  b.v <-
-    (match b.v with
-    | Data.Ints a -> Data.Ints (blit (fun m -> Array.make m 0) a)
-    | Data.Floats a -> Data.Floats (blit (fun m -> Array.make m 0.) a)
-    | Data.Texts a -> Data.Texts (blit (fun m -> Array.make m "") a));
-  match b.valid with
+let rotate b =
+  b.full <- b.cur :: b.full;
+  b.cur <- fresh_values b.cur chunk;
+  (match b.cur_mask with
   | None -> ()
-  | Some x -> b.valid <- Some (blit (fun m -> Array.make m false) x)
+  | Some m ->
+      b.full_masks <- m :: b.full_masks;
+      b.cur_mask <- Some (Array.make chunk false));
+  b.in_cur <- 0
 
-let room b = if b.n >= cap b then grow b
+let room b = if b.in_cur >= chunk then rotate b
+
+let bump b present =
+  (match b.cur_mask with Some m -> m.(b.in_cur) <- present | None -> ());
+  b.in_cur <- b.in_cur + 1;
+  b.total <- b.total + 1
 
 (* A present value. The mask is only written where one exists -- for a total
    column there is nothing to write to, which is the point. *)
 let put_int b x =
   room b;
-  (match b.v with Data.Ints a -> a.(b.n) <- x | _ -> invalid_arg b.b_name);
-  (match b.valid with Some m -> m.(b.n) <- true | None -> ());
-  b.n <- b.n + 1
+  (match b.cur with Data.Ints a -> a.(b.in_cur) <- x | _ -> invalid_arg b.b_name);
+  bump b true
 
 let put_float b x =
   room b;
-  (match b.v with Data.Floats a -> a.(b.n) <- x | _ -> invalid_arg b.b_name);
-  (match b.valid with Some m -> m.(b.n) <- true | None -> ());
-  b.n <- b.n + 1
+  (match b.cur with Data.Floats a -> a.(b.in_cur) <- x | _ -> invalid_arg b.b_name);
+  bump b true
 
 let put_text b x =
   room b;
-  (match b.v with Data.Texts a -> a.(b.n) <- x | _ -> invalid_arg b.b_name);
-  (match b.valid with Some m -> m.(b.n) <- true | None -> ());
-  b.n <- b.n + 1
+  (match b.cur with Data.Texts a -> a.(b.in_cur) <- x | _ -> invalid_arg b.b_name);
+  bump b true
 
 (* Absent. The slot keeps its initialiser, and only the mask says the
    initialiser is not a value -- which is why a total column can never take
    this path: it has no mask to record the absence in. *)
 let put_null b =
   room b;
-  (match b.valid with
-  | Some m -> m.(b.n) <- false
+  (match b.cur_mask with
+  | Some _ -> ()
   | None ->
       failwith (b.b_name ^ " is NULL in the data, but its signature says otherwise"));
-  b.n <- b.n + 1
+  bump b false
 
+(* One exact array, filled by blitting each chunk in once. *)
 let finish b : Data.t =
-  let take a = Array.sub a 0 b.n in
-  { Data.name = b.b_name;
-    values =
-      (match b.v with
-      | Data.Ints a -> Data.Ints (take a)
-      | Data.Floats a -> Data.Floats (take a)
-      | Data.Texts a -> Data.Texts (take a));
-    valid = Option.map take b.valid }
+  let n = b.total in
+  let chunks = List.rev (b.cur :: b.full) in
+  let values = fresh_values b.cur n in
+  let at = ref 0 in
+  List.iter
+    (fun c ->
+      let len = min chunk (n - !at) in
+      if len > 0 then (
+        (match (c, values) with
+        | Data.Ints src, Data.Ints dst -> Array.blit src 0 dst !at len
+        | Data.Floats src, Data.Floats dst -> Array.blit src 0 dst !at len
+        | Data.Texts src, Data.Texts dst -> Array.blit src 0 dst !at len
+        | _ -> invalid_arg b.b_name);
+        at := !at + len))
+    chunks;
+  let valid =
+    match b.cur_mask with
+    | None -> None
+    | Some last ->
+        let dst = Array.make n false in
+        let at = ref 0 in
+        List.iter
+          (fun src ->
+            let len = min chunk (n - !at) in
+            if len > 0 then (Array.blit src 0 dst !at len; at := !at + len))
+          (List.rev (last :: b.full_masks));
+        Some dst
+  in
+  { Data.name = b.b_name; values; valid }
 
 (* ---- a table ------------------------------------------------------------- *)
 
