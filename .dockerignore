@@ -1,0 +1,17 @@
+# The build context must not carry 1.5 GB of generated corpus. small.json is
+# the exception -- it is what the container serves.
+corpus/*
+!corpus/small.json
+
+_build
+.git
+.lake
+docs
+*.pdf
+*.tsv
+Proofs
+Tatami
+*.lean
+lake-manifest.json
+lakefile.toml
+lean-toolchain

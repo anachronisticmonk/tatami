@@ -20,3 +20,8 @@
  (name bench)
  (modules bench)
  (libraries tatami rowmajor columnar unix))
+
+(executable
+ (name serve)
+ (modules serve)
+ (libraries tatami rowmajor columnar tiny_httpd yojson unix))

@@ -83,12 +83,19 @@ let repo j =
 
 let name = "records"
 
-type t = repo array
+(* The array of documents, and one lookup beside it: a repo id to its position.
+   Neither layout gets that for free -- an id is a uuid, not a row number -- so
+   the columnar store builds the same thing and neither side is being handed an
+   index the other lacks. *)
+type t = { repos : repo array; at : (string, int) Hashtbl.t }
 
 let load path =
   let acc = ref [] in
   ignore (Tatami.Corpus.iter_json path ~f:(fun j -> acc := repo j :: !acc));
-  Array.of_list (List.rev !acc)
+  let repos = Array.of_list (List.rev !acc) in
+  let at = Hashtbl.create (2 * Array.length repos) in
+  Array.iteri (fun i (p : repo) -> Hashtbl.replace at p.p_id i) repos;
+  { repos; at }
 
 let footprint (t : t) =
   ignore t;
@@ -103,32 +110,26 @@ let iter_steps (t : t) f =
     (fun p ->
       Array.iter (fun r -> Array.iter (fun j -> Array.iter f j.j_steps) r.r_jobs)
         p.p_runs)
-    t
+    t.repos
 
 (* One repo, entire. The subtree is already here and already contiguous, so
    this is a walk of the thing itself rather than a search for its parts. *)
 let document (t : t) id =
-  let found = ref Tatami.Workload.Missing in
-  (try
-     Array.iter
-       (fun p ->
-         if String.equal p.p_id id then (
-           let runs = ref 0 and jobs = ref 0 and steps = ref 0 and ms = ref 0 in
-           Array.iter
-             (fun r ->
-               incr runs;
-               Array.iter
-                 (fun j ->
-                   incr jobs;
-                   Array.iter (fun s -> incr steps; ms := !ms + s.s_ms) j.j_steps)
-                 r.r_jobs)
-             p.p_runs;
-           found :=
-             Tatami.Workload.Row (List.map string_of_int [ !runs; !jobs; !steps; !ms ]);
-           raise Exit))
-       t
-   with Exit -> ());
-  !found
+  match Hashtbl.find_opt t.at id with
+  | None -> Tatami.Workload.Missing
+  | Some i ->
+      let p = t.repos.(i) in
+      let runs = ref 0 and jobs = ref 0 and steps = ref 0 and ms = ref 0 in
+      Array.iter
+        (fun r ->
+          incr runs;
+          Array.iter
+            (fun j ->
+              incr jobs;
+              Array.iter (fun s -> incr steps; ms := !ms + s.s_ms) j.j_steps)
+            r.r_jobs)
+        p.p_runs;
+      Tatami.Workload.Row (List.map string_of_int [ !runs; !jobs; !steps; !ms ])
 
 let scan (t : t) ms =
   let n = ref 0 in
@@ -164,5 +165,5 @@ let three_hop (t : t) org =
             Array.iter (fun j -> Array.iter (fun s -> total := !total + s.s_ms) j.j_steps)
               r.r_jobs)
           p.p_runs)
-    t;
+    t.repos;
   Tatami.Workload.Sum_int !total

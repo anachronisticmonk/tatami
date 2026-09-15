@@ -195,16 +195,17 @@ let load_tests =
           let s = Schema.load path in
           Sys.remove path;
           Alcotest.(check string) "table" "widgets" s.table);
-      (* The file the program actually reads. If Phase 1's shape drifts from
-         what we parse, this is where it shows up first. *)
       (* The files the program actually reads. If Phase 1's shape drifts from
-         what we parse, this is where it shows up first. *)
+         what we parse, this is where it shows up first. Phase 1 emits the key
+         first, then the parent key and position, then the document's own
+         members in their own order -- so this list changing is Phase 1
+         changing, and wants a look rather than a re-run. *)
       Alcotest.test_case "the real schema/step.mli" `Quick (fun () ->
           let s = Schema.load "../schema/step.mli" in
           Alcotest.(check string) "table" "step" s.table;
           Alcotest.(check (list string))
             "columns"
-            [ "id"; "job_id"; "idx"; "name"; "ms"; "rate"; "error" ]
+            [ "id"; "job_id"; "idx"; "error"; "ms"; "name"; "rate" ]
             (Schema.names s));
       (* A key remembers where it points, and is stored the way the thing it
          points at is stored. job.id is an int, so step.job_id is dense. *)

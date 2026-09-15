@@ -1,0 +1,4 @@
+(executable
+ (name schemacheck)
+ (modules schemacheck)
+ (libraries tatami))
