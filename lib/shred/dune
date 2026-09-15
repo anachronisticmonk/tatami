@@ -1,0 +1,6 @@
+; Unwrapped: the generated code says `Json.string` and `Bind.int`, which is
+; what those calls should look like in a file a person reads.
+(library
+ (name shred)
+ (wrapped false)
+ (libraries yojson pgx))

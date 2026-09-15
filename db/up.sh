@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
-# Bring up the Postgres the kernels read, and make sure the tables exist.
+# Bring up the Postgres the kernels read.
 # Safe to run repeatedly: it starts an existing container rather than
-# replacing one, and the schema is CREATE TABLE IF NOT EXISTS.
+# replacing one, and creates no tables -- ./db/load.sh does that.
 set -euo pipefail
 
 NAME=${TATAMI_PG_CONTAINER:-tatami-pg}
@@ -27,9 +27,8 @@ printf 'waiting for postgres'
 for _ in $(seq 1 60); do
   if docker exec "$NAME" pg_isready -U "$USER" -d "$DB" >/dev/null 2>&1; then
     echo " ready"
-    docker exec -i "$NAME" psql -qU "$USER" -d "$DB" < "$here/schema.sql"
-    docker exec "$NAME" psql -tAU "$USER" -d "$DB" \
-      -c "select 'orders: ' || count(*) || ' rows' from orders"
+    # No schema to apply: the tables are derived from the corpus and created by
+    # ./db/load.sh, over the connection it loads on.
     exit 0
   fi
   printf '.'; sleep 1

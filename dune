@@ -1,3 +1,8 @@
-; schema/ holds generated-module stand-ins that are read at run time, not
-; compiled; web/ holds the page. Neither is a build directory.
-(data_only_dirs schema web)
+; web/ holds the page, and is not a build directory.
+;
+; schema/ used to be listed here too, back when it held hand-written stand-ins
+; that were only ever read as data. It is compiled now: the generated loaders
+; call `Repo.make` and the getters, so the modules have to exist. Its .mli are
+; still read as data as well, by Tatami.Schema.load_dir, which is unaffected --
+; see schema/dune.
+(data_only_dirs web)

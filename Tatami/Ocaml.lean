@@ -36,13 +36,39 @@ inductive TyExpr where
 
 /-- Expressions, only as far as the emitted bodies reach: a projection, a
     call into another module, and the placeholder standing where a row source
-    would be. Nothing here can compute. -/
+    would be.
+
+    The accessors need nothing that computes. The loader does -- it builds a
+    row with `make`, stamps the columns the document did not carry with the
+    setters, and reads it back through the getters into a list of bound
+    values. That is four more constructors and no more: a labelled
+    application, because `make` is labelled and an unlabelled one would be the
+    very confusion labels exist to prevent; a list, because a row of bound
+    values is one; a `let`, because stamping is a sequence and nesting it
+    would be unreadable; and an integer, for the neutral value a derived
+    column holds until it is stamped.
+
+    Still nothing that branches or loops. The traversal is the same for every
+    schema, so it is not generated, and what is generated stays a fixed shape
+    per column -- which is what keeps it checkable by reading. -/
 inductive Expr where
   | var   : String → Expr             -- r
   | field : Expr → String → Expr      -- r.a
   | qual  : String → String → Expr    -- B.get
   | str   : String → Expr             -- "..."
+  | int   : Int → Expr                -- 0
   | app   : Expr → List Expr → Expr   -- f x y
+  /-- `f ~a:x ~b:y`. `make` is labelled, so the call that builds a row has to
+      be too, or the labels guard nothing at the only place they are used. -/
+  | labelledApp : Expr → List (String × Expr) → Expr
+  | list  : List Expr → Expr          -- [a; b; c]
+  /-- `let r = e in body`: a row is stamped one column at a time. -/
+  | letIn : String → Expr → Expr → Expr
+  /-- `match e with | "a" -> x | _ -> d`: the registry, which answers a
+      question about a table given its name. Cases are string literals and
+      there is always a default, so it is total by construction and nothing
+      about it needs to be proved exhaustive. -/
+  | matchStr : Expr → List (String × Expr) → Expr → Expr
   | record : List String → Expr       -- { a; b }, each field from a like-named binding
   | update : Expr → String → Expr → Expr   -- { r with a = v }
   deriving Repr, Inhabited
@@ -72,6 +98,14 @@ structure Module where
       what a consumer compiles against, and the implementation is checked by
       OCaml against it. -/
   impl : List Decl := []
+  /-- emit the `.ml` and no `.mli`.
+
+      Set for the loaders. The schema reader takes every `.mli` in the
+      directory for a table and reads its `val`s as columns; a loader is not a
+      table, and an `.mli` for one would show up there as a table with no
+      columns. It has nothing to state anyway -- its whole content is the
+      plumbing, and a signature would be a second copy of it. -/
+  implOnly : Bool := false
   deriving Repr
 
 /-- Every module the generator emits, each of which becomes one `.mli`
