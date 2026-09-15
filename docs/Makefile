@@ -7,18 +7,12 @@ LATEXMK := latexmk -pdf -interaction=nonstopmode -halt-on-error
 
 DOCS := phase_1
 
-.PHONY: all clean pipeline $(DOCS)
+.PHONY: all clean $(DOCS)
 
-all: $(DOCS) pipeline
+all: $(DOCS)
 
 phase_1:
 	cd phase_1 && $(LATEXMK) lowering.tex
-
-# One document is HTML rather than LaTeX: it is diagram-led, and the diagrams
-# are inline SVG. Chrome prints it; the print rules live in the page.
-pipeline:
-	cd phase_1 && google-chrome --headless=new --disable-gpu --no-pdf-header-footer \
-	  --virtual-time-budget=20000 --print-to-pdf=pipeline.pdf pipeline.html
 
 clean:
 	cd phase_1 && latexmk -C
