@@ -1,5 +1,6 @@
 import Tatami.Path
 import Tatami.Doc
+import Tatami.Stream
 import Tatami.Config
 import Tatami.Error
 import Tatami.Ty
@@ -9,3 +10,5 @@ import Tatami.Ocaml
 import Tatami.Mangle
 import Tatami.Gen
 import Tatami.Print
+import Tatami.Sql
+import Tatami.Shred

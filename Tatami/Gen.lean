@@ -84,18 +84,43 @@ def fieldTyExpr (root : String) (f : Field) : TyExpr :=
     generator. -/
 def keyColumnName (root : String) (p : Path) : String := idTypeName root p ++ "_id"
 
-def genModule (root : String) (t : Table) : Except Error Module := do
-  let self := moduleName root t.path
+/-- Where a column's value comes from. The emitted code only needs to know
+    whether a column is the key; the shredder needs to know all four, because
+    each is filled from somewhere different. -/
+inductive ColKind where
+  | key                     -- the document's `id`, or one minted for it
+  | parent                  -- the key of the table these rows sit in
+  | position                -- the index in the array, or the map entry's name
+  | member (source : String)  -- a member of the document, by its JSON name
+  deriving Repr, DecidableEq
+
+/-- A column as it is actually emitted.
+
+    `ty` is `.ref p` for a key into table `p`; what that is *stored* as depends
+    on `p`'s own key and so cannot be settled here. -/
+structure Col where
+  name : String
+  ty : Ty
+  nullable : Bool
+  kind : ColKind
+  deriving Repr
+
+def Col.isKey (c : Col) : Bool := c.kind == .key
+
+/-- The columns a table emits, in order: its key, then the back reference and
+    position if its rows sit in a collection, then the document's own members
+    with collections dropped.
+
+    Both the OCaml modules and the SQL come from this one list, which is what
+    makes their column order the same by construction rather than by care. -/
+def layoutOf (root : String) (t : Table) : Except Error (List Col) := do
   let keyName := keyColumnName root t.path
-  -- where a row source would be: reaching a row is a hole, reading one is not
-  let hole (what : String) : Expr :=
-    .app (.var "failwith") [.str s!"{self}.{what}: no row source"]
   let positionColumn := if t.keyed then keyColumn else indexColumn
 
   -- the document's own `id` is the key if it has one; otherwise mint a uuid
   let docKey := t.columns.find? (fun c => c.name == "id")
-  let keyTy : TyExpr ← match docKey with
-    | none => pure (.named "uuid")
+  let keyTy : Ty ← match docKey with
+    | none => pure .uuid
     | some c =>
         if c.field.nullable then
           throw (.unusableKey (Path.toString t.path) "sometimes absent or null")
@@ -103,29 +128,15 @@ def genModule (root : String) (t : Table) : Except Error Module := do
           | .ref _ => throw (.unusableKey (Path.toString t.path) "an object")
           | .coll _ => throw (.unusableKey (Path.toString t.path) "an array")
           | .bot => throw (.unusableKey (Path.toString t.path) "never given a value")
-          | ty => pure (tyExprOf root ty)
-  let mut usesUuid :=
-    docKey.isNone || (match docKey with | some c => c.field.ty == .uuid | none => false)
+          | ty => pure ty
 
-  let mut fields : List RecField := [{ name := keyName, ty := keyTy }]
-  let mut decls : List Decl := [ .value keyName (.arrow (.named "t") keyTy) ]
-  let mut bodies : List Decl := [ .letValue keyName ["r"] (.field (.var "r") keyName) ]
-
-  -- rows that sit in a collection carry their parent's key and their position
+  let mut cols : List Col := [{ name := keyName, ty := keyTy, nullable := false, kind := .key }]
   match t.parent with
   | some pp =>
-      let pkName := keyColumnName root pp
-      let pkTy : TyExpr := .qualified (moduleName root pp) "id"
-      let posTy : TyExpr := if t.keyed then .string else .int
-      fields := fields ++ [{ name := pkName, ty := pkTy }, { name := positionColumn, ty := posTy }]
-      decls := decls ++
-        [ .value pkName (.arrow (.named "t") pkTy)
-        , .value positionColumn (.arrow (.named "t") posTy)
-        , .value (childLookupName root pp) (.arrow pkTy (.list (.named "t"))) ]
-      bodies := bodies ++
-        [ .letValue pkName ["r"] (.field (.var "r") pkName)
-        , .letValue positionColumn ["r"] (.field (.var "r") positionColumn)
-        , .letValue (childLookupName root pp) ["_"] (hole (childLookupName root pp)) ]
+      cols := cols ++
+        [ { name := keyColumnName root pp, ty := .ref pp, nullable := false, kind := .parent }
+        , { name := positionColumn, ty := if t.keyed then .str else .int
+          , nullable := false, kind := .position } ]
   | none => pure ()
 
   let generated : List String :=
@@ -143,35 +154,56 @@ def genModule (root : String) (t : Table) : Except Error Module := do
         -- nothing here: the elements carry the key back, and the accessor that
         -- finds them is `of_` in their module, where the rows and the key are
         pure ()
-    | .ref p =>
-        -- the key itself, not the row: `P.get` is where the lookup happens,
-        -- and it is also what lets the schema reader see this is a foreign key
-        let ty : TyExpr :=
-          let base : TyExpr := .qualified (moduleName root p) "id"
-          if c.field.nullable then .option base else base
-        fields := fields ++ [{ name := name, ty := ty }]
-        decls := decls ++ [ .value name (.arrow (.named "t") ty) ]
-        bodies := bodies ++ [ .letValue name ["r"] (.field (.var "r") name) ]
-    | ty =>
-        if ty == .uuid then usesUuid := true
-        let fty := fieldTyExpr root c.field
-        fields := fields ++ [{ name := name, ty := fty }]
-        decls := decls ++ [ .value name (.arrow (.named "t") fty) ]
-        bodies := bodies ++ [ .letValue name ["r"] (.field (.var "r") name) ]
+    | ty => cols := cols ++
+        [{ name := name, ty := ty, nullable := c.field.nullable, kind := .member c.name }]
+  return cols
+
+def genModule (root : String) (t : Table) : Except Error Module := do
+  let self := moduleName root t.path
+  -- where a row source would be: reaching a row is a hole, reading one is not
+  let hole (what : String) : Expr :=
+    .app (.var "failwith") [.str s!"{self}.{what}: no row source"]
+  let cols ← layoutOf root t
+
+  -- a reference is the key itself, not the row: `P.get` is where the lookup
+  -- happens, and it is also what lets the schema reader see it is a key
+  let tyOf (c : Col) : TyExpr :=
+    let base : TyExpr :=
+      match c.ty with
+      | .ref p => .qualified (moduleName root p) "id"
+      | ty => tyExprOf root ty
+    if c.nullable then .option base else base
+
+  let fields : List RecField := cols.map fun c => { name := c.name, ty := tyOf c }
+  let accessors : List Decl := cols.map fun c => .value c.name (.arrow (.named "t") (tyOf c))
+  let bodies : List Decl := cols.map fun c => .letValue c.name ["r"] (.field (.var "r") c.name)
+
+  let lookup : List Decl := match t.parent with
+    | some pp =>
+        [ .value (childLookupName root pp)
+            (.arrow (.qualified (moduleName root pp) "id") (.list (.named "t"))) ]
+    | none => []
+  let lookupImpl : List Decl := match t.parent with
+    | some pp => [ .letValue (childLookupName root pp) ["_"] (hole (childLookupName root pp)) ]
+    | none => []
 
   -- `uuid` is not an OCaml type; it is a name for `string` that says what the
   -- column holds, and the schema reader and the DDL both read it
+  let usesUuid := cols.any fun c => c.ty == .uuid
   let uuidAlias : List Decl := if usesUuid then [ .typeAlias "uuid" .string ] else []
+  let keyTy : TyExpr := match cols.head? with
+    | some c => tyOf c
+    | none => .named "uuid"
   return {
     name := self
     decls := uuidAlias ++
       [ .abstractType "t"
       , .abstractType "id"
-      , .value "get" (.arrow .id (.named "t")) ] ++ decls
+      , .value "get" (.arrow .id (.named "t")) ] ++ lookup ++ accessors
     impl := uuidAlias ++
       [ .typeAlias "id" keyTy
       , .recordType "t" fields
-      , .letValue "get" ["_"] (hole "get") ] ++ bodies
+      , .letValue "get" ["_"] (hole "get") ] ++ lookupImpl ++ bodies
   }
 
 /-- The tables a unit names: its parent, for the foreign key, and the target

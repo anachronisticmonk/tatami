@@ -279,15 +279,16 @@ termination_by (1 + Doc.sizeVals entries, 0)
 
 end
 
-/-- Fold every document into one picture of every table.
+/-- One document folded in. The accumulator is bounded by the *schema*, not by
+    the corpus, which is what lets a reader hand documents over one at a time
+    and drop each one after. -/
+def inferStep (cfg : Config) (ts : Tables) (d : Doc) : Except Error Tables :=
+  observeObject cfg ts [] false d
 
-    Absence is counted once at the end, against each table's own visit count,
-    rather than per document as we go: a member first seen late would
-    otherwise never record the visits that lacked it. -/
-def inferCorpus (cfg : Config) (docs : List Doc) : Except Error Tables := do
-  let mut ts : Tables := []
-  for d in docs do
-    ts ← observeObject cfg ts [] false d
+/-- What can only be settled once every document has been seen: a collection
+    holding both objects and scalars, a marking that matched nothing, and the
+    absent counts, which are against each table's own visit total. -/
+def inferFinish (cfg : Config) (ts : Tables) : Except Error Tables := do
   for (p, t) in ts do
     if t.elemObject && t.elemScalar then throw (.mixedElements (Path.toString p))
   -- a marking that matched nothing is a typo, not a no-op
@@ -297,6 +298,19 @@ def inferCorpus (cfg : Config) (docs : List Doc) : Except Error Tables := do
   return ts.map fun (p, t) =>
     (p, { t with members := t.members.map fun (k, o) =>
             (k, { o with absent := t.visits - o.values - o.nulls }) })
+
+/-- Fold every document into one picture of every table. The list form; a
+    reader that cannot hold the corpus uses `inferStep` and `inferFinish`
+    directly.
+
+    Absence is counted at the end, against each table's own visit count,
+    rather than per document as we go: a member first seen late would
+    otherwise never record the visits that lacked it. -/
+def inferCorpus (cfg : Config) (docs : List Doc) : Except Error Tables := do
+  let mut ts : Tables := []
+  for d in docs do
+    ts ← inferStep cfg ts d
+  inferFinish cfg ts
 
 /-- Tables in the order OCaml needs them: a module must be declared before it
     is referred to, and a child's path is always longer than its parent's, so
