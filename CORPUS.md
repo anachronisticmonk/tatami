@@ -29,7 +29,7 @@ is what makes it a document and not a table.
 
 ```json
 {
-  "id": "9ac9d5ae-2851-4e0a-a319-340bc52ed89a",
+  "id": 1,
   "name": "edge-api",
   "org": "stark",
   "private": true,
@@ -62,11 +62,8 @@ About 900 bytes per repo. Nineteen fields in the whole schema.
 **Strings contain escapes.** `"\"edge-web\" not found"` — a reader that
 mishandles them breaks here rather than passing by luck.
 
-**A repo is identified by a uuid; everything below it by an integer.** A repo is
-the thing customers name and link to, so its identity is stable and
-unguessable. Runs, jobs and steps are only ever reached through their parent,
-so a counter is enough — and those counters are unique across the whole corpus
-rather than per table.
+**Ids are unique across the whole corpus**, not per type. Repo 1, run 2, job 3,
+step 4.
 
 ---
 
@@ -79,8 +76,7 @@ the array.
 ```
    repo                run                  job                  step
    ┌──────────┐        ┌──────────┐         ┌──────────┐         ┌──────────┐
-   │ id  uuid │◀───────│ repo_id  │◀────────│ run_id   │◀────────│ job_id   │
-   │       PK │        │   uuid   │         │   int    │         │   int    │
+   │ id    PK │◀───────│ repo_id  │◀────────│ run_id   │◀────────│ job_id   │
    │ name     │        │ id    PK │         │ id    PK │         │ id    PK │
    │ org      │        │ idx      │         │ idx      │         │ idx      │
    │is_private│        │ branch   │         │ os       │         │ name     │
@@ -98,62 +94,39 @@ information the array carried and a table would otherwise lose.
 One field is renamed on the way in: the JSON key `private` is an OCaml keyword,
 so the accessor is `is_private`.
 
-A key is stored the way the thing it points at is stored. `repo.id` is a uuid,
-so `run.repo_id` is a uuid too; `job.id` is an integer, so `step.job_id` is an
-integer. The schema reader works that out for itself by following the
-reference the `.mli` declares — `val repo_id : t -> Repo.id`.
-
 ### Types
 
-| table | column | type | |
-|---|---|---|---|
-| `repo` | `id` | uuid | primary key |
-| | `name` | string | |
-| | `org` | string | one of five |
-| | `is_private` | bool | JSON key `private` |
-| `run` | `id` | int | primary key |
-| | `repo_id` | uuid | → `repo.id` |
-| | `idx` | int | position in `repo.runs` |
-| | `branch` | string | main, develop, release |
-| | `status` | string | ok, failed, cancelled, timeout |
-| | `ms` | int | |
-| | `trigger` | string? | push, pr, schedule |
-| `job` | `id` | int | primary key |
-| | `run_id` | int | → `run.id` |
-| | `idx` | int | position in `run.jobs` |
-| | `os` | string | linux, macos, windows |
-| | `status` | string | |
-| | `ms` | int | |
-| | `exit` | int? | |
-| `step` | `id` | int | primary key |
-| | `job_id` | int | → `job.id` |
-| | `idx` | int | position in `job.steps` |
-| | `name` | string | checkout, build, test, lint, package, deploy |
-| | `ms` | int | depends on which step it is — test is slowest |
-| | `rate` | float | cost per millisecond |
-| | `error` | string? | present on about one step in seven |
+| table  | column       | type    |                                               |
+|--------|--------------|---------|-----------------------------------------------|
+| `repo` | `id`         | int     | primary key                                   |
+|        | `name`       | string  |                                               |
+|        | `org`        | string  | one of five                                   |
+|        | `is_private` | bool    | JSON key `private`                            |
+| `run`  | `id`         | int     | primary key                                   |
+|        | `repo_id`    | int     | → `repo.id`                                   |
+|        | `idx`        | int     | position in `repo.runs`                       |
+|        | `branch`     | string  | main, develop, release                        |
+|        | `status`     | string  | ok, failed, cancelled, timeout                |
+|        | `ms`         | int     |                                               |
+|        | `trigger`    | string? | push, pr, schedule                            |
+| `job`  | `id`         | int     | primary key                                   |
+|        | `run_id`     | int     | → `run.id`                                    |
+|        | `idx`        | int     | position in `run.jobs`                        |
+|        | `os`         | string  | linux, macos, windows                         |
+|        | `status`     | string  |                                               |
+|        | `ms`         | int     |                                               |
+|        | `exit`       | int?    |                                               |
+| `step` | `id`         | int     | primary key                                   |
+|        | `job_id`     | int     | → `job.id`                                    |
+|        | `idx`        | int     | position in `job.steps`                       |
+|        | `name`       | string  | checkout, build, test, lint, package, deploy  |
+|        | `ms`         | int     | depends on which step it is — test is slowest |
+|        | `rate`       | float   | cost per millisecond                          |
+|        | `error`      | string? | present on about one step in seven            |
 
 At 1.5 GB: 795,348 repos, 1,987,784 runs, 3,974,581 jobs, 13,911,204 steps.
 
 ---
-
-## Running it
-
-The whole back end, with no toolchain and no arguments:
-
-```sh
-docker run --rm -p 8000:8000 tatami/backend
-```
-
-That serves three tabs on <http://localhost:8000> — the data and what it
-shreds into, the corpus queried by both stores side by side, and the
-measurements charted. A 1,000-repo corpus is baked into the image so it works
-offline; `-e TATAMI_ROWS=50000` or `-e TATAMI_BYTES=200M` generates a larger
-one at startup from the same seed.
-
-Postgres is not in that image. The tabs are served from the two in-memory
-stores, and the database is only needed to check the shredding against SQL —
-`docker compose up` brings both if you want that half.
 
 ## Getting it
 

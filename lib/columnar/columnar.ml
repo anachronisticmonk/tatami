@@ -268,7 +268,7 @@ let load path =
          put_text (col repo "id") rid;
          put_text (col repo "name") (gs "name" r);
          put_text (col repo "org") (gs "org" r);
-         put_int (col repo "is_private") (if gb "private" r then 1 else 0);
+         put_int (col repo "private_") (if gb "private" r then 1 else 0);
 
          List.iteri
            (fun ri u ->

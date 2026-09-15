@@ -23,6 +23,12 @@ structure Config where
       along its path; the root path has none, so its name is invented and
       `Root` is only a fallback. This is where a better one comes from. -/
   root : Option String := none
+  /-- what to call any other table, by the path of the table it names. The
+      root's name was always supplied for want of a path to derive one from;
+      these are supplied because a derived name says where a table came from
+      rather than what it is, and `.runs[].jobs[]` is a worse name for a job
+      than `job` is. -/
+  names : List (Path × String) := []
   deriving Inhabited
 
 def Config.empty : Config := {}
@@ -31,7 +37,7 @@ def Config.isMap (c : Config) (p : Path) : Bool := c.maps.contains p
 
 /-- Read the markings from JSON:
 
-    { "maps": [".users"], "root": "repo" } -/
+    { "maps": [".users"], "root": "repo", "names": { ".runs[]": "run" } } -/
 def Config.ofDoc : Doc → Except String Config
   | .obj members => do
       let mut cfg : Config := {}
@@ -52,6 +58,18 @@ def Config.ofDoc : Doc → Except String Config
               if n.trimAscii.isEmpty then throw "root must not be empty"
               cfg := { cfg with root := some n }
           | _ => throw "root must be a string"
+        else if k == "names" then
+          match v with
+          | .obj entries =>
+              let mut ns : List (Path × String) := []
+              for (pk, pv) in entries do
+                match pv with
+                | .str n =>
+                    if n.trimAscii.isEmpty then throw s!"the name for {pk} must not be empty"
+                    ns := ns ++ [(← Path.parse pk, n)]
+                | _ => throw s!"the name for {pk} must be a string"
+              cfg := { cfg with names := ns }
+          | _ => throw "names must be an object mapping a path to a name"
         else if k == "recursive" then
           throw "recursive markings are no longer supported: a table is identified by its path, so nothing folds into an ancestor"
         else throw s!"unknown configuration key {k}"

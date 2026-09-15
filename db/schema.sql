@@ -16,7 +16,7 @@ CREATE TABLE repo (
   id         uuid    PRIMARY KEY,
   name       text    NOT NULL,
   org        text    NOT NULL,
-  is_private boolean NOT NULL      -- JSON key "private", an OCaml keyword
+  private_ boolean NOT NULL      -- JSON key "private", an OCaml keyword
 );
 
 -- repo.runs was an array, so it is a table whose elements point back. idx is

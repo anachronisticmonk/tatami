@@ -116,7 +116,7 @@ let sample () =
     [ ("document", j);
       ("repo",
        `List [ `Assoc [ ("id", `String rid); ("name", m "name" j); ("org", m "org" j);
-                        ("is_private", m "private" j) ] ]);
+                        ("private_", m "private" j) ] ]);
       ("run", `List (List.rev !runs));
       ("job", `List (List.rev !jobs));
       ("step", `List (List.rev !steps)) ]

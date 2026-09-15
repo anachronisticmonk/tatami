@@ -85,7 +85,7 @@ let from_sql () =
   t.runs <- one_int "select count(*) from run";
   t.jobs <- one_int "select count(*) from job";
   t.steps <- one_int "select count(*) from step";
-  t.private_repos <- one_int "select count(*) from repo where is_private";
+  t.private_repos <- one_int "select count(*) from repo where private_";
   t.run_ms <- one_int "select coalesce(sum(ms),0) from run";
   t.job_ms <- one_int "select coalesce(sum(ms),0) from job";
   t.step_ms <- one_int "select coalesce(sum(ms),0) from step";
