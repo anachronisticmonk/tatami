@@ -823,7 +823,7 @@
     else keyTy = docKey.ty;
 
     var cols = [{ name: keyName, ty: keyTy, ref: null, nullable: false, isKey: true }];
-    var taken = [keyName, "get", "t", "id"];
+    var taken = [keyName, "get", "make", "t", "id"];
     if (t.parent) {
       var pk = keyColumnName(t.parent);
       cols.push({ name: pk, ty: "ref", ref: t.parent, nullable: false, isKey: false });
@@ -866,6 +866,18 @@
       var decls  = cols.map(function (c) { return "val " + c.name + " : t -> " + tyOf(c); });
       var bodies = cols.map(function (c) { return "let " + c.name + " r = r." + c.name; });
 
+      /* a row is built once and changed by copy: t is abstract, so make is the
+         only way to have one, and a setter hands back a new row */
+      var maker = "val make : " +
+        cols.map(function (c) { return c.name + ":" + tyOf(c); }).join(" -> ") + " -> t";
+      var makerImpl = "let make " +
+        cols.map(function (c) { return "~" + c.name; }).join(" ") + " = { " +
+        cols.map(function (c) { return c.name; }).join("; ") + " }";
+      var setters = cols.map(function (c) {
+        return "val set_" + c.name + " : t -> " + tyOf(c) + " -> t"; });
+      var setterImpls = cols.map(function (c) {
+        return "let set_" + c.name + " r v = { r with " + c.name + " = v }"; });
+
       var lookup = [], lookupImpl = [];
       if (t.parent) {
         var look = childLookup(t.parent), pkTy = moduleName(t.parent) + ".id";
@@ -878,14 +890,16 @@
       var alias = cols.some(function (c) { return c.ty === "uuid"; }) ? "type uuid = string\n" : "";
       var mli = fileNameOf(self), ml = lowerFirst(self) + ".ml";
       units.push({ name: mli,
-        text: "(* " + mli + " *)\n\n" + alias + "type t\ntype id\nval get : id -> t\n" +
-              (lookup.length ? lookup.join("\n") + "\n" : "") + decls.join("\n") + "\n" });
+        text: "(* " + mli + " *)\n\n" + alias +
+              "type t\ntype id = " + tyOf(cols[0]) + "\n" + maker + "\nval get : id -> t\n" +
+              (lookup.length ? lookup.join("\n") + "\n" : "") +
+              decls.join("\n") + "\n" + setters.join("\n") + "\n" });
       units.push({ name: ml,
         text: "(* " + ml + " *)\n\n" + alias + "type id = " + tyOf(cols[0]) + "\n" +
-              "type t = { " + fields.join("; ") + " }\n" +
+              "type t = { " + fields.join("; ") + " }\n" + makerImpl + "\n" +
               "let get _ = " + hole("get") + "\n" +
               (lookupImpl.length ? lookupImpl.join("\n") + "\n" : "") +
-              bodies.join("\n") + "\n" });
+              bodies.join("\n") + "\n" + setterImpls.join("\n") + "\n" });
     });
 
     return units;

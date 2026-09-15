@@ -140,7 +140,7 @@ def layoutOf (root : String) (t : Table) : Except Error (List Col) := do
   | none => pure ()
 
   let generated : List String :=
-    [keyName, "get", "t", "id"]
+    [keyName, "get", "make", "t", "id"]
     ++ (match t.parent with
         | some pp => [keyColumnName root pp, positionColumn, childLookupName root pp]
         | none => [])
@@ -178,6 +178,18 @@ def genModule (root : String) (t : Table) : Except Error Module := do
   let accessors : List Decl := cols.map fun c => .value c.name (.arrow (.named "t") (tyOf c))
   let bodies : List Decl := cols.map fun c => .letValue c.name ["r"] (.field (.var "r") c.name)
 
+  -- a row is built once and changed by copy: `t` is abstract, so `make` is the
+  -- only way to have one at all, and a setter hands back a new row rather than
+  -- altering a shared one
+  let makeTy : TyExpr := cols.foldr (fun c rest => .labelled c.name (tyOf c) rest) (.named "t")
+  let maker : Decl := .value "make" makeTy
+  let makerImpl : Decl :=
+    .letValue "make" (cols.map fun c => "~" ++ c.name) (.record (cols.map (·.name)))
+  let setters : List Decl := cols.map fun c =>
+    .value ("set_" ++ c.name) (.arrow (.named "t") (.arrow (tyOf c) (.named "t")))
+  let setterImpls : List Decl := cols.map fun c =>
+    .letValue ("set_" ++ c.name) ["r", "v"] (.update (.var "r") c.name (.var "v"))
+
   let lookup : List Decl := match t.parent with
     | some pp =>
         [ .value (childLookupName root pp)
@@ -198,12 +210,17 @@ def genModule (root : String) (t : Table) : Except Error Module := do
     name := self
     decls := uuidAlias ++
       [ .abstractType "t"
-      , .abstractType "id"
-      , .value "get" (.arrow .id (.named "t")) ] ++ lookup ++ accessors
+      -- transparent, unlike `t`: a foreign key is typed `Parent.id` so the
+      -- schema reader can see it is one, and a row cannot be built or looked
+      -- up unless a key of that type can be obtained from the parent row
+      , .typeAlias "id" keyTy
+      , maker
+      , .value "get" (.arrow .id (.named "t")) ] ++ lookup ++ accessors ++ setters
     impl := uuidAlias ++
       [ .typeAlias "id" keyTy
       , .recordType "t" fields
-      , .letValue "get" ["_"] (hole "get") ] ++ lookupImpl ++ bodies
+      , makerImpl
+      , .letValue "get" ["_"] (hole "get") ] ++ lookupImpl ++ bodies ++ setterImpls
   }
 
 /-- The tables a unit names: its parent, for the foreign key, and the target

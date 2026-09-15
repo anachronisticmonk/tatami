@@ -24,6 +24,8 @@ def TyExpr.print : TyExpr → String
       (if t.needsParens then "(" ++ t.print ++ ")" else t.print) ++ " list"
   | .arrow a b =>
       (if a.needsParens then "(" ++ a.print ++ ")" else a.print) ++ " -> " ++ b.print
+  | .labelled n a b =>
+      n ++ ":" ++ (if a.needsParens then "(" ++ a.print ++ ")" else a.print) ++ " -> " ++ b.print
 
 /- `Expr.atom` is the same printer with parentheses where an argument
    position needs them; the two are mutual so that nesting stays structural. -/
@@ -35,6 +37,8 @@ def Expr.print : Expr → String
   | .qual m n => m ++ "." ++ n
   | .str s => "\"" ++ s ++ "\""
   | .app f args => String.intercalate " " (Expr.atom f :: Expr.atoms args)
+  | .record fs => "{ " ++ String.intercalate "; " fs ++ " }"
+  | .update e f v => "{ " ++ Expr.atom e ++ " with " ++ f ++ " = " ++ Expr.atom v ++ " }"
 
 def Expr.atom : Expr → String
   | .app f args => "(" ++ String.intercalate " " (Expr.atom f :: Expr.atoms args) ++ ")"
@@ -42,6 +46,8 @@ def Expr.atom : Expr → String
   | .field e f => Expr.atom e ++ "." ++ f
   | .qual m n => m ++ "." ++ n
   | .str s => "\"" ++ s ++ "\""
+  | .record fs => "{ " ++ String.intercalate "; " fs ++ " }"
+  | .update e f v => "{ " ++ Expr.atom e ++ " with " ++ f ++ " = " ++ Expr.atom v ++ " }"
 
 def Expr.atoms : List Expr → List String
   | [] => []

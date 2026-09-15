@@ -28,6 +28,10 @@ inductive TyExpr where
   | named  : String → TyExpr
   | qualified : String → String → TyExpr   -- a type from another module, M.t
   | arrow  : TyExpr → TyExpr → TyExpr
+  /-- `name:int -> t`. A constructor taking seven positional arguments, several
+      of them `int`, is a constructor that gets called wrongly; labels are what
+      make `make` safe to use. -/
+  | labelled : String → TyExpr → TyExpr → TyExpr
   deriving Repr, Inhabited
 
 /-- Expressions, only as far as the emitted bodies reach: a projection, a
@@ -39,6 +43,8 @@ inductive Expr where
   | qual  : String → String → Expr    -- B.get
   | str   : String → Expr             -- "..."
   | app   : Expr → List Expr → Expr   -- f x y
+  | record : List String → Expr       -- { a; b }, each field from a like-named binding
+  | update : Expr → String → Expr → Expr   -- { r with a = v }
   deriving Repr, Inhabited
 
 structure RecField where
