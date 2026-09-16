@@ -1,0 +1,14 @@
+[
+  { "number": 1,
+    "customer": { "name": "Ada", "email": "ada@example.com" },
+    "items": [ { "sku": "A-1", "qty": 2, "price": 9.99 },
+               { "sku": "B-7", "qty": 1, "price": 24.5 } ],
+    "tags": [ "rush", "gift" ],
+    "labels": { "priority": "high", "channel": "web" },
+    "note": null },
+  { "number": 2,
+    "customer": { "name": "Grace" },
+    "items": [ { "sku": "C-3", "qty": 5, "price": 3 } ],
+    "tags": [],
+    "labels": { "priority": "low" } }
+]

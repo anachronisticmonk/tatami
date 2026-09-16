@@ -75,4 +75,22 @@ theorem join_assoc (a b c : Ty) :
   cases a <;> cases b <;> cases c <;> simp [Ty.join] <;>
     (try split) <;> (try split) <;> simp_all
 
+/-! ### The order is a partial order -/
+
+theorem le_refl (a : Ty) : a ⊑ a := join_idem a
+
+/-- Transitivity falls out of associativity: fold `a ⊑ b` into the left of the
+    associativity square and `b ⊑ c` into the right, and the two ends meet. -/
+theorem le_trans {a b c : Ty} (h1 : a ⊑ b) (h2 : b ⊑ c) : a ⊑ c := by
+  unfold Ty.le at *
+  have hassoc := join_assoc a b c
+  rw [h1, h2] at hassoc
+  simpa [h2] using hassoc.symm
+
+theorem le_antisymm {a b : Ty} (h1 : a ⊑ b) (h2 : b ⊑ a) : a = b := by
+  unfold Ty.le at *
+  rw [join_comm] at h2
+  rw [h1] at h2
+  exact (Option.some_inj.mp h2).symm
+
 end Tatami

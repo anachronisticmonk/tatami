@@ -1,3 +1,4 @@
+import Proofs.Spec
 import Proofs.Lattice
 import Proofs.Mangle
 import Proofs.Wellformed
@@ -14,6 +15,8 @@ What is stated here, and where each stands.
 * `join_least`, `join_assoc` --- the join is the *least* upper bound, and
   folding observations is order-independent. Together with the above, an
   inferred type is the tightest one the data admits.
+* `le_refl`, `le_antisymm`, `le_trans` --- the type order is a partial order.
+  Transitivity falls out of `join_assoc`.
 * `mangle_injective` --- two distinct member names never give one identifier,
   so two members never become one column and two tables never one module.
   Three layers, each injective on the image of the one below: the byte
@@ -22,9 +25,29 @@ What is stated here, and where each stands.
   ends in `_`, so a keyword with `_` appended is not a prefixed core.
 * `mangle_starts_lower` --- a mangled name begins with a lowercase letter,
   which is what makes capitalising one character injective.
+* `mangleChars_not_keyword`, `mangle_not_keyword` --- a generated identifier
+  is never an OCaml keyword. With `mangle_starts_lower` this is what "legal
+  identifier" amounts to for this fragment. Neither follows from injectivity:
+  drop the keyword rule and injectivity and the lowercase-start property both
+  stay true while the generator emits `type t = { let : int }`, which OCaml
+  rejects.
 * `gen_wellFormed` --- every generated signature is well formed. Proved by
   inverting the check `gen` runs on its own output, so it holds of every
   `Schema` and does not need `mangle_injective`.
+* `scalarTy_seeScalar` --- specification and implementation agree on scalars.
+* `ref_le`, `coll_le` --- a reference only widens to a reference to the same
+  table.
+* `matchesField_mono` --- a value that matched a field still matches it after
+  later documents widen that field. This is the step adequacy turns on.
+
+**The specification.**
+* `Proofs.Spec` says, independently of the implementation, when a document is
+  *described by* a schema (`Conforms`) and when one schema is *below* another
+  (`Schema.le`). Without it, `inferCorpus` is the only account of a schema the
+  project has, and "correct" means "whatever that produces". `scalarTy` there
+  restates the rule in `seeScalar` rather than calling it; `scalarTy_seeScalar`
+  is the lemma that fails if the two drift apart, and it has already caught
+  one drift --- `seeScalar` gained a `uuid` case that `scalarTy` had not.
 
 **Unblocked, not yet proved.**
 * `Tatami.observeObject` is total now, on the measure `Doc.size`, so
@@ -40,10 +63,12 @@ What is stated here, and where each stands.
   which error is reported first legitimately depends on order while whether
   inference succeeds does not. Three obstacles remain, including that `Array.qsort` has no
   correctness lemmas in core -- see the docstring.
-* `infer_admits` and `infer_least` conclude `True`. They are reserved names,
-  not theorems, and totality does not change that: they need the conformance
-  relation written first, independently of `observeObject`, or they restate
-  the implementation.
+* `infer_admits` and `infer_least` are now stated against `Conforms` and
+  `Schema.le`, so they are real claims rather than the reserved names they
+  used to be. Both rest on a monotonicity invariant --- that a column's type
+  only ever moves up as documents arrive --- which has to hold of the whole
+  `Tables` state at once and is not yet established. Adequacy additionally
+  needs the counts identity, which is not yet stated.
 
 **Not covered, though it sounds as if it were.**
 * `File.WellFormed` constrains names only, not references. A `qualified M n`

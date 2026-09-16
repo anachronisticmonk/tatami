@@ -315,9 +315,18 @@ def inferCorpus (cfg : Config) (docs : List Doc) : Except Error Tables := do
 /-- Tables in the order OCaml needs them: a module must be declared before it
     is referred to, and a child's path is always longer than its parent's, so
     deepest first puts every child ahead of its parent. Ties are broken
-    lexicographically to keep the output stable. -/
+    lexicographically to keep the output stable.
+
+    `mergeSort` rather than `qsort`, because `Array.qsort` has no correctness
+    lemmas in core -- not even that it returns a permutation of its input --
+    so nothing could be proved about the schema this produces. `mergeSort_perm`
+    and `mem_mergeSort` hold of any comparator whatsoever, which is what
+    `Proofs.Inference` needs to find a table in the result. Both comparators
+    are strict and both keys are unique -- paths identify tables, and
+    `checkDistinct` rejects a repeated member -- so there are no ties and the
+    output is unchanged. -/
 def toSchema (ts : Tables) : Schema :=
-  let ordered := ts.toArray.qsort fun a b =>
+  let ordered := ts.toArray.mergeSort fun a b =>
     if a.1.length == b.1.length then
       Path.toString a.1 < Path.toString b.1
     else
@@ -326,7 +335,7 @@ def toSchema (ts : Tables) : Schema :=
     { path := p
     , parent := Path.parentOfElement p
     , keyed := Path.isEntry p
-    , columns := (t.members.toArray.qsort (fun a b => a.1 < b.1)).toList.map
+    , columns := (t.members.toArray.mergeSort (fun a b => a.1 < b.1)).toList.map
         fun (k, o) => { name := k, field := o.field } }
 
 end Tatami

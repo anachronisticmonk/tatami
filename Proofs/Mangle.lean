@@ -274,6 +274,34 @@ theorem mangle_injective {a b : String} (h : mangle a = mangle b) : a = b := by
   unfold mangleChars at h1
   exact toUTF8_data_toList_inj (encodeBytes_injective (prefixedCore_inj (keywordSuffixed_inj h1)))
 
+/-! ### Not a keyword
+
+Does not follow from injectivity: drop the keyword rule and both
+`mangle_injective` and `mangle_starts_lower` still hold, while the generator
+emits `type t = { let : int }`, which OCaml rejects. -/
+
+/-- The keyword rule fixes what it is there to fix. Either the core was not a
+    keyword and is returned untouched, or it was and the `_` appended makes it
+    one no longer -- no keyword contains an underscore. -/
+theorem mangleChars_not_keyword (s : String) : isKeyword (mangleChars s) = false := by
+  unfold mangleChars keywordSuffixed
+  by_cases hk : isKeyword (prefixedCore (encodeBytes s.toUTF8.data.toList)) = true
+  · rw [if_pos hk]
+    cases hs : isKeyword (prefixedCore (encodeBytes s.toUTF8.data.toList) ++ ['_']) with
+    | false => rfl
+    | true => exact absurd rfl ((isKeyword_props hs).1 '_' (by simp))
+  · rw [if_neg hk]
+    simp only [Bool.not_eq_true] at hk
+    exact hk
+
+/-- With `mangle_starts_lower`, this is what "legal identifier" amounts to for
+    the fragment of OCaml the generator emits. -/
+theorem mangle_not_keyword (s : String) : mangle s ∉ keywords := by
+  intro h
+  have hc : isKeyword (mangleChars s) = true := List.contains_iff_mem.mpr h
+  rw [mangleChars_not_keyword s] at hc
+  exact Bool.false_ne_true hc
+
 /-! ### The first character -/
 
 theorem startsLower_cons {p : List Char} (h : startsLower p = true) :
