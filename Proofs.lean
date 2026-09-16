@@ -1,4 +1,5 @@
 import Proofs.Spec
+import Proofs.Layout
 import Proofs.Lattice
 import Proofs.Mangle
 import Proofs.Wellformed
@@ -39,6 +40,12 @@ What is stated here, and where each stands.
   table.
 * `matchesField_mono` --- a value that matched a field still matches it after
   later documents widen that field. This is the step adequacy turns on.
+* `mem_layoutOf` --- every member becomes a column, under its mangled name, at
+  the type inference gave it, optional exactly when the member was ever
+  missing or null. The design note's first correspondence, with the two
+  exceptions the implementation makes and the prose does not state: a member
+  named `id` is consumed as the key, and a member holding a collection
+  contributes no column, since the elements carry the key back instead.
 
 **The specification.**
 * `Proofs.Spec` says, independently of the implementation, when a document is
