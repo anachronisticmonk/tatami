@@ -567,6 +567,89 @@ def genRegistry (s : Schema) (nm : Naming) : Except Error Module := do
       ]
   }
 
+/-! ## The shape a corpus produces
+
+    `gen` is total on `Schema`, deliberately: `Proofs.Wellformed` holds of
+    every schema, including ones inference would never build. The tree
+    correspondence in `Proofs.Tree` cannot be -- there are schemas whose tree
+    a signature simply cannot express -- so rather than assume the input came
+    from a corpus, the generator checks it and refuses one that did not.
+
+    Five conditions, and inference satisfies all five: `Tables` is keyed by
+    path, `checkDistinct` refuses a repeated member, and the walk records a
+    table before descending into what it holds, so a parent and a reference
+    target are always there and a reference always points *down* while a
+    parent points up. -/
+
+/-- Distinctness of a list of paths, the counterpart of `nodupNames`. -/
+def nodupPaths : List Path → Bool
+  | [] => true
+  | p :: tl => !tl.contains p && nodupPaths tl
+
+/-- One round of reachability: the tables one edge further from what is
+    already reached. A collection's rows are reached from the table holding
+    them; a reference's target from the table holding the key. -/
+def stepReach (s : Schema) (acc : List Path) : List Path :=
+  let viaColl := s.filterMap fun t =>
+    match t.parent with
+    | some pp => if acc.contains pp && !acc.contains t.path then some t.path else none
+    | none => none
+  let viaRef := s.flatMap fun t =>
+    if acc.contains t.path then
+      t.columns.filterMap fun c =>
+        match c.field.ty with
+        | .ref q => if acc.contains q then none else some q
+        | _ => none
+    else []
+  acc ++ viaColl ++ viaRef
+
+/-- Everything reachable from the root. Bounded by the number of tables: a
+    round that adds nothing is the last, and every other round adds at least
+    one. -/
+def reachGo (s : Schema) : Nat → List Path → List Path
+  | 0, acc => acc
+  | fuel + 1, acc =>
+      let acc' := stepReach s acc
+      if acc'.length == acc.length then acc else reachGo s fuel acc'
+
+def reachable (s : Schema) : List Path := reachGo s s.length [[]]
+
+/-- Did this schema come from a corpus? -/
+def schemaOkB (s : Schema) : Bool :=
+  let paths := s.map Table.path
+  nodupPaths paths
+  && s.all (fun t =>
+      nodupNames (t.columns.map Column.name)
+      && (match t.parent with
+          | some pp =>
+              paths.contains pp
+              && !(t.columns.any fun c => c.field.ty == .ref pp)
+          | none => true)
+      && t.columns.all (fun c =>
+          match c.field.ty with
+          | .ref q => paths.contains q
+          | _ => true))
+  && s.all (fun t => (reachable s).contains t.path)
+
+/-- Which condition failed, for the diagnostic. -/
+def schemaFault (s : Schema) : String :=
+  let paths := s.map Table.path
+  if !nodupPaths paths then "two tables share a path"
+  else if !(s.all fun t => nodupNames (t.columns.map Column.name)) then
+    "a table has two columns of one name"
+  else if !(s.all fun t => match t.parent with
+              | some pp => paths.contains pp | none => true) then
+    "a table sits in a collection held by a table that is not here"
+  else if !(s.all fun t => t.columns.all fun c =>
+              match c.field.ty with | .ref q => paths.contains q | _ => true) then
+    "a column holds a key into a table that is not here"
+  else if !(s.all fun t => match t.parent with
+              | some pp => !(t.columns.any fun c => c.field.ty == .ref pp)
+              | none => true) then
+    "a table both sits in a collection held by another and holds a key into it, \
+     which a signature cannot express"
+  else "a table is not reachable from the root"
+
 /-- The last step of `genRaw`: refuse a file that repeats a module name,
     naming the first one that repeats.
 
@@ -608,8 +691,9 @@ def certify (f : File) : Except Error File :=
   if f.okB then .ok f else .error (.illFormedSignature (f.badModule.getD "the file"))
 
 def gen (nm : Naming) (s : Schema) : Except Error File :=
-  match genRaw nm s with
-  | .error e => .error e
-  | .ok f => certify f
+  if !schemaOkB s then .error (.schemaNotFromCorpus (schemaFault s))
+  else match genRaw nm s with
+    | .error e => .error e
+    | .ok f => certify f
 
 end Tatami

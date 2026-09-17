@@ -89,7 +89,9 @@ theorem gen_wellFormed (nm : Naming) (s : Schema) (f : File) (h : gen nm s = .ok
     f.WellFormed := by
   unfold gen at h
   split at h
-  · exact absurd h (by simp)
-  · exact certify_wellFormed h
+  · cases h
+  · split at h
+    · exact absurd h (by simp)
+    · exact certify_wellFormed h
 
 end Tatami

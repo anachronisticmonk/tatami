@@ -362,6 +362,8 @@ theorem noClash_modules {mods : List Module} {f : File}
 theorem gen_inv {nm : Naming} {s : Schema} {f : File} (h : gen nm s = .ok f) :
     genRaw nm s = .ok f := by
   unfold gen at h
+  split at h
+  · cases h
   cases hg : genRaw nm s with
   | error e => rw [hg] at h; dsimp only at h; cases h
   | ok f' =>
@@ -385,6 +387,139 @@ theorem gen_modules {nm : Naming} {s : Schema} {f : File} (h : gen nm s = .ok f)
   obtain ⟨registry, hr, h3⟩ := except_bind_ok h2
   refine ⟨units, loaders, registry, hu, hl, hr, ?_⟩
   exact noClash_modules h3
+
+/-! ## `gen` establishes `Faithful` itself
+
+    The conditions above are not assumed of the caller: `gen` checks them and
+    refuses a schema that fails, so every file the generator emits satisfies
+    them. Proved by inverting that check, in the manner of `gen_wellFormed`. -/
+
+theorem nodupPaths_sound : ∀ {l : List Path}, nodupPaths l = true → l.Nodup := by
+  intro l
+  induction l with
+  | nil => intro _; simp
+  | cons p ps ih =>
+      intro h
+      simp only [nodupPaths, Bool.and_eq_true, Bool.not_eq_eq_eq_not,
+                 Bool.not_true] at h
+      refine List.nodup_cons.mpr ⟨?_, ih h.2⟩
+      intro hmem
+      have hc : ps.contains p = true := List.contains_iff_mem.mpr hmem
+      rw [h.1] at hc
+      simp at hc
+
+theorem gen_schemaOk {nm : Naming} {s : Schema} {f : File} (h : gen nm s = .ok f) :
+    schemaOkB s = true := by
+  by_cases hb : schemaOkB s = true
+  · exact hb
+  · unfold gen at h
+    rw [if_pos (by simp [hb])] at h
+    cases h
+
+/-- A path the check found in the schema is a table of it. -/
+private theorem path_mem {s : Schema} {p : Path}
+    (h : (s.map Table.path).contains p = true) : ∃ u, u ∈ s ∧ u.path = p := by
+  obtain ⟨u, hu, hup⟩ := List.mem_map.mp (List.contains_iff_mem.mp h)
+  exact ⟨u, hu, hup⟩
+
+theorem gen_faithful (nm : Naming) (s : Schema) (f : File) (h : gen nm s = .ok f) :
+    Faithful s := by
+  have hb := gen_schemaOk h
+  simp only [schemaOkB, Bool.and_eq_true, List.all_eq_true] at hb
+  obtain ⟨⟨hpaths, hper⟩, _⟩ := hb
+  refine
+    { paths := nodupPaths_sound hpaths
+      members := ?_, noParentRef := ?_, parentsPresent := ?_, refsPresent := ?_ }
+  · intro t ht
+    exact nodupNames_sound (hper t ht).1.1
+  · rintro t ht q hq ⟨c, hc, hcty⟩
+    have hpar := (hper t ht).1.2
+    rw [hq] at hpar
+    simp only [Bool.and_eq_true, Bool.not_eq_eq_eq_not, Bool.not_true,
+               List.any_eq_false] at hpar
+    have hno := hpar.2 c hc
+    rw [hcty] at hno
+    simp at hno
+  · intro t ht pp hq
+    have hpar := (hper t ht).1.2
+    rw [hq] at hpar
+    simp only [Bool.and_eq_true] at hpar
+    exact path_mem hpar.1
+  · intro t ht c hc q hcty
+    have hr := (hper t ht).2 c hc
+    rw [hcty] at hr
+    exact path_mem hr
+
+/-! ## And rootedness, the same way
+
+    A table the walk from the root never reaches would receive a
+    `create table` from `Loader.ddl` and never a row, because
+    `genRegistry.kidsOf` finds children by matching `parent`. So the
+    generator refuses one. -/
+
+theorem stepReach_sound {s : Schema} {acc : List Path}
+    (hacc : ∀ p, p ∈ acc → Reaches s p) : ∀ p, p ∈ stepReach s acc → Reaches s p := by
+  intro p hp
+  simp only [stepReach] at hp
+  rcases List.mem_append.mp hp with h1 | h2
+  · rcases List.mem_append.mp h1 with h | h
+    · exact hacc p h
+    · obtain ⟨t, ht, hsome⟩ := List.mem_filterMap.mp h
+      cases hpar : t.parent with
+      | none => rw [hpar] at hsome; cases hsome
+      | some pp =>
+          rw [hpar] at hsome
+          dsimp only at hsome
+          by_cases hcond : (acc.contains pp && !acc.contains t.path) = true
+          · rw [if_pos hcond] at hsome
+            cases hsome
+            simp only [Bool.and_eq_true] at hcond
+            exact Reaches.viaColl (hacc pp (List.contains_iff_mem.mp hcond.1))
+              ⟨t, ht, rfl, hpar⟩
+          · rw [if_neg hcond] at hsome; cases hsome
+  · obtain ⟨t, ht, hmem⟩ := List.mem_flatMap.mp h2
+    by_cases hin : (acc.contains t.path) = true
+    · rw [if_pos hin] at hmem
+      obtain ⟨c, hc, hsome⟩ := List.mem_filterMap.mp hmem
+      cases hty : c.field.ty with
+      | ref q =>
+          rw [hty] at hsome
+          dsimp only at hsome
+          by_cases hq : (acc.contains q) = true
+          · rw [if_pos hq] at hsome; cases hsome
+          · rw [if_neg hq] at hsome
+            cases hsome
+            exact Reaches.viaRef (hacc t.path (List.contains_iff_mem.mp hin))
+              ⟨t, ht, rfl, c, hc, hty⟩
+      | _ => rw [hty] at hsome; cases hsome
+    · rw [if_neg hin] at hmem; cases hmem
+
+theorem reachGo_sound {s : Schema} : ∀ (fuel : Nat) (acc : List Path),
+    (∀ p, p ∈ acc → Reaches s p) → ∀ p, p ∈ reachGo s fuel acc → Reaches s p := by
+  intro fuel
+  induction fuel with
+  | zero => intro acc hacc p hp; rw [reachGo] at hp; exact hacc p hp
+  | succ n ih =>
+      intro acc hacc p hp
+      rw [reachGo] at hp
+      split at hp
+      · exact hacc p hp
+      · exact ih _ (stepReach_sound hacc) p hp
+
+theorem reachable_sound {s : Schema} : ∀ p, p ∈ reachable s → Reaches s p := by
+  refine reachGo_sound _ _ ?_
+  intro p hp
+  rcases List.mem_singleton.mp hp with rfl
+  exact Reaches.root
+
+/-- Every table is reachable from the root, so walking the generated
+    signatures from the root module enumerates the whole schema. -/
+theorem gen_rooted (nm : Naming) (s : Schema) (f : File) (h : gen nm s = .ok f) :
+    Rooted s := by
+  have hb := gen_schemaOk h
+  simp only [schemaOkB, Bool.and_eq_true, List.all_eq_true] at hb
+  intro t ht
+  exact reachable_sound t.path (List.contains_iff_mem.mp (hb.2 t ht))
 
 /-! ## The correspondence -/
 
@@ -410,8 +545,9 @@ theorem layoutOf_mapM {nm : Naming} {t : Table} {cols : List Col}
 
 /-- The module of a table of the schema, and the fact that it is in the file. -/
 theorem gen_module_of {nm : Naming} {s : Schema} {f : File} {t : Table}
-    (hf : Faithful s) (h : gen nm s = .ok f) (ht : t ∈ s) :
+    (h : gen nm s = .ok f) (ht : t ∈ s) :
     ∃ m, m ∈ f.modules ∧ genModule nm t = .ok m := by
+  have hf := gen_faithful nm s f h
   obtain ⟨units, loaders, registry, hu, _, _, hmods⟩ := gen_modules h
   obtain ⟨m, hm, hgm⟩ := mapM_ok_pointwise hu t (mem_orderTables_complete hf.paths ht)
   exact ⟨m, by rw [hmods]; exact List.mem_append_left _ (List.mem_append_left _ hm), hgm⟩
@@ -559,8 +695,9 @@ theorem baseCols_ref {nm : Naming} {t : Table} {kt : Ty} {c : Col} {p : Path}
     of `mangle` -- which matters now that `Naming.tables` lets a configuration
     name two paths the same thing. -/
 theorem gen_moduleName_injOn (nm : Naming) (s : Schema) (f : File)
-    (hf : Faithful s) (h : gen nm s = .ok f) :
+    (h : gen nm s = .ok f) :
     ∀ t u, t ∈ s → u ∈ s → moduleName nm t.path = moduleName nm u.path → t.path = u.path := by
+  have hf := gen_faithful nm s f h
   obtain ⟨units, loaders, registry, hu, _, _, hmods⟩ := gen_modules h
   -- the generator refuses a file whose module names repeat, and
   -- `Proofs.Wellformed` has already turned that check into the proposition
@@ -579,18 +716,20 @@ theorem gen_moduleName_injOn (nm : Naming) (s : Schema) (f : File)
 
 /-- Nothing in the tree is lost: every edge the corpus induces is declared. -/
 theorem gen_tree_complete_coll (nm : Naming) (s : Schema) (f : File)
-    (hf : Faithful s) (h : gen nm s = .ok f) :
+    (h : gen nm s = .ok f) :
     ∀ p q, CollEdge s p q → FileCollEdge f (moduleName nm p) (moduleName nm q) := by
+  have hf := gen_faithful nm s f h
   rintro p q ⟨t, ht, htp, htpar⟩
-  obtain ⟨m, hm, hgm⟩ := gen_module_of hf h ht
+  obtain ⟨m, hm, hgm⟩ := gen_module_of h ht
   exact ⟨m, hm, by rw [genModule_name hgm, htp],
          ⟨childLookupName nm p, genModule_lookup hgm htpar⟩⟩
 
 theorem gen_tree_complete_ref (nm : Naming) (s : Schema) (f : File)
-    (hf : Faithful s) (h : gen nm s = .ok f) :
+    (h : gen nm s = .ok f) :
     ∀ p q, RefEdge s p q → FileRefEdge f (moduleName nm p) (moduleName nm q) := by
+  have hf := gen_faithful nm s f h
   rintro p q ⟨t, ht, htp, c, hc, hcty⟩
-  obtain ⟨m, hm, hgm⟩ := gen_module_of hf h ht
+  obtain ⟨m, hm, hgm⟩ := gen_module_of h ht
   obtain ⟨cols, hcols⟩ := genModule_layout hgm
   obtain ⟨kt, hkt⟩ := layoutOf_keyTy hcols
   obtain ⟨ms, hms⟩ := layoutOf_mapM hcols
@@ -615,45 +754,46 @@ theorem gen_tree_complete_ref (nm : Naming) (s : Schema) (f : File)
     obtain ⟨t', ht', hgm'⟩ := gen_module_source h hm' (by intro e; rw [e] at hlk; cases hlk)
     obtain ⟨pp, hpar, hqpp⟩ := genModule_lookup_only hgm' hlk
     have hpath : t'.path = t.path := by
-      refine gen_moduleName_injOn nm s f hf h t' t ht' ht ?_
+      refine gen_moduleName_injOn nm s f h t' t ht' ht ?_
       rw [← genModule_name hgm', hm'name, htp]
     have htt' : t' = t := inj_of_nodup_map hf.paths ht' ht hpath
     rw [htt'] at hpar
     obtain ⟨u, hu, hup⟩ := hf.parentsPresent t ht pp hpar
     obtain ⟨v, hv, hvp⟩ := hf.refsPresent t ht c hc q hcty
     have : q = pp := by
-      have := gen_moduleName_injOn nm s f hf h v u hv hu (by rw [hvp, hup]; exact hqpp)
+      have := gen_moduleName_injOn nm s f h v u hv hu (by rw [hvp, hup]; exact hqpp)
       rw [hvp, hup] at this; exact this
     rw [this] at hcty
     exact hf.noParentRef t ht pp hpar ⟨c, hc, hcty⟩
 
 theorem gen_tree_complete (nm : Naming) (s : Schema) (f : File)
-    (hf : Faithful s) (h : gen nm s = .ok f) :
+    (h : gen nm s = .ok f) :
     (∀ p q, CollEdge s p q → FileCollEdge f (moduleName nm p) (moduleName nm q)) ∧
     (∀ p q, RefEdge  s p q → FileRefEdge  f (moduleName nm p) (moduleName nm q)) :=
-  ⟨gen_tree_complete_coll nm s f hf h, gen_tree_complete_ref nm s f hf h⟩
+  ⟨gen_tree_complete_coll nm s f h, gen_tree_complete_ref nm s f h⟩
 
 /-- Nothing is invented: every edge a reader finds between two tables of the
     schema is an edge the corpus induced. -/
 theorem gen_tree_sound (nm : Naming) (s : Schema) (f : File)
-    (hf : Faithful s) (h : gen nm s = .ok f) :
+    (h : gen nm s = .ok f) :
     (∀ t u, t ∈ s → u ∈ s →
         FileCollEdge f (moduleName nm t.path) (moduleName nm u.path) →
         CollEdge s t.path u.path) ∧
     (∀ t u, t ∈ s → u ∈ s →
         FileRefEdge f (moduleName nm t.path) (moduleName nm u.path) →
         RefEdge s t.path u.path) := by
+  have hf := gen_faithful nm s f h
   constructor
   · rintro t u ht hu ⟨m', hm', hm'name, lk, hlk⟩
     obtain ⟨w, hw, hgw⟩ := gen_module_source h hm' (by intro e; rw [e] at hlk; cases hlk)
     obtain ⟨pp, hpar, hmn⟩ := genModule_lookup_only hgw hlk
     have hwu : w = u :=
       inj_of_nodup_map hf.paths hw hu
-        (gen_moduleName_injOn nm s f hf h w u hw hu (by rw [← genModule_name hgw, hm'name]))
+        (gen_moduleName_injOn nm s f h w u hw hu (by rw [← genModule_name hgw, hm'name]))
     rw [hwu] at hpar
     obtain ⟨v, hv, hvp⟩ := hf.parentsPresent u hu pp hpar
     have hteq : t.path = pp := by
-      have := gen_moduleName_injOn nm s f hf h t v ht hv (by rw [hvp]; exact hmn)
+      have := gen_moduleName_injOn nm s f h t v ht hv (by rw [hvp]; exact hmn)
       rw [hvp] at this; exact this
     exact ⟨u, hu, rfl, by rw [hteq]; exact hpar⟩
   · rintro t u ht hu ⟨⟨m', hm', hm'name, n, hkey⟩, hnot⟩
@@ -662,7 +802,7 @@ theorem gen_tree_sound (nm : Naming) (s : Schema) (f : File)
     obtain ⟨w, hw, hgw⟩ := gen_module_source h hm' hne
     have hwt : w = t :=
       inj_of_nodup_map hf.paths hw ht
-        (gen_moduleName_injOn nm s f hf h w t hw ht (by rw [← genModule_name hgw, hm'name]))
+        (gen_moduleName_injOn nm s f h w t hw ht (by rw [← genModule_name hgw, hm'name]))
     rw [hwt] at hgw
     obtain ⟨cols, c, hcols, hc, hX⟩ :
         ∃ cols c, layoutOf nm t = .ok cols ∧ c ∈ cols ∧
@@ -684,7 +824,7 @@ theorem gen_tree_sound (nm : Naming) (s : Schema) (f : File)
     · have hcolty : col.field.ty = .ref p := by rw [← memberCol_ty hmc]; exact hcp
       obtain ⟨v, hv, hvp⟩ := hf.refsPresent t ht col hcol p hcolty
       have hup : u.path = p := by
-        have := gen_moduleName_injOn nm s f hf h u v hu hv (by rw [hvp]; exact hmn)
+        have := gen_moduleName_injOn nm s f h u v hu hv (by rw [hvp]; exact hmn)
         rw [hvp] at this; exact this
       exact ⟨t, ht, rfl, col, hcol, by rw [hup]; exact hcolty⟩
 
@@ -720,50 +860,18 @@ theorem parentOfElement_shorter {p q : Path} (h : Path.parentOfElement p = some 
   unfold Path.parentOfElement at h
   split at h <;> rename_i heq <;> simp_all [List.length_reverse]
 
-/-- Inference produces a schema satisfying `Faithful`, which is what the four
-    `gen` theorems above are conditional on.
+/-! ## A note on where the guarantee comes from
 
-    Two of the five fields are proved and in hand:
-
-    * `paths` is `Merge.toSchema_paths_nodup`, and `members` is
-      `Merge.toSchema_members_nodup`. Both follow from `TablesOk` -- every
-      list in key order -- which `Walk.inferCorpus_ok` proves of everything
-      inference builds. The `Array.qsort` that used to block this is gone:
-      `toSchema` now sorts with `Tatami.sortBy`, an insertion sort that is
-      proved to permute, and the sort it used to apply to each table's members
-      was redundant once the merges started keeping them in order.
-
-    The three that remain all need one further walk invariant, which
-    `observeObject.induct` and the lemmas in `Proofs.Walk` make reachable but
-    which is not yet stated:
-
-    * every path in the observations has its parent path there too
-      (`parentsPresent`);
-    * every `ref` recorded at a table points at a path that is there, and is
-      that table's own path extended by the member it was recorded under
-      (`refsPresent`);
-    * from which `noParentRef` follows by length, a `ref` target being one
-      segment longer than its table and a parent two shorter.
-
-    `Tables.merge` preserves such an invariant readably now that
-    `Sorted.mergeBy_lookup` says what a merge looks up. -/
-theorem infer_faithful (cfg : Config) (ds : List Doc) (ts : Tables)
-    (h : inferCorpus cfg ds = .ok ts) : Faithful (toSchema ts) := by
-  sorry
-
-/-- Every table is reachable from the root, so walking the generated
-    signatures from the root module enumerates the whole schema.
-
-    Needs more than `Faithful`: that gives an edge upward from every table,
-    and following it terminates by `parentOfElement_shorter` -- but it
-    terminates at a table with no parent, which is the root only if every
-    nested object that became a table is the target of a `ref` column on the
-    table above it. That is the converse of `refsPresent`: not that a
-    reference points at a table, but that a table reached by a member
-    reference is pointed at. Also a fact about the walk, and the same
-    invariant that `infer_faithful` needs. -/
-theorem infer_rooted (cfg : Config) (ds : List Doc) (ts : Tables)
-    (h : inferCorpus cfg ds = .ok ts) : Rooted (toSchema ts) := by
-  sorry
+    `Faithful` and `Rooted` are established by `gen` checking its input, not
+    by a theorem about inference. That is the stronger arrangement for a
+    reader of the output -- the properties hold of *every* file the generator
+    emits, whatever it was given -- and the weaker one for a reader of the
+    corpus, since it does not by itself say inference never trips the check.
+    Nothing inference produces does: `Tables` is keyed by path,
+    `checkDistinct` refuses a repeated member, and the walk records a table
+    before descending into what it holds, so a parent and a reference target
+    are always present and a reference always points one segment down while a
+    parent points two up. Turning that paragraph into a theorem is the
+    remaining work, and `Proofs.Walk` has the induction it would use. -/
 
 end Tatami

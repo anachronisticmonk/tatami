@@ -7,6 +7,7 @@ import Proofs.Walk
 import Proofs.Wellformed
 import Proofs.Tree
 import Proofs.Inference
+import Proofs.Guarantees
 
 /-!
 # Proofs about the shredder

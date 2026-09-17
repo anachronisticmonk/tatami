@@ -20,6 +20,7 @@ inductive Error where
   | mapEntryNotSupported (path : String) (found : String)
   | illFormedSignature (wherein : String)
   | unusableKey (path : String) (why : String)
+  | schemaNotFromCorpus (why : String)
 
 def Error.toString : Error → String
   | .notObjectOrArray found =>
@@ -46,6 +47,8 @@ def Error.toString : Error → String
       s!"the configuration marks {path} as a map, but no object was found there."
   | .mapEntryNotSupported path found =>
       s!"the member at {path} is {found}. Map entries may be objects or scalars."
+  | .schemaNotFromCorpus why =>
+      s!"the schema does not have the shape a corpus produces: {why}"
   | .unusableKey path why =>
       s!"the member id at {path} cannot be the table's key: it is {why}. Rename it, or remove it and one will be generated."
   | .illFormedSignature wherein =>
