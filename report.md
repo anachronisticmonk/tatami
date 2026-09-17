@@ -409,20 +409,42 @@ slogan, a decision procedure with a measured curve behind it.
 
 ## 11. The gap in the OCaml ecosystem
 
-**OCaml has no columnar story.** There is no Arrow binding, no Parquet reader,
-no columnar execution engine. `pgx` — which this project uses, and which is
-good — is a Postgres wire-protocol client: it gives you rows, because that is
-what the wire protocol carries.
+**The columnar options in OCaml are all foreign.** Two exist, and it is worth
+naming them rather than claiming a void:
 
-So if you want dense typed columns in OCaml today, you write them. We did, and
-drove the whole layout from generated types rather than from hand-tuning.
+- **`ocaml-arrow`** (Laurent Mazare) — OCaml bindings to Apache Arrow's **C++**
+  library, including a ppx for converting OCaml records to and from Arrow
+  columns. The author describes it as battle-tested.
+- **`polars-ocaml`** (mt-caret) — bindings to **Rust's** Polars, published on
+  opam as `polars` and `polars_async`. Polars is a genuine columnar engine:
+  Arrow-backed, parallel, SIMD.
 
-This is the second unusual thing about the project, and we think it is the more
-actionable one. The numbers in chapters 9 and 10 are an argument that the gap is
-worth closing: a 3× scan improvement and a 14× improvement at the selectivity
-extremes, obtained from a store written in a weekend by deriving the layout from
-an inferred schema, suggests that a serious columnar substrate for OCaml — or
-an Arrow binding — would pay for itself.
+So "OCaml has no columnar story" is false. The accurate statement is narrower
+and, for this project, sharper: **both are FFI wrappers around another
+language's runtime, and neither is usable here.**
+
+`polars-ocaml` targets OCaml 4.14 — OCaml 5 support is blocked upstream in the
+Rust interop layer, and its own documentation describes the bindings as work in
+progress with expected breakage. This project is OCaml 5.2. It is not a matter
+of preference; the binding does not build.
+
+`ocaml-arrow` binds a C++ library, which for a functional-programming exercise
+means the columnar half of the pipeline stops being OCaml at the boundary and
+becomes a call into C++.
+
+`pgx` — which this project does use, and which is good — is a Postgres
+wire-protocol client. It gives you rows, because rows are what the wire
+protocol carries.
+
+What does not exist, as far as we can find, is a **columnar store written in
+OCaml itself, laid out from a generated schema**. That is the gap this fills,
+and the constraint is the point rather than an inconvenience: in a hackathon
+about functional programming, "call into Rust" is a strange answer to "how do
+you store columns".
+
+The numbers in chapters 9 and 10 are the argument that closing it properly is
+worth someone's time: roughly 3× on scans and 14× at the selectivity extremes,
+from a store written in a weekend whose layout was derived rather than tuned.
 
 ### What is, and is not, new about the proof
 

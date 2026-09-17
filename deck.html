@@ -586,8 +586,8 @@
           <p>Machine-checked principality is old news — Algorithm W is mechanised in Coq, Isabelle, HOL4. JSON schema inference has paper proofs too. What we have not found is the <strong>link between theorem and bytes</strong>: nullability is the licence to <span class="em">delete the mask</span>, and the saving is measured.</p>
         </div>
         <div>
-          <h3>OCaml has no columnar story</h3>
-          <p>No Arrow, no Parquet, no columnar engine. <code>pgx</code> gives you <em>rows</em>. Dense typed columns in OCaml you write yourself — so we did, driven by generated types.</p>
+          <h3>The columnar options are all foreign</h3>
+          <p>Two exist and both wrap another runtime: <code>ocaml-arrow</code> binds Arrow's <strong>C++</strong>, <code>polars-ocaml</code> binds Rust's <strong>Polars</strong> — and that one targets OCaml 4.14, so it does not build on the 5.2 we use. No columnar store written <em>in</em> OCaml, laid out from a generated schema. In a functional-programming hackathon, <span class="em">call into Rust</span> is a strange answer.</p>
         </div>
       </div>
       <p>Functional the whole way down: Lean 4 for inference and proof, OCaml for everything after.</p>

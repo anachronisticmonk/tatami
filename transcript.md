@@ -77,8 +77,9 @@ and a `note` that is null in one record and absent in another.*
 > That matters because absence is computed by truncating subtraction. Without
 > the counts identity, a field some document omitted could report zero
 > absences, come out non-optional, and we'd emit `string` where the data needs
-> `string option`. That code compiles — and then dies on the first document
-> missing the field, with nothing to say why.
+> `string option`. That code compiles. The store does catch it — it aborts and
+> names the column — but at load time, on real data, in code the compiler
+> already accepted. The theorem makes that situation impossible instead.
 >
 > *Scroll to `schema_canonical`.*
 >
@@ -137,10 +138,12 @@ and a `note` that is null in one record and absent in another.*
 
 > Two things I'd leave you with.
 >
-> One: OCaml has no Arrow, no Parquet, no columnar engine. `pgx` is excellent
-> and gives you *rows*. We built dense typed columns driven entirely by
-> generated types — the gap is real, and these numbers argue it's worth
-> closing.
+> One: the columnar options in OCaml are both bindings to another language —
+> `ocaml-arrow` wraps Arrow's C++, `polars-ocaml` wraps Rust's Polars, and that
+> one targets OCaml 4.14, so it doesn't even build on the OCaml 5 we're on.
+> There's no columnar store written *in* OCaml, laid out from a generated
+> schema. So we wrote one. In a functional programming hackathon, "call into
+> Rust" felt like the wrong answer.
 >
 > Two: it's functional the whole way down. Lean 4 for inference and proof,
 > OCaml for loading, storage and measurement. The one place correctness truly
