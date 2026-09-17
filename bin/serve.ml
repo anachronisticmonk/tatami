@@ -23,6 +23,13 @@ let port = match Sys.getenv_opt "TATAMI_PORT" with Some p -> int_of_string p | N
 let addr = match Sys.getenv_opt "TATAMI_ADDR" with Some a -> a | None -> "127.0.0.1"
 let corpus = ref "corpus/small.json"
 let web_dir = match Sys.getenv_opt "TATAMI_WEB" with Some p -> p | None -> "web"
+
+(* Which page `/` serves. The API is the same either way, so pointing a second
+   instance at another page gives that page a port of its own -- and a page
+   that calls /api has to be served from the same origin as the API it calls,
+   which is why this is a setting here rather than a second static server. *)
+let root_page =
+  match Sys.getenv_opt "TATAMI_PAGE" with Some p -> p | None -> "index.html"
 let results = ref "bench/results.jsonl"
 
 let read_file path =
@@ -253,9 +260,10 @@ let () =
   let get p h = S.add_route_handler ~meth:`GET server p h in
   let post p h = S.add_route_handler ~meth:`POST server p h in
 
-  get S.Route.return (fun _ -> page "index.html");
+  get S.Route.return (fun _ -> page root_page);
   (* one repo, reassembled from the four tables it shredded into *)
   get S.Route.(exact "reassemble" @/ return) (fun _ -> page "reassemble.html");
+  get S.Route.(exact "index" @/ return) (fun _ -> page "index.html");
   get S.Route.(exact "api" @/ exact "schema" @/ return) (fun _ -> json (schema_json ()));
   get S.Route.(exact "api" @/ exact "sample" @/ return) (fun _ ->
       try json (sample ()) with e -> fail 500 (Printexc.to_string e));

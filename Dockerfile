@@ -45,6 +45,9 @@ USER tatami
 
 # A bigger corpus than the one baked in, generated at startup:
 #   docker run -p 8000:8000 -e TATAMI_ROWS=50000 tatami/backend
+# Which page `/` serves. A second container with TATAMI_PAGE=reassemble.html
+# gives that page a port of its own, with the API it calls on the same origin.
+ENV TATAMI_PAGE=index.html
 ENV TATAMI_PORT=8000
 # Published ports forward to the container's external interface, so the server
 # must not bind loopback here or it is reachable only from inside.
