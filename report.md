@@ -415,15 +415,44 @@ extremes, obtained from a store written in a weekend by deriving the layout from
 an inferred schema, suggests that a serious columnar substrate for OCaml — or
 an Arrow binding — would pay for itself.
 
-And the first unusual thing: **the contract is proved, not asserted.** Plenty of
-tools infer a schema from JSON. We are not aware of another that ships a
-machine-checked proof that the inference is principal and the nullability exact.
-The `.mli` is not a best-effort guess that a validator re-checks at runtime; it
-is an artifact whose construction has a theorem attached.
+### What is, and is not, new about the proof
 
-The two are connected. The proof is what licenses the layout: without exact
-nullability you cannot delete the validity mask, and deleting the mask is where
-a large part of both the memory saving and the scan speed comes from.
+An overclaimed novelty is worth less than an accurate one, so this section
+states the prior art first.
+
+**Machine-checked type inference is well-trodden.** Algorithm W and the
+Damas–Milner system have been mechanised repeatedly — a monadic Coq
+formalisation with correctness *and completeness* of inference plus soundness,
+completeness and termination of unification; Dubois' ML soundness in Coq;
+Naraschewski and Nipkow in Isabelle; CakeML's type inferencer verified in HOL4
+as part of an end-to-end verified ML implementation. Completeness of Algorithm
+W *is* principality — it computes the most general type. Nothing about proving
+principality by machine is novel in itself.
+
+**JSON schema inference already has formal proofs.** Baazizi, Ben Lahmar,
+Colazzo, Ghelli and Sartiani's schema inference for massive JSON datasets
+(EDBT 2017, extended in the VLDB Journal) ships a companion *Proofs for
+parametric schema inference for massive JSON datasets* (2018). Their algorithm
+fuses records and marks fields absent from some of them as optional — the same
+occurrence-counting territory as chapter 4.5. Those proofs are pen-and-paper
+rather than mechanised, but the properties are not new.
+
+**The nearest Lean neighbour proves something else.** `lean4-json-schema`
+carries soundness and completeness theorems for JSON Schema *validation* —
+that a document satisfies a **given** schema. It does not infer a schema from
+data, so it does not speak to principality or to nullability at all.
+
+**What we could not find elsewhere is the link between the theorem and the
+bytes.** The nullability result here is not a certificate to be displayed
+alongside the code; it is the licence to remove the validity mask from the
+physical layout. Without exact nullability you cannot delete the mask, and
+deleting the mask is where a large part of both the memory saving (264 MB
+against 297 MB) and the scan throughput comes from.
+
+Proof → storage-layout decision → measured benefit is the chain we claim, and
+we state it that way deliberately: it is falsifiable, and a reviewer who knows
+of prior work joining those three should say so. The weaker claim — "we proved
+our inference correct" — would be true and unremarkable.
 
 ---
 

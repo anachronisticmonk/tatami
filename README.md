@@ -163,11 +163,22 @@ read.
 
 ## Two things that make this unusual
 
-**1. The contract is proved, not asserted.** Plenty of tools infer a schema
-from JSON. We are not aware of another that ships a machine-checked proof that
-the inference is principal and the nullability exact. The `.mli` is not a
-best-effort guess that a validator re-checks at runtime; it is an artifact
-whose construction has a theorem attached.
+**1. The proof is spent, not displayed.** Be precise about what is and is not
+new here. Machine-checked *type* inference is well-trodden — Algorithm W has
+been mechanised in Coq, Isabelle and HOL4, and completeness of Algorithm W
+already *is* principality. JSON schema inference has formal proofs too:
+Baazizi, Colazzo, Ghelli and Sartiani give pen-and-paper proofs for parametric
+schema inference, occurrence-counting for mandatory versus optional fields
+included. And the nearest Lean neighbour, `lean4-json-schema`, proves
+*validation* — that a document satisfies a **given** schema — not inference
+from data.
+
+What we have not found elsewhere is the link between the theorem and the
+bytes. The nullability result is not a certificate to display; it is the
+licence to **delete the validity mask from the physical layout**, and the
+saving is measured (264 MB against 297 MB). Proof → storage-layout decision →
+benchmark is the chain we believe is new, and it is the one worth arguing
+about.
 
 **2. OCaml has no columnar story, and we built one.** There is no Arrow
 binding, no Parquet reader, no columnar engine for OCaml. `pgx` — which we use,
