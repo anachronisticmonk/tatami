@@ -1,0 +1,363 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>reassemble &middot; tatami</title>
+<style>
+  :root{--bg:#fbfaf7;--panel:#fff;--ink:#1c1a17;--dim:#6f6a61;--line:#e3dfd6;
+        --accent:#7a4b2a;--code:#f5f2ec;--warm:#fff8ef;--edge:#efdfc9;
+        --good:#2f6b3f;--bad:#a3271c;--rec:#b9a894;--col:#7a4b2a;
+        --repo:#7a4b2a;--run:#2f6b3f;--job:#8a6c1f;--step:#2b3a4a}
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:14px/1.55 ui-sans-serif,-apple-system,"Helvetica Neue",sans-serif}
+  code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
+  header{padding:18px 26px 14px;border-bottom:1px solid var(--line);background:var(--panel)}
+  h1{margin:0;font-size:17px;letter-spacing:.02em}
+  .sub{font-size:12.5px;color:var(--dim);margin-top:4px}
+  main{padding:22px 26px 90px;max-width:1180px}
+  h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);
+     margin:26px 0 8px;font-weight:600}
+  h2:first-child{margin-top:0}
+  p.lead{font-size:13px;color:var(--dim);margin:0 0 12px;max-width:78ch}
+  pre{margin:0;padding:11px 13px;background:var(--code);border:1px solid var(--line);
+      border-radius:6px;overflow:auto;font-size:12.5px;line-height:1.5;max-height:460px}
+  .card{background:var(--panel);border:1px solid var(--line);border-radius:8px;
+        padding:15px 17px;margin-bottom:12px}
+  .two{display:grid;grid-template-columns:1fr 1fr;gap:14px;align-items:start}
+  @media(max-width:980px){.two{grid-template-columns:1fr}}
+  table{border-collapse:collapse;font-size:12.5px;width:100%;background:var(--panel)}
+  th,td{text-align:left;padding:5px 9px;border-bottom:1px solid var(--line);white-space:nowrap}
+  th{font-size:10.5px;text-transform:uppercase;letter-spacing:.06em;color:var(--dim);font-weight:600}
+  td.num{text-align:right;font-family:ui-monospace,Menlo,monospace}
+  .wrap{border:1px solid var(--line);border-radius:6px;overflow:auto;max-height:300px}
+  .null{color:var(--bad);font-style:italic}
+  .hint{color:var(--dim);font-size:12.5px}
+  .note{background:var(--warm);border:1px solid var(--edge);border-radius:6px;
+        padding:10px 12px;font-size:12.5px;margin-top:10px}
+  .bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin:10px 0}
+  button.go{padding:7px 15px;border:0;border-radius:5px;background:var(--accent);
+            color:#fff;font:inherit;font-weight:600;cursor:pointer}
+  button.go:hover{background:#8e5931}
+  button.go[disabled]{opacity:.5;cursor:default}
+  .q{padding:5px 11px;border:1px solid var(--line);border-radius:20px;background:var(--panel);
+     font:inherit;font-size:12px;cursor:pointer;color:var(--dim)}
+  .q.on{border-color:var(--accent);color:var(--accent);background:var(--warm);font-weight:600}
+  input[type=text]{padding:6px 10px;border:1px solid var(--line);border-radius:5px;
+                   font:inherit;font-size:13px;width:330px;background:var(--panel);color:var(--ink)}
+  /* the tree */
+  .tree{font-family:ui-monospace,Menlo,monospace;font-size:12.5px;line-height:1.7}
+  .node{display:flex;align-items:baseline;gap:8px;padding:2px 6px;border-radius:4px;cursor:pointer}
+  .node:hover{background:var(--code)}
+  .node.sel{background:var(--warm);outline:1px solid var(--edge)}
+  .kids{margin-left:17px;border-left:1px dotted var(--line);padding-left:11px}
+  .lbl{font-weight:600}
+  .lbl.repo{color:var(--repo)} .lbl.run{color:var(--run)}
+  .lbl.job{color:var(--job)}   .lbl.step{color:var(--step)}
+  .meta{color:var(--dim);font-size:11.5px}
+  .kx{background:var(--warm);border:1px solid var(--edge);border-radius:3px;padding:0 4px;color:var(--accent)}
+  .caret{width:9px;display:inline-block;color:var(--dim)}
+  .tot{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 0}
+  .tot div{font-size:12.5px;color:var(--dim)}
+  .tot b{color:var(--ink);font-family:ui-monospace,Menlo,monospace}
+  .err{color:var(--bad)}
+</style>
+</head>
+<body>
+<header>
+  <h1>reassemble one repo</h1>
+  <div class="sub">its runs, jobs, steps &mdash; the query a row store exists for</div>
+</header>
+<main><div id="root"></div></main>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+<script>
+const h = React.createElement;
+
+/* Same rule as bin/bench.ml and bin/serve.ml print by: the cost of one call,
+   which for this query is a fraction of a microsecond, so the unit follows the
+   magnitude rather than rounding everything to 0.00ms. */
+const dur = v =>
+  !(v > 0)     ? 'too fast'
+  : v >= 1     ? v.toFixed(2) + 'ms'
+  : v >= 0.001 ? (v * 1000).toFixed(2) + 'µs'
+  :              (v * 1e6).toFixed(0) + 'ns';
+
+const cell = v =>
+  v === null || v === undefined ? h('span', {className: 'null'}, 'NULL') : String(v);
+
+const SQL =
+`select count(distinct u.id) as runs,
+       count(distinct j.id) as jobs,
+       count(s.id)          as steps,
+       coalesce(sum(s.ms),0) as ms
+from repo r
+left join run  u on u.repo_id = r.id
+left join job  j on j.run_id  = u.id
+left join step s on s.job_id  = j.id
+where r.id = $1`;
+
+/* ---- the reassembly itself -------------------------------------------------
+   Four flat tables in, one nested document out. Each level finds its children
+   by matching a key: this is the whole of what the columnar store does, and
+   what the row-major store never has to do because it already holds the
+   nesting. */
+function reassemble(rows) {
+  const by = (list, key, val) => (list || []).filter(r => r[key] === val);
+  const repo = (rows.repo || [])[0];
+  if (!repo) return null;
+  const runs = by(rows.run, 'repo_id', repo.id)
+    .sort((a, b) => a.idx - b.idx)
+    .map(u => {
+      const jobs = by(rows.job, 'run_id', u.id)
+        .sort((a, b) => a.idx - b.idx)
+        .map(j => ({
+          row: j,
+          steps: by(rows.step, 'job_id', j.id).sort((a, b) => a.idx - b.idx).map(s => ({row: s})),
+        }));
+      return {row: u, jobs};
+    });
+  return {row: repo, runs};
+}
+
+const totals = t => {
+  let runs = 0, jobs = 0, steps = 0, ms = 0;
+  (t ? t.runs : []).forEach(u => {
+    runs++;
+    u.jobs.forEach(j => {
+      jobs++;
+      j.steps.forEach(s => { steps++; ms += s.row.ms; });
+    });
+  });
+  return {runs, jobs, steps, ms};
+};
+
+/* ---- tree ---------------------------------------------------------------- */
+
+function Node({kind, label, meta, why, open, onToggle, selected, onSelect, children}) {
+  const leaf = !children || children.length === 0;
+  return h('div', {},
+    h('div', {
+        className: 'node' + (selected ? ' sel' : ''),
+        onClick: e => { e.stopPropagation(); onSelect(why); if (!leaf) onToggle(); },
+      },
+      h('span', {className: 'caret'}, leaf ? '' : (open ? '▾' : '▸')),
+      h('span', {className: 'lbl ' + kind}, label),
+      h('span', {className: 'meta'}, meta)),
+    !leaf && open ? h('div', {className: 'kids'}, children) : null);
+}
+
+function Tree({tree, sel, setSel}) {
+  const [shut, setShut] = React.useState({});
+  const isOpen = k => !shut[k];
+  const toggle = k => setShut(s => ({...s, [k]: !s[k]}));
+  if (!tree) return h('p', {className: 'hint'}, 'no document');
+
+  const t = tree;
+  return h('div', {className: 'tree'},
+    h(Node, {
+      kind: 'repo', label: 'repo ' + t.row.id,
+      meta: t.row.name + ' · ' + t.row.org,
+      why: {title: 'the root', pred: 'the key every run below points back at',
+            sql: "select * from repo where id = '" + t.row.id + "'"},
+      open: isOpen('r'), onToggle: () => toggle('r'),
+      selected: sel && sel.k === 'r', onSelect: w => setSel({k: 'r', ...w}),
+      children: t.runs.map((u, ui) =>
+        h(Node, {
+          key: u.row.id, kind: 'run', label: 'run ' + u.row.id,
+          meta: 'idx ' + u.row.idx + ' · ' + u.row.branch + ' · ' + u.row.status,
+          why: {title: 'run ' + u.row.id,
+                pred: 'run.repo_id = ' + t.row.id,
+                sql: "select * from run where repo_id = '" + t.row.id + "' order by idx"},
+          open: isOpen('u' + u.row.id), onToggle: () => toggle('u' + u.row.id),
+          selected: sel && sel.k === 'u' + u.row.id,
+          onSelect: w => setSel({k: 'u' + u.row.id, ...w}),
+          children: u.jobs.map(j =>
+            h(Node, {
+              key: j.row.id, kind: 'job', label: 'job ' + j.row.id,
+              meta: 'idx ' + j.row.idx + ' · ' + j.row.os + ' · ' + j.row.status,
+              why: {title: 'job ' + j.row.id,
+                    pred: 'job.run_id = ' + u.row.id,
+                    sql: 'select * from job where run_id = ' + u.row.id + ' order by idx'},
+              open: isOpen('j' + j.row.id), onToggle: () => toggle('j' + j.row.id),
+              selected: sel && sel.k === 'j' + j.row.id,
+              onSelect: w => setSel({k: 'j' + j.row.id, ...w}),
+              children: j.steps.map(s =>
+                h(Node, {
+                  key: s.row.id, kind: 'step', label: 'step ' + s.row.id,
+                  meta: 'idx ' + s.row.idx + ' · ' + s.row.name + ' · ' + s.row.ms + 'ms'
+                        + (s.row.error ? ' · error' : ''),
+                  why: {title: 'step ' + s.row.id,
+                        pred: 'step.job_id = ' + j.row.id,
+                        sql: 'select * from step where job_id = ' + j.row.id + ' order by idx'},
+                  open: true, onToggle: () => {},
+                  selected: sel && sel.k === 's' + s.row.id,
+                  onSelect: w => setSel({k: 's' + s.row.id, ...w}),
+                  children: null,
+                })),
+            })),
+        })),
+    }));
+}
+
+/* ---- flat rows ----------------------------------------------------------- */
+
+function Rows({name, rows, keys}) {
+  if (!rows || !rows.length) return null;
+  const cols = Object.keys(rows[0]);
+  return h('div', {style: {marginBottom: 12}},
+    h('h2', {}, name + ' · ' + rows.length + (rows.length === 1 ? ' row' : ' rows')),
+    h('div', {className: 'wrap'},
+      h('table', {},
+        h('thead', {}, h('tr', {}, cols.map(c =>
+          h('th', {key: c, style: keys.indexOf(c) >= 0 ? {color: 'var(--accent)'} : null}, c)))),
+        h('tbody', {}, rows.map((r, i) =>
+          h('tr', {key: i}, cols.map(c =>
+            h('td', {key: c, className: typeof r[c] === 'number' ? 'num' : null,
+                     style: keys.indexOf(c) >= 0 ? {color: 'var(--accent)'} : null},
+              cell(r[c])))))))));
+}
+
+/* ---- live timing --------------------------------------------------------- */
+
+function Timing({id}) {
+  const [r, setR] = React.useState(null);
+  const [busy, setBusy] = React.useState(false);
+  const [err, setErr] = React.useState(null);
+  const run = async () => {
+    setBusy(true); setErr(null);
+    try {
+      const res = await fetch('/api/query', {method: 'POST', body: 'document ' + id});
+      if (!res.ok) throw new Error(await res.text());
+      setR(await res.json());
+    } catch (e) { setErr(String(e.message || e)); }
+    setBusy(false);
+  };
+  return h('div', {className: 'card'},
+    h('h2', {}, 'ask both stores'),
+    h('p', {className: 'lead'},
+      'The same question, answered by the store that already holds the nesting and by the ' +
+      'one that has to chase keys. Each figure is the cost of one call, measured by repeating ' +
+      'it until the clock can resolve it.'),
+    h('div', {className: 'bar'},
+      h('button', {className: 'go', onClick: run, disabled: busy},
+        busy ? 'running…' : 'run it')),
+    err ? h('p', {className: 'err'}, err) : null,
+    r ? h('div', {},
+      h('table', {},
+        h('thead', {}, h('tr', {},
+          ['store', 'answer', 'one call'].map(x => h('th', {key: x}, x)))),
+        h('tbody', {},
+          ['records', 'columnar'].map(n =>
+            h('tr', {key: n},
+              h('td', {className: 'mono'}, n === 'records' ? 'row-major' : 'columnar'),
+              h('td', {className: 'mono'}, r[n].answer),
+              h('td', {className: 'num'}, dur(r[n].ms)))))),
+      h('div', {className: 'note'},
+        r.agree ? null : h('b', {className: 'err'}, 'the stores disagree — '),
+        r.ratio < 1
+          ? ['row-major is ', h('b', {key: 'b'}, (1 / r.ratio).toFixed(1) + '× faster'),
+             ' here. It holds this subtree contiguously; the columnar store has no ' +
+             'repo-shaped thing at all and finds the runs, then their jobs, then their steps.']
+          : ['columnar is ', h('b', {key: 'b'}, r.ratio.toFixed(1) + '× faster'),
+             ' here — which is the result this query is meant to rule out.'])) : null);
+}
+
+/* ---- page ---------------------------------------------------------------- */
+
+function App() {
+  const [data, setData] = React.useState(null);
+  const [err, setErr] = React.useState(null);
+  const [view, setView] = React.useState('tree');
+  const [sel, setSel] = React.useState(null);
+
+  React.useEffect(() => {
+    fetch('/api/sample').then(r => r.json()).then(setData)
+      .catch(e => setErr(String(e.message || e)));
+  }, []);
+
+  if (err) return h('p', {className: 'err'}, 'could not load /api/sample: ' + err);
+  if (!data) return h('p', {className: 'hint'}, 'loading…');
+
+  const tree = reassemble(data);
+  const t = totals(tree);
+  const id = tree ? tree.row.id : '';
+
+  return h('div', {},
+    h('div', {className: 'card'},
+      h('h2', {}, 'the repo'),
+      h('p', {className: 'lead'},
+        'One document from the corpus, and the four tables it was shredded into. ' +
+        'Nothing below is stored nested — the tree is rebuilt in the browser by matching ' +
+        'keys, which is exactly the work the columnar store does to answer this.'),
+      h('div', {className: 'tot'},
+        h('div', {}, 'repo ', h('b', {}, id)),
+        h('div', {}, 'runs ', h('b', {}, t.runs)),
+        h('div', {}, 'jobs ', h('b', {}, t.jobs)),
+        h('div', {}, 'steps ', h('b', {}, t.steps)),
+        h('div', {}, 'total ms ', h('b', {}, t.ms.toLocaleString()))),
+      h('div', {className: 'bar'},
+        ['tree', 'rows', 'json'].map(v =>
+          h('button', {key: v, className: 'q' + (view === v ? ' on' : ''),
+                       onClick: () => setView(v)},
+            v === 'tree' ? 'reassembled' : v === 'rows' ? 'the four tables' : 'original json')))),
+
+    view === 'tree'
+      ? h('div', {className: 'two'},
+          h('div', {className: 'card'},
+            h('h2', {}, 'reassembled'),
+            h('p', {className: 'lead'}, 'Click any node to see the key that found it.'),
+            h(Tree, {tree, sel, setSel})),
+          h('div', {className: 'card'},
+            h('h2', {}, sel ? sel.title : 'the key chase'),
+            sel
+              ? h('div', {},
+                  h('p', {className: 'lead'}, 'found by'),
+                  h('pre', {}, sel.pred),
+                  h('p', {className: 'lead', style: {marginTop: 12}}, 'in sql'),
+                  h('pre', {}, sel.sql))
+              : h('p', {className: 'lead'},
+                  'Every level below the root is found by matching one column against the ' +
+                  'key above it: run.repo_id, then job.run_id, then step.job_id. Those columns ' +
+                  'are not in the JSON — the generator added them, because an array has no ' +
+                  'other way to say which document it came from.')))
+      : null,
+
+    view === 'rows'
+      ? h('div', {className: 'card'},
+          h('p', {className: 'lead'},
+            'The key columns are highlighted. ',
+            h('span', {className: 'mono'}, 'idx'),
+            ' is the position the element had in its array — order the array carried and a ' +
+            'table would otherwise lose.'),
+          h(Rows, {name: 'repo', rows: data.repo, keys: ['id']}),
+          h(Rows, {name: 'run', rows: data.run, keys: ['id', 'repo_id', 'idx']}),
+          h(Rows, {name: 'job', rows: data.job, keys: ['id', 'run_id', 'idx']}),
+          h(Rows, {name: 'step', rows: data.step, keys: ['id', 'job_id', 'idx']}))
+      : null,
+
+    view === 'json'
+      ? h('div', {className: 'card'},
+          h('h2', {}, 'as it arrived'),
+          h('pre', {}, JSON.stringify(data.document, null, 2)))
+      : null,
+
+    h('div', {className: 'card'},
+      h('h2', {}, 'the same question in sql'),
+      h('p', {className: 'lead'},
+        'Four tables joined back into one answer. ',
+        h('span', {className: 'mono'}, 'left join'),
+        ' rather than ',
+        h('span', {className: 'mono'}, 'join'),
+        ': a run with no jobs still counts, and an inner join would drop it.'),
+      h('pre', {}, SQL)),
+
+    h(Timing, {id}));
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>

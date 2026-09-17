@@ -254,6 +254,8 @@ let () =
   let post p h = S.add_route_handler ~meth:`POST server p h in
 
   get S.Route.return (fun _ -> page "index.html");
+  (* one repo, reassembled from the four tables it shredded into *)
+  get S.Route.(exact "reassemble" @/ return) (fun _ -> page "reassemble.html");
   get S.Route.(exact "api" @/ exact "schema" @/ return) (fun _ -> json (schema_json ()));
   get S.Route.(exact "api" @/ exact "sample" @/ return) (fun _ ->
       try json (sample ()) with e -> fail 500 (Printexc.to_string e));
