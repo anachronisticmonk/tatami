@@ -9,15 +9,15 @@ import Proofs.Counts
 import Proofs.Wellformed
 import Proofs.Tree
 import Proofs.Inference
-import Proofs.Guarantees
+import Proofs.Correctness
 
 /-!
 # Proofs about the shredder
 
-`Proofs.Guarantees` is the summary: `pipeline_correct`, in four named parts.
+`Proofs.Correctness` is the summary: `pipeline_correct`, in five named parts.
 Everything below is what those parts rest on. There are no `sorry`s.
 
-**The four guarantees** (`Proofs.Guarantees`).
+**The five guarantees** (`Proofs.Correctness`).
 * `signature_wellFormed` --- the emitted signature repeats no module name, no
   value name within a module, and no field name within a record.
 * `schema_canonical` --- shuffle the corpus and the answer is *equal*, not
@@ -27,6 +27,9 @@ Everything below is what those parts rest on. There are no `sorry`s.
   invented, distinct tables to distinct modules, and rooted.
 * `types_principal` --- each member gets the principal type of the values seen
   there: adequate (`infer_admits`) and least (`infer_least`).
+* `nullability_sound` --- a column is optional exactly when some document
+  lacked a value there. `infer_counts` is the half that makes `absent` mean
+  what its name says, since it is computed by truncating subtraction.
 
 **The type order** (`Proofs.Lattice`).
 * `join_comm`, `join_idem`, `bot_le`, `le_join_left`, `le_join_right` --- the
