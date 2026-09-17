@@ -1,0 +1,574 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Tatami</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Zilla+Slab:wght@500;600;700&family=Source+Sans+3:ital,wght@0,400;0,600;0,700;1,400&family=JetBrains+Mono:wght@400;500;700&display=swap">
+<style>
+  /* ---- tokens: complete light palette on bare :root ---------------------- */
+  :root{
+    --paper:#EEF0EA; --surface:#F7F8F4; --surface-2:#E4E8DF;
+    --ink:#16202E; --ink-2:#414E60; --muted:#6B7686;
+    --rule:#D3D9CD; --rule-strong:#B6BFAC;
+    --indigo:#2A3A5C; --igusa:#6F7D46; --straw:#C9B98A;
+    --blue:#0B72B5;      /* data: columnar faster  (validated) */
+    --amber:#CC6A21;     /* data: row-major faster (validated) */
+    --vermilion:#B84A32; /* semantic: option / nullable only */
+    --code-bg:#1B2430; --code-ink:#DDE4EC; --code-muted:#7D8CA0;
+    --shadow:0 1px 2px rgba(22,32,46,.06), 0 8px 24px rgba(22,32,46,.07);
+    --step:clamp(15px,.55vw + 13.4px,18px);
+  }
+  @media (prefers-color-scheme: dark){
+    :root:not([data-theme="light"]){
+      --paper:#141B24; --surface:#1B2430; --surface-2:#232E3C;
+      --ink:#E7EBF0; --ink-2:#B7C1CE; --muted:#8593A5;
+      --rule:#2B3644; --rule-strong:#3D4A5B;
+      --indigo:#93A8CD; --igusa:#A3B076; --straw:#D3C293;
+      --blue:#0B72B5; --amber:#CC6A21; --vermilion:#D4694F;
+      --code-bg:#0E1620; --code-ink:#DDE4EC; --code-muted:#77869A;
+      --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.34);
+    }
+  }
+  :root[data-theme="dark"]{
+    --paper:#141B24; --surface:#1B2430; --surface-2:#232E3C;
+    --ink:#E7EBF0; --ink-2:#B7C1CE; --muted:#8593A5;
+    --rule:#2B3644; --rule-strong:#3D4A5B;
+    --indigo:#93A8CD; --igusa:#A3B076; --straw:#D3C293;
+    --blue:#0B72B5; --amber:#CC6A21; --vermilion:#D4694F;
+    --code-bg:#0E1620; --code-ink:#DDE4EC; --code-muted:#77869A;
+    --shadow:0 1px 2px rgba(0,0,0,.4), 0 10px 30px rgba(0,0,0,.34);
+  }
+
+  *{box-sizing:border-box}
+  [hidden]{display:none!important}
+  body{
+    margin:0; background:var(--paper); color:var(--ink);
+    font-family:"Source Sans 3",ui-sans-serif,system-ui,-apple-system,"Segoe UI",sans-serif;
+    font-size:var(--step); line-height:1.55;
+    -webkit-font-smoothing:antialiased;
+  }
+  h1,h2,h3{font-family:"Zilla Slab",Georgia,"Times New Roman",serif; text-wrap:balance; margin:0}
+  code,pre,.mono{font-family:"JetBrains Mono",ui-monospace,SFMono-Regular,Menlo,monospace}
+  .num{font-variant-numeric:tabular-nums}
+
+  /* ---- deck frame -------------------------------------------------------- */
+  .deck{
+    min-height:100%;
+    display:grid; grid-template-rows:1fr auto;
+    padding:0 16px;
+    max-width:1120px; margin:0 auto;
+  }
+  .stage{display:grid; align-content:center; padding-block:clamp(24px,4vh,56px); min-height:0}
+
+  .slide{animation:rise .34s cubic-bezier(.2,.7,.3,1) both}
+  @keyframes rise{from{opacity:.001;transform:translateY(6px)}to{opacity:1;transform:none}}
+  @media (prefers-reduced-motion:reduce){ .slide{animation:none} }
+
+  /* eyebrow encodes the deck's three real movements, not decoration */
+  .eyebrow{
+    font-family:"JetBrains Mono",monospace; font-size:.72em; font-weight:500;
+    letter-spacing:.14em; text-transform:uppercase; color:var(--igusa);
+    display:flex; align-items:center; gap:10px; margin-bottom:14px;
+  }
+  .eyebrow::after{content:""; flex:1; height:1px; background:var(--rule)}
+
+  h2{font-size:clamp(25px,2.6vw + 14px,40px); font-weight:600; line-height:1.14; letter-spacing:-.012em}
+  .lede{font-size:clamp(17px,.7vw + 15px,20px); color:var(--ink-2); max-width:62ch; margin:14px 0 0}
+  p{margin:14px 0 0; max-width:64ch}
+  strong{font-weight:700; color:var(--ink)}
+  .em{color:var(--vermilion); font-style:normal; font-weight:600}
+
+  /* ---- title slide ------------------------------------------------------- */
+  .title-wrap{display:grid; gap:22px}
+  .wordmark{
+    font-family:"Zilla Slab",serif; font-weight:700;
+    font-size:clamp(52px,11vw,124px); line-height:.9; letter-spacing:-.035em;
+    color:var(--indigo);
+  }
+  /* the woven mat: a tatami edge, and the columnar grid, in one rule */
+  .weave{height:12px; border-radius:2px; background:
+      repeating-linear-gradient(90deg,var(--igusa) 0 3px,transparent 3px 9px),
+      linear-gradient(var(--surface-2),var(--surface-2));
+    border-block:1px solid var(--rule-strong);}
+  .thesis{font-size:clamp(18px,1vw + 15px,24px); color:var(--ink-2); max-width:34ch; font-weight:400}
+  .chips{display:flex; flex-wrap:wrap; gap:10px; margin-top:4px}
+  .chip{
+    display:flex; align-items:baseline; gap:7px;
+    background:var(--surface); border:1px solid var(--rule); border-radius:3px;
+    padding:7px 12px; box-shadow:var(--shadow);
+  }
+  .chip b{font-family:"JetBrains Mono",monospace; font-weight:700; font-size:1.08em; color:var(--indigo)}
+  .chip span{font-size:.82em; color:var(--muted); letter-spacing:.02em}
+
+  /* ---- generic blocks ---------------------------------------------------- */
+  .cols{display:grid; gap:clamp(18px,2.4vw,34px); grid-template-columns:1fr 1fr; align-items:start; margin-top:22px}
+  @media (max-width:760px){ .cols{grid-template-columns:1fr} }
+
+  pre{
+    margin:0; background:var(--code-bg); color:var(--code-ink);
+    border-radius:4px; padding:16px 18px; overflow-x:auto;
+    font-size:.82em; line-height:1.62; border:1px solid transparent;
+  }
+  pre .c{color:var(--code-muted)}
+  pre .k{color:#8FB8E0}
+  pre .o{color:#E9A05E; font-weight:500}
+  pre .h{background:rgba(212,105,79,.22); border-radius:2px; padding:0 3px}
+  figcaption{font-size:.8em; color:var(--muted); margin-top:9px; font-family:"JetBrains Mono",monospace; letter-spacing:.02em}
+
+  ul{margin:16px 0 0; padding:0; list-style:none; display:grid; gap:11px}
+  li{display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:baseline; max-width:64ch}
+  li::before{content:""; width:7px; height:7px; border-radius:1px; background:var(--igusa); transform:translateY(-1px)}
+
+  table{border-collapse:collapse; width:100%; margin-top:20px; font-size:.9em}
+  th,td{text-align:left; padding:9px 12px 9px 0; border-bottom:1px solid var(--rule); vertical-align:top}
+  th{font-family:"JetBrains Mono",monospace; font-size:.76em; text-transform:uppercase;
+     letter-spacing:.09em; color:var(--muted); font-weight:500; border-bottom-color:var(--rule-strong)}
+  td:first-child{font-weight:600; white-space:nowrap; padding-right:20px}
+  .tscroll{overflow-x:auto}
+
+  /* ---- pipeline diagram -------------------------------------------------- */
+  .flow{display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; margin-top:26px}
+  .node{
+    flex:1 1 150px; background:var(--surface); border:1px solid var(--rule);
+    border-top:3px solid var(--indigo); border-radius:3px; padding:13px 14px; box-shadow:var(--shadow);
+  }
+  .node.lean{border-top-color:var(--igusa)}
+  .node.ml{border-top-color:var(--blue)}
+  .node h3{font-size:.94em; font-weight:600; letter-spacing:-.005em}
+  .node p{margin:5px 0 0; font-size:.8em; color:var(--muted); line-height:1.45}
+  .node .tag{font-family:"JetBrains Mono",monospace; font-size:.68em; letter-spacing:.1em;
+             text-transform:uppercase; color:var(--igusa); display:block; margin-bottom:5px}
+  .node.ml .tag{color:var(--blue)}
+  .arrow{align-self:center; color:var(--rule-strong); font-size:1.2em; flex:0 0 auto}
+  @media (max-width:760px){ .arrow{display:none} }
+
+  /* ---- charts ------------------------------------------------------------ */
+  .chart{margin-top:20px; background:var(--surface); border:1px solid var(--rule);
+         border-radius:4px; padding:18px 18px 12px; box-shadow:var(--shadow)}
+  .chart svg{display:block; width:100%; height:auto; overflow:visible}
+  .ct{font-family:"JetBrains Mono",monospace; font-size:11px; fill:var(--muted); letter-spacing:.04em}
+  .cv{font-family:"JetBrains Mono",monospace; font-size:12px; font-weight:700; fill:var(--ink)}
+  .cl{font-family:"Source Sans 3",sans-serif; font-size:12.5px; fill:var(--ink-2)}
+  .legend{display:flex; flex-wrap:wrap; gap:16px; margin-top:12px; font-size:.8em; color:var(--ink-2)}
+  .legend i{display:inline-block; width:11px; height:11px; border-radius:2px; margin-right:6px; vertical-align:-1px}
+
+  /* ---- closing ----------------------------------------------------------- */
+  .usp{display:grid; gap:14px; grid-template-columns:1fr 1fr; margin-top:22px}
+  @media (max-width:760px){ .usp{grid-template-columns:1fr} }
+  .usp > div{background:var(--surface); border:1px solid var(--rule); border-left:3px solid var(--vermilion);
+             border-radius:3px; padding:15px 17px; box-shadow:var(--shadow)}
+  .usp h3{font-size:1.02em; margin-bottom:6px; font-weight:600}
+  .usp p{margin:0; font-size:.88em; color:var(--ink-2)}
+  .run{margin-top:22px; background:var(--code-bg); color:var(--code-ink); border-radius:4px;
+       padding:15px 18px; font-family:"JetBrains Mono",monospace; font-size:.86em; overflow-x:auto}
+
+  /* ---- nav --------------------------------------------------------------- */
+  .nav{
+    display:flex; align-items:center; gap:14px;
+    padding:11px 0 calc(11px + env(safe-area-inset-bottom,0px));
+    border-top:1px solid var(--rule);
+  }
+  .dots{display:flex; gap:5px; flex:1; flex-wrap:wrap}
+  .dot{width:20px; height:4px; border-radius:1px; background:var(--rule-strong); border:0; padding:0; cursor:pointer}
+  .dot[aria-current="true"]{background:var(--indigo)}
+  .dot:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+  .nbtn{
+    font:inherit; font-size:.86em; background:var(--surface); color:var(--ink);
+    border:1px solid var(--rule-strong); border-radius:3px; padding:6px 13px; cursor:pointer;
+  }
+  .nbtn:hover{background:var(--surface-2)}
+  .nbtn:disabled{opacity:.4; cursor:default}
+  .nbtn:focus-visible{outline:2px solid var(--blue); outline-offset:2px}
+  .count{font-family:"JetBrains Mono",monospace; font-size:.8em; color:var(--muted); font-variant-numeric:tabular-nums}
+
+  @media print{
+    .nav{display:none}
+    .slide{break-after:page; animation:none}
+    .deck{max-width:none}
+  }
+</style>
+</head>
+<body>
+<div class="deck">
+  <main class="stage" id="stage">
+
+    <!-- 1 ------------------------------------------------------------------ -->
+    <section class="slide" id="s1">
+      <div class="title-wrap">
+        <div class="wordmark">tatami</div>
+        <div class="weave"></div>
+        <p class="thesis">A typed columnar schema, derived from schemaless JSON — and <strong>proved</strong> correct.</p>
+        <div class="chips">
+          <div class="chip"><b class="num">221</b><span>theorems &amp; lemmas</span></div>
+          <div class="chip"><b class="num">0</b><span>sorries</span></div>
+          <div class="chip"><b class="num">3.5&times;</b><span>on computed scans</span></div>
+          <div class="chip"><b>Lean 4 &rarr; .mli &rarr; OCaml</b><span>end to end</span></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- 2 ------------------------------------------------------------------ -->
+    <section class="slide" id="s2" hidden>
+      <div class="eyebrow">The problem</div>
+      <h2>Nobody wrote down what shape the data is</h2>
+      <p class="lede">You are handed a pile of JSON — a CI service's build history. Repos hold runs, runs hold jobs, jobs hold steps. Four levels, every level an array, no declaration anywhere.</p>
+      <ul>
+        <li><span>Optionality has <strong>two spellings</strong>: a field may be <code>null</code>, or simply absent. They mean the same thing.</span></li>
+        <li><span>The usual answer is to guess the schema, hand-write a loader, and discover where you guessed wrong in production.</span></li>
+        <li><span>A guess that says <code>string</code> where the data needs <code>string option</code> <strong>compiles cleanly</strong> — then dies on the first document missing that field.</span></li>
+      </ul>
+      <p>So the question is not "can we infer a schema". It is: <strong>can we infer one we are entitled to rely on?</strong></p>
+    </section>
+
+    <!-- 3 ------------------------------------------------------------------ -->
+    <section class="slide" id="s3" hidden>
+      <div class="eyebrow">The thesis</div>
+      <h2>An <code>.mli</code> is a contract</h2>
+      <p class="lede">A signature file sits on a boundary and says exactly what crosses it. That is the right home for an inferred schema — not a JSON-schema document some loader re-interprets at runtime.</p>
+      <div class="cols">
+        <figure style="margin:0">
+<pre><span class="c">(* step.mli — generated by Lean *)</span>
+<span class="k">type</span> t
+<span class="k">type</span> id = int
+<span class="k">val</span> make : id:int -&gt; job_id:Job.id -&gt;
+  idx:int -&gt; <span class="o">error</span>:string <span class="h">option</span> -&gt;
+  ms:int -&gt; name:string -&gt; rate:float -&gt; t
+<span class="k">val</span> of_job : Job.id -&gt; t list
+<span class="k">val</span> <span class="o">error</span> : t -&gt; string <span class="h">option</span>
+<span class="k">val</span> ms    : t -&gt; int
+<span class="k">val</span> rate  : t -&gt; float</pre>
+          <figcaption>schema/step.mli</figcaption>
+        </figure>
+        <div>
+          <p style="margin-top:0">Read it and you know the table:</p>
+          <ul>
+            <li><span>its columns and their types;</span></li>
+            <li><span>that <code>error</code> is the <span class="em">only</span> column that can be null;</span></li>
+            <li><span>that <code>ms</code> is <code>int</code>, <strong>not</strong> <code>int option</code> — the data never lacked it;</span></li>
+            <li><span><code>of_job</code> — the foreign key, expressed as a function;</span></li>
+            <li><span><code>idx</code> — the array position, kept because order is information a table would otherwise lose.</span></li>
+          </ul>
+        </div>
+      </div>
+    </section>
+
+    <!-- 4 ------------------------------------------------------------------ -->
+    <section class="slide" id="s4" hidden>
+      <div class="eyebrow">Why functional</div>
+      <h2>Two languages, one discipline</h2>
+      <p class="lede">The pipeline is functional end to end. That is not a costume for the hackathon — it is what makes the central claim checkable.</p>
+      <div class="cols">
+        <div>
+          <h3 style="font-size:1.05em;color:var(--igusa)">Lean 4 — inference and proof</h3>
+          <p style="margin-top:8px">Inference is the one component whose correctness everything else rests on. In Lean it is not merely tested; it carries theorems. The generator and its proof live in the same language, so the thing proved <em>is</em> the thing that runs.</p>
+        </div>
+        <div>
+          <h3 style="font-size:1.05em;color:var(--blue)">OCaml — loading, storage, measurement</h3>
+          <p style="margin-top:8px">The generated signatures are OCaml, so the contract is enforced by the compiler that builds the loader. Stores, queries and benchmarks are all OCaml — no imperative escape hatch in the middle.</p>
+        </div>
+      </div>
+      <p>The one place correctness truly had to be guaranteed is the one place we could hand to a theorem prover. Everything downstream is ordinary, typed, functional code that the contract holds together.</p>
+    </section>
+
+    <!-- 5 ------------------------------------------------------------------ -->
+    <section class="slide" id="s5" hidden>
+      <div class="eyebrow">The pipeline</div>
+      <h2>From documents to dense typed columns</h2>
+      <div class="flow">
+        <div class="node"><span class="tag">input</span><h3>Schemaless JSON</h3><p>Four nested levels, every level an array. No declared shape.</p></div>
+        <div class="arrow">&rarr;</div>
+        <div class="node lean"><span class="tag">Lean 4</span><h3>Infer &amp; prove</h3><p>Principal type per field; counts of value, null and absence.</p></div>
+        <div class="arrow">&rarr;</div>
+        <div class="node lean"><span class="tag">Lean 4</span><h3>Emit contract</h3><p>One <code>.mli</code> per table, plus <code>.ml</code> and a loader.</p></div>
+        <div class="arrow">&rarr;</div>
+        <div class="node ml"><span class="tag">OCaml</span><h3>Stream &amp; shred</h3><p>Four tables, referential integrity kept. Postgres via <code>pgx</code>.</p></div>
+        <div class="arrow">&rarr;</div>
+        <div class="node ml"><span class="tag">OCaml</span><h3>Columnar store</h3><p>One dense typed array per column. Mask only where <code>option</code>.</p></div>
+      </div>
+      <p>Every child row records the parent it came from and the position it held, so the nesting the JSON carried survives the flattening. The same loader fills Postgres, which lets the whole shredding be cross-checked in SQL.</p>
+    </section>
+
+    <!-- 6 ------------------------------------------------------------------ -->
+    <section class="slide" id="s6" hidden>
+      <div class="eyebrow">The proof</div>
+      <h2><code>pipeline_correct</code>, in five parts</h2>
+      <p class="lede">221 theorems and lemmas, zero <code>sorry</code>s, composing into one top-level statement.</p>
+      <div class="tscroll">
+      <table>
+        <thead><tr><th>Part</th><th>What it says</th></tr></thead>
+        <tbody>
+          <tr><td>Well-formedness</td><td>The emitted signature is legal OCaml — no repeated module, value or field name.</td></tr>
+          <tr><td>Canonicity</td><td>The schema depends on the corpus <em>as a set of documents</em>, not arrival order. Shuffle the input and the output is <strong>equal</strong>, not merely equivalent — which is why two runs agree byte for byte.</td></tr>
+          <tr><td>Structure preservation</td><td>The tree the documents induce and the graph in the signatures are the <em>same graph</em>: no edge lost, none invented, distinct tables get distinct modules, and it is rooted — so no table is declared that the loader would create and never fill.</td></tr>
+          <tr><td>Principality</td><td>Every field gets the least type admitting all values seen. Adequacy alone is nearly free — <code>float</code> describes integers, so does <code>int option</code>. Minimality rules the loose answers out.</td></tr>
+          <tr><td>Nullability</td><td>A column is optional <em>exactly</em> when some document lacked a value there.</td></tr>
+        </tbody>
+      </table>
+      </div>
+      <p>It is worth saying what it does <strong>not</strong> claim: every part is conditional on inference and generation both succeeding, and it says nothing about rows — Lean describes the tables, OCaml fills them.</p>
+    </section>
+
+    <!-- 7 ------------------------------------------------------------------ -->
+    <section class="slide" id="s7" hidden>
+      <div class="eyebrow">The proof · sharpest part</div>
+      <h2>Why nullability had to be proved</h2>
+      <div class="cols">
+        <figure style="margin:0">
+<pre><span class="c">-- Proofs/Correctness.lean</span>
+<span class="k">theorem</span> nullability_sound … :
+  o.values + o.nulls + o.absent = t.visits
+  <span class="o">∧</span> (o.nullable = true <span class="o">↔</span> o.values &lt; t.visits)</pre>
+          <figcaption>Proofs/Correctness.lean</figcaption>
+        </figure>
+        <div>
+          <p style="margin-top:0"><strong>The counts identity.</strong> Every visit to a table is accounted for at every field — a value, an explicit <code>null</code>, or an absence. Nothing else.</p>
+          <p><strong>And the flag reads off it.</strong> A field is optional precisely when it carried a value fewer times than its table was visited.</p>
+        </div>
+      </div>
+      <p>This matters because absence is computed by <em>truncating</em> subtraction. Without the identity, a field some document omitted could report <code>absent = 0</code>, come out non-optional, and the generator would emit <code>string</code> where the data needs <code class="em">string option</code>.</p>
+      <p>That OCaml <strong>compiles</strong>. It then fails on the first document missing the field, with nothing to say what went wrong. The theorem is what rules that out — and together with principality it pins the whole of what a generated field declaration claims: the type from both sides, the <code>option</code> from both sides.</p>
+    </section>
+
+    <!-- 8 ------------------------------------------------------------------ -->
+    <section class="slide" id="s8" hidden>
+      <div class="eyebrow">The payoff</div>
+      <h2>The proof is what lets us delete the mask</h2>
+      <div class="cols">
+        <figure style="margin:0">
+<pre><span class="c">(* lib/columnar/columnar.ml *)</span>
+
+<span class="c">The array type is chosen by the layout</span>
+<span class="c">the schema reader parsed, and a validity</span>
+<span class="c">mask is allocated only where that layout</span>
+<span class="c">says </span><span class="o">option</span><span class="c"> — so a column the signature</span>
+<span class="c">calls total has </span><span class="h">no mask, no branch, and</span>
+<span class="h">no memory holding either</span><span class="c">.</span>
+
+<span class="c">Nothing here special-cases a column</span>
+<span class="c">by name.</span></pre>
+          <figcaption>lib/columnar/columnar.ml</figcaption>
+        </figure>
+        <div>
+          <p style="margin-top:0">What each column <em>is</em> comes from the <code>.mli</code> and from nowhere else.</p>
+          <ul>
+            <li><span>A wrong <code>option</code> costs a mask, a branch and the memory to hold them — on every row, forever.</span></li>
+            <li><span>A <em>missing</em> <code>option</code> costs a crash on the first absent value.</span></li>
+            <li><span>Exactness is therefore not a nicety. It is the precondition for the layout being sound at all.</span></li>
+          </ul>
+          <p>Measured: <strong class="num">264 MB</strong> columnar vs <strong class="num">297 MB</strong> row-major on the 200 MB corpus.</p>
+        </div>
+      </div>
+    </section>
+
+    <!-- 9 ------------------------------------------------------------------ -->
+    <section class="slide" id="s9" hidden>
+      <div class="eyebrow">The measurements</div>
+      <h2>Correctness before speed</h2>
+      <p class="lede">Five queries, answered by three stores — raw Yojson, a row-major record store, and the columnar one. Every store implements the same signature, because a benchmark where each side answers a question shaped to suit it measures nothing.</p>
+      <figure style="margin:22px 0 0">
+<pre><span class="c">(* bin/bench.ml *)</span>
+<span class="k">if</span> !disagreements &gt; 0 <span class="k">then</span>
+  printf <span class="o">"%d disagreements -- timings below are meaningless"</span></pre>
+        <figcaption>bin/bench.ml — the answers are compared before the timings are believed</figcaption>
+      </figure>
+      <p><strong>All three stores return identical answers, on every corpus.</strong> Float sums are compared to a tolerance, because they are summed in a different order on each side; everything else is integral and must match exactly.</p>
+      <p>Only then are the timings worth reading.</p>
+    </section>
+
+    <!-- 10 ----------------------------------------------------------------- -->
+    <section class="slide" id="s10" hidden>
+      <div class="eyebrow">The measurements · results</div>
+      <h2>Which queries the types make faster</h2>
+      <div class="chart">
+        <svg viewBox="0 0 640 262" role="img" aria-label="Columnar speedup versus the row-major store on a 50 MB corpus. Computed 3.34 times, scan 3.21 times, by_status 1.26 times, three_hop 0.64 times, document 0.72 times.">
+          <!-- gridlines at 2x and 3x -->
+          <g stroke="var(--rule)" stroke-width="1">
+            <line x1="359" y1="26" x2="359" y2="212"></line>
+            <line x1="480" y1="26" x2="480" y2="212"></line>
+            <line x1="600" y1="26" x2="600" y2="212"></line>
+          </g>
+          <!-- baseline at 1.0x -->
+          <line x1="239" y1="20" x2="239" y2="218" stroke="var(--ink-2)" stroke-width="1.5" stroke-dasharray="3 3"></line>
+          <text class="ct" x="239" y="14" text-anchor="middle" fill="var(--ink-2)">1.0&times; parity</text>
+
+          <!-- bars: x0=118 (0x), 120.5px per 1.0x -->
+          <g>
+            <rect x="118" y="30"  width="403" height="22" rx="4" fill="var(--blue)"></rect>
+            <text class="cl" x="112" y="45" text-anchor="end">computed</text>
+            <text class="cv" x="529" y="45">3.34&times;</text>
+
+            <rect x="118" y="66"  width="387" height="22" rx="4" fill="var(--blue)"></rect>
+            <text class="cl" x="112" y="81" text-anchor="end">scan</text>
+            <text class="cv" x="513" y="81">3.21&times;</text>
+
+            <rect x="118" y="102" width="152" height="22" rx="4" fill="var(--blue)"></rect>
+            <text class="cl" x="112" y="117" text-anchor="end">by_status</text>
+            <text class="cv" x="278" y="117">1.26&times;</text>
+
+            <rect x="118" y="138" width="87"  height="22" rx="4" fill="var(--amber)"></rect>
+            <text class="cl" x="112" y="153" text-anchor="end">document</text>
+            <text class="cv" x="213" y="153">0.72&times;</text>
+
+            <rect x="118" y="174" width="77"  height="22" rx="4" fill="var(--amber)"></rect>
+            <text class="cl" x="112" y="189" text-anchor="end">three_hop</text>
+            <text class="cv" x="203" y="189">0.64&times;</text>
+          </g>
+
+          <!-- x axis -->
+          <line x1="118" y1="212" x2="600" y2="212" stroke="var(--rule-strong)" stroke-width="1"></line>
+          <g class="ct" text-anchor="middle">
+            <text x="118" y="228">0</text>
+            <text x="239" y="228">1&times;</text>
+            <text x="359" y="228">2&times;</text>
+            <text x="480" y="228">3&times;</text>
+            <text x="600" y="228">4&times;</text>
+          </g>
+          <text class="ct" x="118" y="250">columnar speedup vs row-major · 50 MB corpus · 5 repeats</text>
+        </svg>
+        <div class="legend">
+          <span><i style="background:var(--blue)"></i>columnar faster</span>
+          <span><i style="background:var(--amber)"></i>row-major faster</span>
+        </div>
+      </div>
+      <p><strong>We are not claiming to have built a faster database.</strong> Two of the five go the other way <em>by design</em> — <code>document</code> is the case a row store exists for. If columns won that one too, the benchmark would be wrong somewhere. The useful claim is narrower: <strong>once the type is known, you can predict which queries get faster — from the schema, before reading a row.</strong></p>
+    </section>
+
+    <!-- 11 ----------------------------------------------------------------- -->
+    <section class="slide" id="s11" hidden>
+      <div class="eyebrow">The measurements · selectivity</div>
+      <h2>What a planner would want to know</h2>
+      <p class="lede">Sweeping the predicate threshold — <code>qty &gt; n</code> — across the same 50 MB corpus.</p>
+      <div class="chart">
+        <svg viewBox="0 0 640 272" role="img" aria-label="Columnar speedup against percentage of rows kept: 14.1 times at 0.02 percent, falling to 3.35 times at 54 percent, rising to 15.3 times at 100 percent.">
+          <!-- y gridlines at 0,4,8,12,16 -->
+          <g class="ct" text-anchor="end">
+            <line x1="52" y1="206" x2="612" y2="206" stroke="var(--rule-strong)" stroke-width="1"></line>
+            <line x1="52" y1="160" x2="612" y2="160" stroke="var(--rule)" stroke-width="1"></line>
+            <line x1="52" y1="114" x2="612" y2="114" stroke="var(--rule)" stroke-width="1"></line>
+            <line x1="52" y1="68"  x2="612" y2="68"  stroke="var(--rule)" stroke-width="1"></line>
+            <line x1="52" y1="22"  x2="612" y2="22"  stroke="var(--rule)" stroke-width="1"></line>
+            <text x="46" y="210">0</text><text x="46" y="164">4&times;</text>
+            <text x="46" y="118">8&times;</text><text x="46" y="72">12&times;</text><text x="46" y="26">16&times;</text>
+          </g>
+
+          <!-- x: 52 + pct*5.6 ; y: 206 - speedup*11.5 -->
+          <polyline fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
+            points="52,44 73,102 105,126 159,149 218,160 355,167 504,145 601,52 612,30"></polyline>
+
+          <g fill="var(--blue)">
+            <circle cx="52"  cy="44"  r="4.5"></circle>
+            <circle cx="73"  cy="102" r="4"></circle>
+            <circle cx="105" cy="126" r="4"></circle>
+            <circle cx="159" cy="149" r="4"></circle>
+            <circle cx="218" cy="160" r="4"></circle>
+            <circle cx="355" cy="167" r="4.5"></circle>
+            <circle cx="504" cy="145" r="4"></circle>
+            <circle cx="601" cy="52"  r="4"></circle>
+            <circle cx="612" cy="30"  r="4.5"></circle>
+          </g>
+
+          <!-- selective direct labels: the two peaks and the trough -->
+          <text class="cv" x="60"  y="38">14.1&times;</text>
+          <text class="cv" x="355" y="186" text-anchor="middle">3.35&times;</text>
+          <text class="cv" x="612" y="22"  text-anchor="end">15.3&times;</text>
+
+          <g class="ct" text-anchor="middle">
+            <text x="52"  y="224">0.02%</text>
+            <text x="159" y="224">19%</text>
+            <text x="355" y="224">54%</text>
+            <text x="504" y="224">81%</text>
+            <text x="608" y="224">100%</text>
+          </g>
+          <text class="ct" x="52" y="248">rows kept by the predicate &rarr;</text>
+          <text class="ct" x="52" y="264">speedup of the columnar scan over row-major · 50 MB corpus</text>
+        </svg>
+      </div>
+      <p>A <strong>U-curve</strong>. Highly selective predicates and full scans both do very well; the middle is where per-row branching costs most. This is exactly the shape a query planner would want — and <strong>the schema already says which columns are scannable and which are nullable, before a single row is read.</strong></p>
+    </section>
+
+    <!-- 12 ----------------------------------------------------------------- -->
+    <section class="slide" id="s12" hidden>
+      <div class="eyebrow">What is new here</div>
+      <h2>Two things that do not exist elsewhere</h2>
+      <div class="usp">
+        <div>
+          <h3>The contract is proved, not asserted</h3>
+          <p>Plenty of tools infer a schema from JSON. We are not aware of another that ships a machine-checked proof that the inference is principal and the nullability exact. The <code>.mli</code> is not a best-effort guess re-validated at runtime — it is an artifact with a theorem attached.</p>
+        </div>
+        <div>
+          <h3>OCaml has no columnar story</h3>
+          <p>No Arrow binding, no Parquet reader, no columnar engine. <code>pgx</code> is excellent and gives you <em>rows</em>. If you want dense typed columns in OCaml today, you write them — so we did, driven entirely by generated types. The absence is the opportunity; the numbers are the argument for closing it.</p>
+        </div>
+      </div>
+      <p>Functional the whole way down: Lean 4 for inference and proof, OCaml for loading, storage, querying and measurement.</p>
+      <div class="run">docker run --rm -p 8000:8000 -p 8420:8420 durwasa/tatami</div>
+      <p style="font-size:.88em;color:var(--muted)"><code>:8000</code> the demonstration — a document beside the tables it shreds into, both stores side by side, the charts. &nbsp;<code>:8420</code> the playground — paste any JSON, read the <code>.mli</code> it implies.</p>
+    </section>
+
+  </main>
+
+  <nav class="nav" aria-label="Slides">
+    <button class="nbtn" id="prev" type="button">&larr; Prev</button>
+    <div class="dots" id="dots" role="tablist" aria-label="Go to slide"></div>
+    <span class="count" id="count">1 / 12</span>
+    <button class="nbtn" id="next" type="button">Next &rarr;</button>
+  </nav>
+</div>
+
+<script>
+(function(){
+  var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var dots = document.getElementById('dots');
+  var count = document.getElementById('count');
+  var prev = document.getElementById('prev');
+  var next = document.getElementById('next');
+  var i = 0;
+
+  slides.forEach(function(s, n){
+    var b = document.createElement('button');
+    b.className = 'dot';
+    b.type = 'button';
+    b.setAttribute('role','tab');
+    b.setAttribute('aria-label','Slide ' + (n+1));
+    b.addEventListener('click', function(){ go(n); });
+    dots.appendChild(b);
+  });
+  var dotEls = Array.prototype.slice.call(dots.children);
+
+  function go(n){
+    n = Math.max(0, Math.min(slides.length - 1, n));
+    if (n === i) return;
+    slides[i].hidden = true;
+    i = n;
+    slides[i].hidden = false;
+    // retrigger the entrance without a second stylesheet
+    slides[i].style.animation = 'none';
+    void slides[i].offsetWidth;
+    slides[i].style.animation = '';
+    paint();
+  }
+  function paint(){
+    count.textContent = (i+1) + ' / ' + slides.length;
+    prev.disabled = i === 0;
+    next.disabled = i === slides.length - 1;
+    dotEls.forEach(function(d, n){ d.setAttribute('aria-current', n === i ? 'true' : 'false'); });
+  }
+  prev.addEventListener('click', function(){ go(i-1); });
+  next.addEventListener('click', function(){ go(i+1); });
+  document.addEventListener('keydown', function(e){
+    if (e.metaKey || e.ctrlKey || e.altKey) return;
+    var t = e.target;
+    if (t && (t.tagName === 'INPUT' || t.tagName === 'TEXTAREA')) return;
+    if (e.key === 'ArrowRight' || e.key === 'PageDown' || e.key === ' ') { e.preventDefault(); go(i+1); }
+    else if (e.key === 'ArrowLeft' || e.key === 'PageUp') { e.preventDefault(); go(i-1); }
+    else if (e.key === 'Home') { e.preventDefault(); go(0); }
+    else if (e.key === 'End') { e.preventDefault(); go(slides.length-1); }
+  });
+  paint();
+})();
+</script>
+</body>
+</html>
