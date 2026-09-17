@@ -5,10 +5,21 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>reassemble &middot; tatami</title>
 <style>
-  :root{--bg:#fbfaf7;--panel:#fff;--ink:#1c1a17;--dim:#6f6a61;--line:#e3dfd6;
-        --accent:#7a4b2a;--code:#f5f2ec;--warm:#fff8ef;--edge:#efdfc9;
-        --good:#2f6b3f;--bad:#a3271c;--rec:#b9a894;--col:#7a4b2a;
-        --repo:#7a4b2a;--run:#2f6b3f;--job:#8a6c1f;--step:#2b3a4a}
+  /* Dark by default, the palette a code editor uses -- VS Code's Dark+ -- so
+     that this page, the reassemble page and the playground agree. Light is the
+     other one, and there is no third. */
+  :root{--bg:#1E1E1E;--panel:#252526;--ink:#D4D4D4;--dim:#9D9D9D;--line:#3C3C3C;
+        --accent:#4FC1FF;--code:#1B1B1B;--warm:#10344F;--edge:#2E5A78;
+        --good:#6A9955;--bad:#F48771;--rec:#C586C0;--col:#4FC1FF;--json:#858585;--repo:#4FC1FF;--run:#6A9955;--job:#DCDCAA;--step:#4EC9B0}
+  :root[data-theme="dark"]{--bg:#1E1E1E;--panel:#252526;--ink:#D4D4D4;--dim:#9D9D9D;--line:#3C3C3C;
+        --accent:#4FC1FF;--code:#1B1B1B;--warm:#10344F;--edge:#2E5A78;
+        --good:#6A9955;--bad:#F48771;--rec:#C586C0;--col:#4FC1FF;--json:#858585;--repo:#4FC1FF;--run:#6A9955;--job:#DCDCAA;--step:#4EC9B0}
+  /* Light. The accent is a deep saffron rather than #FF9933: flag saffron on a
+     pale ground is about 2:1 against the text beside it, which fails at body
+     size, while this reads as the same hue at 4.7:1. */
+  :root[data-theme="light"]{--bg:#FFF6EA;--panel:#FFFDFA;--ink:#241A10;--dim:#6B5742;--line:#EBD9C2;
+        --accent:#B35C00;--code:#FDF1E3;--warm:#FFE4C4;--edge:#E8C79A;
+        --good:#2F6B3F;--bad:#9E3A22;--rec:#7A4B82;--col:#B35C00;--json:#A08A63;--repo:#B35C00;--run:#2F6B3F;--job:#8A6C1F;--step:#2B3A4A}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
        font:14px/1.55 ui-sans-serif,-apple-system,"Helvetica Neue",sans-serif}
@@ -61,11 +72,17 @@
   .tot{display:flex;gap:18px;flex-wrap:wrap;margin:2px 0 0}
   .tot div{font-size:12.5px;color:var(--dim)}
   .tot b{color:var(--ink);font-family:ui-monospace,Menlo,monospace}
+  .themebtn{position:absolute;top:18px;right:26px;padding:5px 11px;border:1px solid var(--line);
+            border-radius:5px;background:var(--panel);color:var(--dim);font:inherit;font-size:12px;
+            cursor:pointer}
+  .themebtn:hover{border-color:var(--accent);color:var(--accent)}
+  header{position:relative}
   .err{color:var(--bad)}
 </style>
 </head>
 <body>
 <header>
+  <button class="themebtn" id="themebtn">dark</button>
   <h1>reassemble one repo</h1>
   <div class="sub">its runs, jobs, steps &mdash; the query a row store exists for</div>
 </header>
@@ -74,6 +91,29 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
 <script>
+/* Dark unless the reader says otherwise, and remembered. localStorage throws
+   in a private window, so every touch of it is guarded. Each port is its own
+   origin, so the choice is per-port. */
+(function () {
+  var read = function () {
+    try { var v = localStorage.getItem('tatami-theme');
+          return v === 'light' || v === 'dark' ? v : 'dark'; } catch (e) { return 'dark'; }
+  };
+  var apply = function (t) {
+    document.documentElement.setAttribute('data-theme', t);
+    try { localStorage.setItem('tatami-theme', t); } catch (e) {}
+    var b = document.getElementById('themebtn');
+    if (b) b.textContent = t;
+  };
+  var cur = read();
+  apply(cur);
+  document.addEventListener('DOMContentLoaded', function () {
+    apply(cur);
+    var b = document.getElementById('themebtn');
+    if (b) b.onclick = function () { cur = cur === 'dark' ? 'light' : 'dark'; apply(cur); };
+  });
+})();
+
 const h = React.createElement;
 
 /* Same rule as bin/bench.ml and bin/serve.ml print by: the cost of one call,
