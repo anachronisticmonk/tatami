@@ -1304,7 +1304,7 @@ function App() {
       h('p', {className: 'lede'},
         'Paste a JSON object, or an array of them as a corpus. Tatami infers a relational ' +
         'schema and writes the OCaml signature for it — one module per table, with the keys ' +
-        'and accessors that record how the tables relate. You write the implementation.'),
+        'and accessors that record how the tables relate.'),
       h('div', {className: 'examples'},
         h('button', {
           className: 'chip' + (src.trim() === '' ? ' on' : ''),
@@ -1380,14 +1380,7 @@ function App() {
                   ' — once per document for the root table, once per parent for a nested one, ' +
                   'once per element for a collection.'),
                 h(Obs, {report}))
-            : null))),
-
-    h('footer', {},
-      'The generator is a Lean program compiled to a binary; this page runs it through ',
-      h('code', {}, 'dev/serve.py'),
-      ' when one is reachable, and otherwise falls back to an implementation of the same rules ',
-      'in JavaScript — the badge says which. The engine below the page is lifted verbatim from ',
-      h('code', {}, 'web/playground.html'), ', so both pages generate the same text.'));
+            : null))));
 }
 
 ReactDOM.createRoot(document.getElementById('root')).render(h(App));
