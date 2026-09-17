@@ -492,7 +492,10 @@
       var ok = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b === 39;
       core += ok ? String.fromCharCode(b) : "_" + b.toString(16).padStart(2, "0");
     }
-    var out = /^[a-z]/.test(core) ? core : "f_" + core;
+    /* Tatami/Mangle.lean:69 -- 'f' :: '_' :: '_' :: core. This shipped with a
+       single underscore, which disagreed with the binary on every name that
+       does not start lower-case. */
+    var out = /^[a-z]/.test(core) ? core : "f__" + core;
     return KEYWORDS.indexOf(out) >= 0 ? out + "_" : out;
   }
 
@@ -779,7 +782,12 @@
   function idTypeName(p) { return lowerFirst(moduleName(p)); }
   /* the key column is named after its table, so a child's foreign key and the
      parent's primary key spell the same thing */
+  /* The name a *child* gives its parent's key. A table's own key is
+     [idColumn], not this -- see Tatami/Gen.lean:105 and the note on
+     keyColumnName there. This page used it for both, which named a root's own
+     key `root_id` where the binary calls it `id`. */
   function keyColumnName(p) { return idTypeName(p) + "_id"; }
+  var idColumn = "id";
   function childLookup(parent) { return "of_" + idTypeName(parent); }
 
   /* A unit must follow every unit it names: its parent, for the foreign key,
@@ -808,7 +816,7 @@
      with collections dropped. Both the modules and the SQL come from this one
      list, which is what makes their column order agree by construction. */
   function layoutOf(t) {
-    var keyName = keyColumnName(t.path);
+    var keyName = idColumn;
     var posName = t.keyed ? "key" : "idx";
     var docKey = null;
     t.members.forEach(function (m) { if (m.key === "id") docKey = m; });
