@@ -579,18 +579,19 @@
     <!-- 12 ----------------------------------------------------------------- -->
     <section class="slide" id="s12" hidden>
       <div class="eyebrow">What is new here</div>
-      <h2>Two claims, stated so they can be refuted</h2>
+      <h2>Columnar storage is solved. This is about the bit upstream of it.</h2>
       <div class="usp">
-        <div>
-          <h3>The proof is spent, not displayed</h3>
-          <p>Machine-checked principality is old news — Algorithm W is mechanised in Coq, Isabelle, HOL4. JSON schema inference has paper proofs too. What we have not found is the <strong>link between theorem and bytes</strong>: nullability is the licence to <span class="em">delete the mask</span>, and the saving is measured.</p>
+        <div style="border-left-color:var(--muted)">
+          <h3>Not claiming</h3>
+          <p>Arrow, Parquet, Polars, DuckDB — decades of engineering. JSON schema inference is a studied problem. Machine-checked type inference is older still. A weekend of OCaml improves on none of it.</p>
         </div>
         <div>
-          <h3>The columnar options are all foreign</h3>
-          <p>Two exist and both wrap another runtime: <code>ocaml-arrow</code> binds Arrow's <strong>C++</strong>, <code>polars-ocaml</code> binds Rust's <strong>Polars</strong> — and that one targets OCaml 4.14, so it does not build on the 5.2 we use. No columnar store written <em>in</em> OCaml, laid out from a generated schema. In a functional-programming hackathon, <span class="em">call into Rust</span> is a strange answer.</p>
+          <h3>Claiming</h3>
+          <p>All of them take the schema <em>on faith</em>. Arrow and Parquet <strong>require</strong> a schema and never derive one — and whether a column is nullable arrives from outside, sampled or hand-declared. That unverified bit decides whether a validity bitmap is allocated for <em>every row, forever</em>.</p>
         </div>
       </div>
-      <p>Functional the whole way down: Lean 4 for inference and proof, OCaml for everything after.</p>
+      <p>The most expensive decision in a columnar layout is the least checked one. We make it a <strong>theorem</strong>, then spend it: no mask where the proof says none can be needed.</p>
+      <p>And the part we think is genuinely new — nullability analysis is <em>conservative</em>: combine two maybe-null values and a sound analysis must call the result maybe-null, so masks propagate until everything is optional again. Here the leaves are <strong>generated</strong> with proved-exact nullability, so <code>ms</code> total and <code>rate</code> total makes <code class="em">ms × rate</code> total — provably, not by assumption. The exactness flows downstream instead of decaying. It is why <code>computed</code> at <strong class="num">3.34×</strong> beats <code>scan</code> at <strong class="num">3.21×</strong> while doing strictly more work per row.</p>
       <div class="run">docker run --rm -p 8000:8000 -p 8420:8420 durwasa/tatami</div>
       <p style="font-size:.88em;color:var(--muted)"><code>:8000</code> the demonstration · <code>:8420</code> the playground</p>
     </section>

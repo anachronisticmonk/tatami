@@ -446,6 +446,53 @@ The numbers in chapters 9 and 10 are the argument that closing it properly is
 worth someone's time: roughly 3× on scans and 14× at the selectivity extremes,
 from a store written in a weekend whose layout was derived rather than tuned.
 
+### Where all three fields stop
+
+It is worth stating plainly what this project is not. Columnar storage is a
+mature, solved field — Arrow, Parquet, Polars, DuckDB, ClickHouse, decades of
+engineering. Schema inference from JSON is a studied problem with published
+algorithms. Machine-checked type inference is older still. A weekend of OCaml
+improves on none of them, and claiming otherwise would be silly.
+
+They stop at the same place.
+
+**A columnar format takes its schema on faith.** Parquet and Arrow *require* a
+schema; neither derives one. And the single most consequential entry in that
+schema — whether a column is nullable — arrives from outside. Spark samples
+documents and guesses. A hand-written Arrow schema simply declares it. Either
+way it is unverified, and it is the flag that decides whether a validity bitmap
+is allocated for every row of that column, for the lifetime of the data.
+
+So the nullability bit is simultaneously **the most expensive decision in a
+columnar layout and the least checked one**. Wrong permissive: a bitmap per row
+nobody needed. Wrong strict: a failed load, or silent corruption in a system
+less defensive than this one.
+
+Tatami makes that bit a theorem — `values + nulls + absent = visits` and
+`nullable ↔ values < visits` — and then *spends* it on the layout. The mask is
+not allocated where the proof says it cannot be needed.
+
+### The part we think is actually new
+
+Nullability analysis is **conservative by nature**. Combine two values that
+might be null and a sound analysis must call the result possibly-null. Masks
+propagate; a few operations deep, everything is optional again and the analysis
+has decayed into uselessness.
+
+That decay does not happen here, because the leaves are *generated* with proved
+exact nullability. `ms` is total and `rate` is total, therefore `ms × rate` is
+total — not conservatively assumed, provably. The exactness flows downstream
+instead of degrading, and the product needs no mask of its own.
+
+That is visible in the measurements: `computed` runs at **3.34×** against
+`scan`'s **3.21×** — faster despite doing strictly more work per row, because
+neither input nor output carries a check.
+
+A proof about inferred data types, carried through a host language's type
+system into a physical memory layout, with the resulting saving measured: that
+composition is what we could not find anywhere, and it is the claim we would
+defend.
+
 ### What is, and is not, new about the proof
 
 An overclaimed novelty is worth less than an accurate one, so this section

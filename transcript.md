@@ -138,12 +138,13 @@ and a `note` that is null in one record and absent in another.*
 
 > Two things I'd leave you with.
 >
-> One: the columnar options in OCaml are both bindings to another language —
-> `ocaml-arrow` wraps Arrow's C++, `polars-ocaml` wraps Rust's Polars, and that
-> one targets OCaml 4.14, so it doesn't even build on the OCaml 5 we're on.
-> There's no columnar store written *in* OCaml, laid out from a generated
-> schema. So we wrote one. In a functional programming hackathon, "call into
-> Rust" felt like the wrong answer.
+> One: columnar storage is solved — Arrow, Parquet, Polars. We haven't improved
+> on any of it. But every one of them takes the schema *on faith*. Arrow and
+> Parquet require a schema; they never derive one. And whether a column is
+> nullable — the bit that decides if a validity bitmap gets allocated for every
+> row, forever — is guessed upstream by sampling, or declared by hand.
+>
+> We made that bit a theorem, and then spent it on the layout.
 >
 > Two: it's functional the whole way down. Lean 4 for inference and proof,
 > OCaml for loading, storage and measurement. The one place correctness truly
