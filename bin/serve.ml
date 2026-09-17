@@ -167,19 +167,36 @@ let answer_json a = `String (Workload.to_string a)
    Timed that way the page reported a thirty-six fold win on a query the
    benchmark puts at three, which would have been a lie told by the interface
    rather than by anybody. *)
+(* Median of a few, and each sample a batch rather than a single call.
+
+   [document] answers in a fraction of a microsecond -- a hash lookup and one
+   repo's subtree -- where gettimeofday resolves about one. Timing it once
+   reports the clock: the figure comes back as an exact power of two, which is
+   quantisation and not a measurement. So a sample repeats the call until at
+   least [floor_s] has passed and divides back down, which is bin/bench.ml's
+   rule; it has to be the same rule, or the page and the collected results
+   would disagree about the same question.
+
+   The floor is lower here than in the benchmark. This one runs while someone
+   waits for it, and 20ms per sample is already twenty thousand times what the
+   clock can resolve. *)
+let floor_s = 0.02
+let max_reps = 1 lsl 22
+
+let batch f k =
+  let t0 = Unix.gettimeofday () in
+  for _ = 1 to k do ignore (f ()) done;
+  Unix.gettimeofday () -. t0
+
 let time ?(n = 5) f =
-  ignore (f ());
-  let rec go k acc =
-    if k = 0 then acc
-    else
-      let t0 = Unix.gettimeofday () in
-      let a = f () in
-      go (k - 1) (((Unix.gettimeofday () -. t0) *. 1000., a) :: acc)
+  let rec calibrate k =
+    if k >= max_reps || batch f k >= floor_s then k else calibrate (k * 4)
   in
-  let rs = go n [] in
-  let sorted = List.sort (fun (x, _) (y, _) -> compare x y) rs in
-  let ms, a = List.nth sorted (n / 2) in
-  (a, ms)
+  let k = calibrate 1 in
+  let per () = batch f k /. float_of_int k *. 1000. in
+  let rec go i acc = if i = 0 then acc else go (i - 1) (per () :: acc) in
+  let sorted = List.sort compare (go n []) in
+  (f (), List.nth sorted (n / 2))
 
 (* [type a] ties the module's abstract [t] to the store value handed in;
    without it S.t escapes its scope and the two cannot be related. *)
