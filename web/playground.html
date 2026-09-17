@@ -656,24 +656,42 @@
 
     function memberOf(t, k) {
       for (var i = 0; i < t.members.length; i++) if (t.members[i].key === k) return t.members[i];
-      var m = { key: k, ty: "bot", ref: null, nullable: false,
-                values: 0, nulls: 0, absent: 0, big: false, sawInt: false, sawFloat: false };
+      var m = { key: k, seen: [], ty: "bot", ref: null, nullable: false,
+                values: 0, nulls: 0, absent: 0, big: false };
       t.members.push(m);
       return m;
+    }
+
+    /* The set of types seen at a member, in a fixed order. Kept as a set
+       rather than a running join so that merging two sets of observations is
+       commutative -- the join is taken once, at the end. */
+    function tyRank(x) {
+      return { bot: 0, int: 1, float: 2, uuid: 3, str: 4, bool: 5, ref: 6, coll: 7 }[x.ty];
+    }
+    function tyLt(a, b) {
+      if (a.ty === b.ty && (a.ty === "ref" || a.ty === "coll"))
+        return pathString(a.ref) < pathString(b.ref);
+      return tyRank(a) < tyRank(b);
+    }
+    function tySame(a, b) {
+      return a.ty === b.ty &&
+        (a.ty === "ref" || a.ty === "coll" ? pathString(a.ref) === pathString(b.ref) : true);
+    }
+    function addSeen(list, x) {
+      for (var i = 0; i < list.length; i++) {
+        if (tySame(x, list[i])) return list;
+        if (tyLt(x, list[i])) { list.splice(i, 0, x); return list; }
+      }
+      list.push(x);
+      return list;
     }
 
     function record(t, k, seen, where) {
       var m = memberOf(t, k);
       if (seen === null) { m.nulls++; return; }
-      var joined = joinTy({ ty: m.ty, ref: m.ref }, seen);
-      if (joined === null)
-        throw { msg: "the member " + pathString(where) + " holds both " +
-                     tyName({ ty: m.ty, ref: m.ref }) + " and " + tyName(seen) +
-                     ", which have no common type." };
-      m.ty = joined.ty; m.ref = joined.ref || null; m.values++;
+      addSeen(m.seen, { ty: seen.ty, ref: seen.ref || null });
+      m.values++;
       if (seen.big) m.big = true;
-      if (seen.ty === "int") m.sawInt = true;
-      if (seen.ty === "float") m.sawFloat = true;
     }
 
     function distinct(ms, at) {
@@ -741,6 +759,17 @@
       if (t.elemObject && t.elemScalar)
         throw { msg: "the array at " + t.key + " has both objects and scalars among its elements." };
       t.members.forEach(function (m) {
+        /* the one type admitting everything seen here, if there is one */
+        var acc = { ty: "bot", ref: null };
+        for (var i = 0; i < m.seen.length && acc !== null; i++) acc = joinTy(acc, m.seen[i]);
+        if (acc === null)
+          throw { msg: "the member " + pathString(t.path.concat([seg(m.key)])) +
+                       " holds values of more than one type -- " +
+                       m.seen.map(tyName).join(", ") +
+                       " -- and there is none that admits them all." };
+        m.ty = acc.ty; m.ref = acc.ref || null;
+        m.sawInt = m.seen.some(function (x) { return x.ty === "int"; });
+        m.sawFloat = m.seen.some(function (x) { return x.ty === "float"; });
         m.absent = t.visits - m.values - m.nulls;
         m.nullable = m.nulls > 0 || m.absent > 0;
       });

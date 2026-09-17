@@ -1,6 +1,11 @@
 import Proofs.Lattice
 import Proofs.Mangle
+import Proofs.Sorted
+import Proofs.Order
+import Proofs.Merge
+import Proofs.Walk
 import Proofs.Wellformed
+import Proofs.Tree
 import Proofs.Inference
 
 /-!

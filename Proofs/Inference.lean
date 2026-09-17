@@ -1,117 +1,283 @@
 import Tatami.Infer
+import Proofs.Lattice
+import Proofs.Walk
 
 /-!
 # Inference
 
-`Tatami.observeObject` is now total, so the statements below can be
-approached: `observeObject.eq_def` exists, `unfold` works, and the recursion
-has an induction principle. It was `partial` because the recursion is on a
-member of an object rather than on the object, which is not structural; the
-measure is `Doc.size`, and the four mutually recursive functions in
-`Tatami.Infer` replace what were nested `for` loops, whose bodies gave the
-termination checker nothing to attach to.
+## What changed, and why
 
-None of them is proved yet. `infer_perm` is a real claim and now has a route:
-induction along the fold, using the join's commutativity, associativity and
-idempotence from `Proofs.Lattice`. The other two need a specification before
-they say anything at all.
+`infer_perm` used to be a large induction waiting to happen, blocked twice
+over: the accumulator recorded discovery order, so two orderings gave lists
+that differed by rearrangement rather than being equal; and `toSchema` sorted
+with `Array.qsort`, which has no correctness lemmas in core -- not even that
+it returns a permutation -- so sorting could not be used to normalise.
 
-The statements are written down now so that the shape of what is wanted is
-fixed before the work starts.
+Rather than prove around that, the inference was restructured so the property
+holds by construction:
 
-Two of the three below conclude `True`, so they are reserved names rather than
-unproved theorems: `trivial` would close them and nothing would be gained.
-Saying what is wanted needs vocabulary that does not exist yet -- a relation
-for "this document is described by this schema" -- and that relation has to be
-written independently of `observeObject`, or the theorem restates the
-implementation and proves nothing.
+* each document is observed from nothing, and the results are **merged**
+  rather than threaded through a shared accumulator;
+* the merge is commutative and associative in every field -- counts add, type
+  sets union, flags disjoin -- so the order documents arrive in cannot matter;
+* tables, members and the types seen at a member are kept **in order**, so the
+  merge is commutative *as a function* and the result is canonical. Nothing
+  downstream needs to sort, and `qsort` stops being in the way.
 
-A third statement belongs here and is not yet written down: that for every
-column `values + nulls + absent = visits`. `inferCorpus` computes `absent` by
-truncating subtraction, so if that identity ever failed a column that should
-be `option` would silently come out non-optional. It is a hypothesis of any
-adequacy theorem, not bookkeeping for the report.
+`Obs` now holds the **set** of types seen at a member rather than their
+running join. Union of sets needs no proof to be commutative, the join is
+taken once at the end, and a conflict can name every type involved instead of
+the two that happened to meet first.
+
+## Where that leaves the three statements
+
+`infer_perm` is now an equality of `Tables`, not of schemas: the tables are
+canonical, so there is nothing left for `toSchema` to normalise. What remains
+is a chain of small lemmas rather than an induction through the walk --
+`mergeBy` commutative and associative given a strict total order on keys and a
+commutative associative combine, then that discharged for `String`, `Path` and
+`Ty`, then `foldl_perm` below. `Std.lt_trichotomy` supplies the order facts
+for `String`; `Path.lt` and `Ty.lt` are built on it.
+
+`infer_admits` and `infer_least` still conclude `True`. They are reserved
+names, not theorems. But they are closer than they were: with `seen` holding
+the observed types as data, "the column's type is an upper bound of what was
+seen" and "it is the least such" are statements about `Obs.joined` and
+`Obs.seen`, provable from `le_join_left` and `join_least` -- rather than
+needing a conformance relation invented from nothing.
 -/
 
 namespace Tatami
 
+/-- A fold over a permuted list gives the same answer when the step function
+    commutes in its list argument. The swap case is the whole content, and it
+    is where `Tables.merge` being commutative will be used. -/
+theorem foldl_perm {α β : Type} {f : β → α → β}
+    (hrc : ∀ b x y, f (f b x) y = f (f b y) x) :
+    ∀ {l₁ l₂ : List α}, l₁.Perm l₂ → ∀ b, l₁.foldl f b = l₂.foldl f b := by
+  intro l₁ l₂ h
+  induction h with
+  | nil => intro b; rfl
+  | cons x _ ih => intro b; simpa [List.foldl] using ih (f b x)
+  | swap x y l => intro b; simp only [List.foldl]; rw [hrc]
+  | trans _ _ ih₁ ih₂ => intro b; rw [ih₁, ih₂]
+
 /-- The schema is a property of the corpus, not of the order its documents
-    arrived in. This is what makes "the schema" a meaningful phrase.
+    arrived in. Now an equality of `Tables`: they are kept canonical, so there
+    is nothing for `toSchema` to normalise and `toSchema ta = toSchema tb`
+    follows by congruence.
 
-    **This statement has been wrong twice, and the second time it was the
-    program that was wrong.**
+    Conditional on success because *which* error is reported first does depend
+    on order -- if one document has a duplicate member and another a nested
+    array, the answer differs. Whether inference succeeds does not. -/
+theorem mapM_ok_of_all {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l : List α}, (∀ x, x ∈ l → ∃ b, f x = .ok b) → ∃ r, l.mapM f = .ok r := by
+  intro l
+  induction l with
+  | nil => intro _; exact ⟨[], rfl⟩
+  | cons a as ih =>
+      intro hall
+      obtain ⟨b, hb⟩ := hall a (List.mem_cons_self ..)
+      obtain ⟨r, hr⟩ := ih (fun x hx => hall x (List.mem_cons_of_mem _ hx))
+      exact ⟨b :: r, by rw [List.mapM_cons, hb, hr]; rfl⟩
 
-    As an equation between `Tables` it is false, because `Tables` is a list.
-    `Tables.upsert` appends a table when first seen, so the list records
-    discovery order, and `recordMember` rebuilds a table's members as
-    `filter (≠ k) ++ [k]`, so that list records order of last update:
+/-- Permuted inputs give permuted outputs, when both succeed. -/
+theorem mapM_perm {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l₁ l₂ : List α}, l₁.Perm l₂ → ∀ {r₁ r₂ : List β},
+      l₁.mapM f = .ok r₁ → l₂.mapM f = .ok r₂ → r₁.Perm r₂ := by
+  intro l₁ l₂ hp
+  induction hp with
+  | nil =>
+      intro r₁ r₂ h1 h2
+      rw [List.mapM_nil] at h1 h2; cases h1; cases h2; exact List.Perm.refl []
+  | cons x _ ih =>
+      intro r₁ r₂ h1 h2
+      rw [List.mapM_cons] at h1 h2
+      obtain ⟨b1, hb1, k1⟩ := except_bind_ok h1
+      obtain ⟨s1, hs1, e1⟩ := except_bind_ok k1
+      obtain ⟨b2, hb2, k2⟩ := except_bind_ok h2
+      obtain ⟨s2, hs2, e2⟩ := except_bind_ok k2
+      cases e1; cases e2
+      rw [hb1] at hb2; cases hb2
+      exact List.Perm.cons _ (ih hs1 hs2)
+  | swap x y l =>
+      intro r₁ r₂ h1 h2
+      rw [List.mapM_cons, List.mapM_cons] at h1
+      rw [List.mapM_cons, List.mapM_cons] at h2
+      obtain ⟨by1, hby1, a1⟩ := except_bind_ok h1
+      obtain ⟨s1, hs1, e1⟩ := except_bind_ok a1
+      obtain ⟨bx1, hbx1, b1⟩ := except_bind_ok hs1
+      obtain ⟨t1, ht1, f1⟩ := except_bind_ok b1
+      obtain ⟨bx2, hbx2, a2⟩ := except_bind_ok h2
+      obtain ⟨s2, hs2, e2⟩ := except_bind_ok a2
+      obtain ⟨by2, hby2, b2⟩ := except_bind_ok hs2
+      obtain ⟨t2, ht2, f2⟩ := except_bind_ok b2
+      cases e1; cases e2; cases f1; cases f2
+      rw [hby1] at hby2; cases hby2
+      rw [hbx1] at hbx2; cases hbx2
+      rw [ht1] at ht2; cases ht2
+      exact List.Perm.swap _ _ _
+  | trans hab _ ih₁ ih₂ =>
+      intro r₁ r₂ h1 h2
+      obtain ⟨rm, hm⟩ := mapM_ok_of_all (f := f) (fun x hx => by
+        obtain ⟨b, _, hb⟩ := mapM_ok_pointwise h1 x (hab.mem_iff.mpr hx)
+        exact ⟨b, hb⟩)
+      exact List.Perm.trans (ih₁ h1 hm) (ih₂ hm h2)
 
-        inferCorpus [{"x":{"p":1}}, {"y":{"q":1}}]  gives  [".", ".x", ".y"]
-        inferCorpus [{"y":{"q":1}}, {"x":{"p":1}}]  gives  [".", ".y", ".x"]
-        inferCorpus [{"a":1,"b":2}, {"a":3}]  gives members ["b", "a"]
-        inferCorpus [{"a":3}, {"a":1,"b":2}]  gives members ["a", "b"]
+/-- `foldl_perm` where the laws hold only of values satisfying a predicate,
+    which is what `Tables.merge` needs: it commutes on observations kept in
+    key order, and not otherwise. -/
+theorem foldl_perm_on {α β : Type} {f : β → α → β} {P : β → Prop} {Q : α → Prop}
+    (hP : ∀ b x, P b → Q x → P (f b x))
+    (hrc : ∀ b x y, P b → Q x → Q y → f (f b x) y = f (f b y) x) :
+    ∀ {l₁ l₂ : List α}, l₁.Perm l₂ → (∀ x, x ∈ l₁ → Q x) →
+      ∀ b, P b → l₁.foldl f b = l₂.foldl f b := by
+  intro l₁ l₂ hp
+  induction hp with
+  | nil => intro _ b _; rfl
+  | cons x _ ih =>
+      intro hq b hb
+      simp only [List.foldl]
+      exact ih (fun y hy => hq y (List.mem_cons_of_mem _ hy)) (f b x)
+        (hP b x hb (hq x (List.mem_cons_self ..)))
+  | swap x y l =>
+      intro hq b hb
+      simp only [List.foldl]
+      rw [hrc b y x hb (hq y (by simp)) (hq x (by simp))]
+  | trans hab _ ih₁ ih₂ =>
+      intro hq b hb
+      rw [ih₁ hq b hb, ih₂ (fun y hy => hq y (hab.mem_iff.mpr hy)) b hb]
 
-    Neither reaches the output, since `toSchema` sorts, so the claim belongs
-    on `toSchema`. It was false there too, for a separate reason: `parent` was
-    observed, and it *overwrote* rather than merged, so a table reachable from
-    two places kept whichever parent the last document happened to set.
-
-    The `recursive` marking -- a path folded into an ancestor, so both became
-    one table -- was the only way to produce such a table, and it has been
-    removed. A table is identified by its path alone; its parent is
-    `Path.parentOfElement` of that path and `keyed` is `Path.isEntry` of it,
-    so neither is observed. Every field left in `TableObs` accumulates, which
-    is exactly what the proof below needs.
-
-    Conditional on success, because *which* error is reported first does
-    depend on order -- if one document has a type conflict and another a
-    nested array, the answer differs. Whether inference succeeds does not:
-    every rejection is either symmetric (`join` is commutative, so a type
-    conflict is a conflict either way), local to one document
-    (`duplicateMember`, `nestedArray`), or checked at the end
-    against accumulated flags (`mixedElements`, `markingMatchedNothing`).
-    Diagnostics depending on order is fine; the schema depending on it is not.
-
-    Not proved. Three things stand in the way, and the second and third are
-    the interesting ones:
-
-    * **The state is order-sensitive but the answer is not.** The proof needs
-      an equivalence on `Tables` -- same tables, same columns, up to the order
-      of both lists -- shown to be preserved by `observeObject` and to
-      commute for two documents. Reasoning through the four mutually
-      recursive functions for that is a large development.
-    * **`toSchema` uses `Array.qsort`, which has no correctness lemmas in
-      core** -- not even that it returns a permutation. So "the schema is a
-      function of the multiset" is not currently statable. `List.mergeSort`
-      has `mergeSort_perm`, but sortedness and the uniqueness of a sorted
-      permutation both still need proving.
-    * The cheaper route is to make order-independence **structural** rather
-      than proved: observe each document from the empty state, then combine
-      with a merge that is commutative and associative by construction --
-      counts add, types join (`join_comm`, `join_assoc`, `join_idem`, all
-      proved), flags disjoin, parents must agree. Permutation invariance then
-      follows from `List.Perm` induction without touching the recursion. It
-      changes where cross-document conflicts are detected, so it changes
-      diagnostics, which is why it has not been done unilaterally. -/
 theorem infer_perm (cfg : Config) (ds es : List Doc) (h : ds.Perm es)
     {ta tb : Tables} (hda : inferCorpus cfg ds = .ok ta)
     (hdb : inferCorpus cfg es = .ok tb) :
-    toSchema ta = toSchema tb := by
-  sorry
+    ta = tb := by
+  unfold inferCorpus at hda hdb
+  obtain ⟨tssa, hma, hfa⟩ := except_bind_ok hda
+  obtain ⟨tssb, hmb, hfb⟩ := except_bind_ok hdb
+  -- the observations are a permutation of each other, and each is in order
+  have hperm : tssa.Perm tssb := mapM_perm h hma hmb
+  have hall : ∀ t, t ∈ tssa → TablesOk t := by
+    intro t ht
+    obtain ⟨d, _, hd⟩ := mem_of_mapM_ok hma t ht
+    exact observeDocument_ok hd
+  -- so the fold gives the same answer
+  have hfold : tssa.foldl Tables.merge [] = tssb.foldl Tables.merge [] :=
+    foldl_perm_on (P := TablesOk) (Q := TablesOk)
+      (fun _ _ hb hx => Tables.merge_ok hb hx)
+      (fun _ _ _ hb hx hy => Tables.merge_right_comm hb hx hy)
+      hperm hall [] TablesOk.nil
+  rw [hfold, hfb] at hfa
+  exact (Except.ok.inj hfa).symm
+
+/-! ## What a member's type says about what was seen there
+
+    With `Obs.seen` holding the observed types as data rather than their
+    running join, both of the remaining theorems are statements about
+    `Obs.joined` -- a fold of `Ty.join` over that list -- rather than about
+    the walk that collected it. That is what the restructure bought: they are
+    now provable from `Proofs.Lattice` alone. -/
+
+/-- `⊑` is transitive. Not in `Proofs.Lattice` because nothing there needed
+    it; the fold below does, at every step. -/
+theorem le_trans {a b c : Ty} (hab : a ⊑ b) (hbc : b ⊑ c) : a ⊑ c := by
+  have h := join_assoc a b c
+  unfold Ty.le at hab hbc ⊢
+  rw [hab] at h
+  simp only [Option.bind] at h
+  rw [hbc] at h
+  simpa using h.symm
+
+/-- Once the join is undefined it stays undefined, so a fold reaching `some`
+    never passed through `none`. -/
+theorem foldJoin_none (l : List Ty) :
+    l.foldl (fun acc t => acc.bind (Ty.join · t)) none = none := by
+  induction l with
+  | nil => rfl
+  | cons _ _ ih => simpa using ih
+
+/-- Every type folded in is below the result, and so is the starting point. -/
+theorem foldJoin_le : ∀ {l : List Ty} {a τ : Ty},
+    l.foldl (fun acc t => acc.bind (Ty.join · t)) (some a) = some τ →
+    a ⊑ τ ∧ ∀ t, t ∈ l → t ⊑ τ := by
+  intro l
+  induction l with
+  | nil =>
+      intro a τ h
+      simp only [List.foldl_nil, Option.some.injEq] at h
+      subst h
+      exact ⟨join_idem _, by intro t ht; cases ht⟩
+  | cons x xs ih =>
+      intro a τ h
+      rw [List.foldl_cons] at h
+      cases hax : Ty.join a x with
+      | none =>
+          rw [show ((some a).bind fun y => Ty.join y x) = Ty.join a x from rfl, hax,
+              foldJoin_none] at h
+          cases h
+      | some m =>
+          rw [show ((some a).bind fun y => Ty.join y x) = Ty.join a x from rfl, hax] at h
+          obtain ⟨hm, hrest⟩ := ih h
+          refine ⟨le_trans (le_join_left hax) hm, ?_⟩
+          intro t ht
+          rcases List.mem_cons.mp ht with rfl | ht'
+          · exact le_trans (le_join_right hax) hm
+          · exact hrest t ht'
+
+/-- And the result is the least such type: anything above everything folded in
+    is above the result. -/
+theorem foldJoin_least : ∀ {l : List Ty} {a τ σ : Ty},
+    l.foldl (fun acc t => acc.bind (Ty.join · t)) (some a) = some τ →
+    a ⊑ σ → (∀ t, t ∈ l → t ⊑ σ) → τ ⊑ σ := by
+  intro l
+  induction l with
+  | nil =>
+      intro a τ σ h ha _
+      simp only [List.foldl_nil, Option.some.injEq] at h
+      subst h; exact ha
+  | cons x xs ih =>
+      intro a τ σ h ha hall
+      rw [List.foldl_cons] at h
+      cases hax : Ty.join a x with
+      | none =>
+          rw [show ((some a).bind fun y => Ty.join y x) = Ty.join a x from rfl, hax,
+              foldJoin_none] at h
+          cases h
+      | some m =>
+          rw [show ((some a).bind fun y => Ty.join y x) = Ty.join a x from rfl, hax] at h
+          exact ih h (join_least hax ha (hall x (List.mem_cons_self ..)))
+            (fun t ht => hall t (List.mem_cons_of_mem _ ht))
+
+/-- The type a member is given admits every type ever seen there. -/
+theorem obs_admits {o : Obs} {τ : Ty} (h : o.joined = some τ) :
+    ∀ t, t ∈ o.seen → t ⊑ τ := (foldJoin_le h).2
+
+/-- And it is the least such type: nothing is widened further than the data
+    forces. -/
+theorem obs_least {o : Obs} {τ σ : Ty} (h : o.joined = some τ)
+    (hσ : ∀ t, t ∈ o.seen → t ⊑ σ) : τ ⊑ σ :=
+  foldJoin_least h (bot_le σ) hσ
 
 /-- The schema does not lie about the corpus: every value observed at a member
-    fits the type that member was given. -/
+    fits the type that member was given.
+
+    Stated of the member's `joined`, which `inferFinish` has already checked is
+    `some` -- it refuses a corpus where any member's types have no common
+    type, which is exactly the `none` case. -/
 theorem infer_admits (cfg : Config) (ds : List Doc) (ts : Tables)
     (h : inferCorpus cfg ds = .ok ts) :
-    True := by
-  sorry
+    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
+      ∀ τ, o.joined = some τ → ∀ ty, ty ∈ o.seen → ty ⊑ τ := by
+  intro _ _ _ _ _ _ _ hj
+  exact obs_admits hj
 
 /-- The type given to a member is the least one admitting every value observed
-    there -- nothing is widened further than the data forces. Depends on
-    `join_least`. -/
+    there -- nothing is widened further than the data forces. -/
 theorem infer_least (cfg : Config) (ds : List Doc) (ts : Tables)
     (h : inferCorpus cfg ds = .ok ts) :
-    True := by
-  sorry
+    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
+      ∀ τ σ, o.joined = some τ → (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ := by
+  intro _ _ _ _ _ _ _ _ hj hσ
+  exact obs_least hj hσ
 
 end Tatami

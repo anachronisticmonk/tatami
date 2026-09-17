@@ -5,7 +5,12 @@ inductive Seg where
   | member : String → Seg
   | elem                    -- into the elements of an array
   | entry                   -- into the entries of an object marked as a map
-  deriving Repr, DecidableEq, BEq, Inhabited
+  deriving Repr, DecidableEq, Inhabited
+
+/-- `==` from the decision procedure rather than a derived one. The two agree
+    on every input; this one comes with `LawfulBEq`, so a proof can turn
+    `p == q` into `p = q`, which a derived `BEq` does not allow. -/
+instance : BEq Seg := instBEqOfDecidableEq
 
 /-- A position in the document, from the root down. The empty path is the
     root object.
@@ -21,6 +26,29 @@ def Seg.toString : Seg → String
 
 def Path.toString (p : Path) : String :=
   if p.isEmpty then "." else String.join (p.map Seg.toString)
+
+/-- A total order on positions.
+
+    `Path.toString` will not serve: a member literally named `a.b` and the
+    nested path `.a.b` print the same, so ordering by the printed form would
+    merge two different tables. Tables are kept in this order so that merging
+    two sets of observations is commutative as a function rather than only up
+    to reordering. -/
+def Seg.rank : Seg → Nat
+  | .member _ => 0
+  | .elem => 1
+  | .entry => 2
+
+def Seg.lt (a b : Seg) : Bool :=
+  match a, b with
+  | .member x, .member y => x < y
+  | _, _ => a.rank < b.rank
+
+def Path.lt : Path → Path → Bool
+  | [], [] => false
+  | [], _ :: _ => true
+  | _ :: _, [] => false
+  | a :: as, b :: bs => if a == b then Path.lt as bs else Seg.lt a b
 
 def Path.member (p : Path) (k : String) : Path := p ++ [.member k]
 def Path.elem (p : Path) : Path := p ++ [.elem]

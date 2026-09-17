@@ -9,7 +9,7 @@ inductive Error where
   | notObjectOrArray (found : String)
   | arrayElementNotObject (index : Nat) (found : String)
   | unsupportedAtThisStage (path : String) (found : String)
-  | typeConflict (path : String) (left right : String)
+  | typeConflict (path : String) (types : String)
   | reservedColumnName (name : String) (column : String)
   | reservedAccessorName (name : String) (generated : String)
   | moduleNameClash (name : String)
@@ -28,8 +28,8 @@ def Error.toString : Error → String
       s!"element {i} of the top-level array is {found}; every element must be an object."
   | .unsupportedAtThisStage path found =>
       s!"the member at {path} is {found}. Only objects are handled so far; arrays come next."
-  | .typeConflict path left right =>
-      s!"the member {path} holds both {left} and {right}, which have no common type."
+  | .typeConflict path types =>
+      s!"the member {path} holds values of more than one type -- {types} -- and there is none that admits them all."
   | .reservedColumnName name column =>
       s!"the member {name} collides with the generated {column} column."
   | .reservedAccessorName name generated =>
