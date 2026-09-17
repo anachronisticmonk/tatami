@@ -8,56 +8,49 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
+  /* Dark by default, in the palette a code editor uses -- VS Code's Dark+:
+     #1E1E1E behind the page, #252526 behind a panel, #D4D4D4 for text, and the
+     blue/teal/green the same editor gives keywords, types and comments. Light
+     is the other one, and there is no third. */
   :root {
-    --bg: #F1F2EC; --surface: #FBFBF7; --sunk: #E9EBE1; --rail: #EDEEE6;
-    --ink: #1B1E19; --muted: #5D6357; --faint: #9AA08F; --line: #D8DACE;
-    --accent: #5F7440; --accent-bg: #E6ECD8;
-    --gold: #8A6C1F; --gold-bg: #F0E7CC;
-    --alarm: #9E3A22; --alarm-bg: #F5DFD8;
-    --heri: #2B3A4A; --sel: #CBD9AE;
+    --bg: #1E1E1E; --surface: #252526; --sunk: #181818; --rail: #2D2D2D;
+    --ink: #D4D4D4; --muted: #9D9D9D; --faint: #858585; --line: #3C3C3C;
+    --accent: #4FC1FF; --accent-bg: #10344F;
+    --gold: #DCDCAA; --gold-bg: #33301E;
+    --alarm: #F48771; --alarm-bg: #3A1D1D;
+    --heri: #4EC9B0; --sel: #264F78;
+    /* syntax, kept apart from the interface tokens: a comment is green in an
+       editor and muted grey in a sentence, and one variable cannot be both */
+    --kw: #569CD6; --ty: #4EC9B0; --cm: #6A9955;
     --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
     --serif: "Newsreader", Georgia, serif;
     --code-size: 13.5px; --code-line: 1.62; --code-pad: 14px;
   }
-  @media (prefers-color-scheme: dark) {
-    :root:not([data-theme="light"]) {
-      --bg: #13160F; --surface: #1A1E16; --sunk: #10130D; --rail: #171B13;
-      --ink: #E7EADD; --muted: #949B87; --faint: #6B7360; --line: #2B3124;
-      --accent: #A6BE6E; --accent-bg: #23291A;
-      --gold: #CDAB5C; --gold-bg: #2A2416;
-      --alarm: #E4836A; --alarm-bg: #2E1B15;
-      --heri: #8FA8C4; --sel: #35402A;
-    }
-  }
+
+  /* Named so the toggle can set it back explicitly; identical to the default. */
   :root[data-theme="dark"] {
-    --bg: #13160F; --surface: #1A1E16; --sunk: #10130D; --rail: #171B13;
-    --ink: #E7EADD; --muted: #949B87; --faint: #6B7360; --line: #2B3124;
-    --accent: #A6BE6E; --accent-bg: #23291A;
-    --gold: #CDAB5C; --gold-bg: #2A2416;
-    --alarm: #E4836A; --alarm-bg: #2E1B15;
-    --heri: #8FA8C4; --sel: #35402A;
+    --bg: #1E1E1E; --surface: #252526; --sunk: #181818; --rail: #2D2D2D;
+    --ink: #D4D4D4; --muted: #9D9D9D; --faint: #858585; --line: #3C3C3C;
+    --accent: #4FC1FF; --accent-bg: #10344F;
+    --gold: #DCDCAA; --gold-bg: #33301E;
+    --alarm: #F48771; --alarm-bg: #3A1D1D;
+    --heri: #4EC9B0; --sel: #264F78;
+    --kw: #569CD6; --ty: #4EC9B0; --cm: #6A9955;
   }
 
-  /* Saffron. Placed after the dark rules deliberately: the dark media block is
-     written as :root:not([data-theme="light"]), which matches this too, and the
-     two selectors have equal specificity -- so only source order keeps saffron
-     from being overpainted on a machine set to dark.
-
-     The accent is a deep saffron rather than #FF9933. Flag saffron on a pale
-     ground is about 2:1 against the text around it, which fails at body size;
-     this one measures 5.1:1 while reading as the same hue. The bright tone is
+  /* Light. The accent is a deep saffron rather than #FF9933: flag saffron on a
+     pale ground measures about 2:1 against the text around it, which fails at
+     body size, while this reads as the same hue at 4.7:1. The bright tone is
      kept for fills, where contrast is not being asked of it. */
-  :root[data-theme="saffron"] {
+  :root[data-theme="light"] {
     --bg: #FFF6EA; --surface: #FFFDFA; --sunk: #FBE9D4; --rail: #FDF1E3;
-    /* --faint is 2.6:1 in the light theme and 3.4:1 in the dark one; it is
-       used for small uppercase labels and the line-number gutter. This one is
-       4.4:1, which reads as the same weight and is legible at that size. */
     --ink: #241A10; --muted: #6B5742; --faint: #8A7458; --line: #EBD9C2;
     --accent: #B35C00; --accent-bg: #FFE4C4;
     --gold: #8A6C1F; --gold-bg: #F5E9CE;
     --alarm: #9E3A22; --alarm-bg: #F5DFD8;
     --heri: #2B3A4A; --sel: #FFD9A8;
+    --kw: #9A4B00; --ty: #21606E; --cm: #4F7A3A;
   }
 
   * { box-sizing: border-box; }
@@ -204,9 +197,9 @@
     resize: none; outline: none;
   }
   .stack textarea::selection { background: var(--sel); }
-  .kw { color: var(--accent); }
-  .cm { color: var(--muted); font-style: italic; }
-  .ty { color: var(--heri); }
+  .kw { color: var(--kw); }
+  .cm { color: var(--cm); font-style: italic; }
+  .ty { color: var(--ty); }
 
   .error {
     font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--alarm);
@@ -1153,26 +1146,24 @@ function Obs({report}) {
                 h('span', {key: k, className: 'note ' + tag, title: why}, tag)))))))))); 
 }
 
-/* The stylesheet already answers to data-theme on the root element, but
-   nothing ever set it, so the page could only follow the OS. This cycles
-   system -> light -> dark and remembers the choice. localStorage throws in a
-   private window, so every touch of it is guarded. */
+/* Dark unless the reader says otherwise, and remembered. localStorage throws
+   in a private window, so every touch of it is guarded. */
 function useTheme() {
   const [theme, setTheme] = useState(() => {
-    try { return localStorage.getItem('tatami-theme') || 'system'; } catch (e) { return 'system'; }
+    try {
+      const v = localStorage.getItem('tatami-theme');
+      return v === 'light' || v === 'dark' ? v : 'dark';
+    } catch (e) { return 'dark'; }
   });
   useEffect(() => {
-    const el = document.documentElement;
-    if (theme === 'system') el.removeAttribute('data-theme');
-    else el.setAttribute('data-theme', theme);
+    document.documentElement.setAttribute('data-theme', theme);
     try { localStorage.setItem('tatami-theme', theme); } catch (e) {}
   }, [theme]);
   return [theme, setTheme];
 }
 
-const NEXT = {system: 'light', light: 'dark', dark: 'saffron', saffron: 'system'};
-const THEME_LABEL = {system: 'theme: system', light: 'theme: light',
-                     dark: 'theme: dark', saffron: 'theme: saffron'};
+const NEXT = {dark: 'light', light: 'dark'};
+const THEME_LABEL = {dark: 'dark', light: 'light'};
 
 /* ---- the page ---- */
 
@@ -1244,7 +1235,7 @@ function App() {
           h('span', {className: 'right'},
             h('button', {
               className: 'act', style: {marginRight: 8},
-              title: 'system follows the operating system',
+              title: 'switch between light and dark',
               onClick: () => setTheme(NEXT[theme]),
             }, THEME_LABEL[theme]),
             h('span', {
