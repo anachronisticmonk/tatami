@@ -75,6 +75,17 @@
     background: var(--accent-bg); border: 1px solid var(--line);
     padding: 2px 7px; margin-bottom: 9px;
   }
+  .crumbs {
+    position: absolute; top: 0; right: 0; display: flex; gap: 6px; align-items: center;
+  }
+  .crumbs a {
+    font-family: var(--sans); font-size: 12.5px; background: var(--surface);
+    color: var(--ink); border: 1px solid var(--line); padding: 4px 10px;
+    text-decoration: none;
+  }
+  .crumbs a:hover { border-color: var(--accent); color: var(--accent); }
+  header { position: relative; }
+
   .examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; align-items: baseline; }
   .examples .label {
     font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em;
@@ -1299,6 +1310,11 @@ function App() {
 
   return h('div', {className: 'wrap'},
     h('header', {},
+      /* The backend is a separate server on its own port; same host, so the
+         link is built rather than hard-coded to localhost. */
+      h('div', {className: 'crumbs'},
+        h('a', {href: location.protocol + '//' + location.hostname + ':8000/'},
+          'Phase 2 · backend →')),
       h('div', {className: 'stage'}, 'Phase 1 · JSON to OCaml signatures'),
       h('h1', {}, 'Tatami Playground'),
       h('p', {className: 'lede'},

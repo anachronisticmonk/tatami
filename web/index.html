@@ -4,36 +4,48 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>tatami</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
 <style>
   /* Dark by default, the palette a code editor uses -- VS Code's Dark+ -- so
      that this page, the reassemble page and the playground agree. Light is the
      other one, and there is no third. */
   :root{--bg:#1E1E1E;--panel:#252526;--ink:#D4D4D4;--dim:#9D9D9D;--line:#3C3C3C;
         --accent:#4FC1FF;--code:#1B1B1B;--warm:#10344F;--edge:#2E5A78;
-        --good:#6A9955;--bad:#F48771;--rec:#C586C0;--col:#4FC1FF;--json:#858585}
+        --good:#6A9955;--bad:#F48771;--rec:#C586C0;--col:#4FC1FF;--json:#858585;--faint:#858585;--heri:#4EC9B0;--mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;--sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;--serif:"Newsreader",Georgia,serif}
   :root[data-theme="dark"]{--bg:#1E1E1E;--panel:#252526;--ink:#D4D4D4;--dim:#9D9D9D;--line:#3C3C3C;
         --accent:#4FC1FF;--code:#1B1B1B;--warm:#10344F;--edge:#2E5A78;
-        --good:#6A9955;--bad:#F48771;--rec:#C586C0;--col:#4FC1FF;--json:#858585}
+        --good:#6A9955;--bad:#F48771;--rec:#C586C0;--col:#4FC1FF;--json:#858585;--faint:#858585;--heri:#4EC9B0;--mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;--sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;--serif:"Newsreader",Georgia,serif}
   /* Light. The accent is a deep saffron rather than #FF9933: flag saffron on a
      pale ground is about 2:1 against the text beside it, which fails at body
      size, while this reads as the same hue at 4.7:1. */
   :root[data-theme="light"]{--bg:#FFF6EA;--panel:#FFFDFA;--ink:#241A10;--dim:#6B5742;--line:#EBD9C2;
         --accent:#B35C00;--code:#FDF1E3;--warm:#FFE4C4;--edge:#E8C79A;
-        --good:#2F6B3F;--bad:#9E3A22;--rec:#7A4B82;--col:#B35C00;--json:#A08A63}
+        --good:#2F6B3F;--bad:#9E3A22;--rec:#7A4B82;--col:#B35C00;--json:#A08A63;--faint:#8A7458;--heri:#2B3A4A;--mono:"IBM Plex Mono",ui-monospace,SFMono-Regular,Menlo,monospace;--sans:"IBM Plex Sans",system-ui,-apple-system,sans-serif;--serif:"Newsreader",Georgia,serif}
   *{box-sizing:border-box}
   body{margin:0;background:var(--bg);color:var(--ink);
-       font:14px/1.55 ui-sans-serif,-apple-system,"Helvetica Neue",sans-serif}
-  code,pre,.mono{font-family:ui-monospace,SFMono-Regular,Menlo,monospace}
-  header{padding:18px 26px 0;border-bottom:1px solid var(--line);background:var(--panel)}
-  h1{margin:0;font-size:17px;letter-spacing:.02em}
-  .sub{font-size:12.5px;color:var(--dim);margin-top:4px}
-  nav{display:flex;gap:2px;margin-top:14px}
-  nav button{padding:9px 18px;border:1px solid var(--line);border-bottom:none;
-             border-radius:6px 6px 0 0;background:transparent;color:var(--dim);
-             font:inherit;font-size:13px;cursor:pointer;position:relative;top:1px}
-  nav button.on{background:var(--bg);color:var(--accent);font-weight:600;
-                border-color:var(--line);border-bottom:1px solid var(--bg)}
-  main{padding:22px 26px 90px;max-width:1180px}
+       font-family:var(--sans);font-size:15px;line-height:1.5;-webkit-font-smoothing:antialiased}
+  code,pre,.mono{font-family:var(--mono)}
+  header{position:relative;max-width:1360px;margin:0 auto;padding:26px 22px 16px;
+         border-bottom:2px solid var(--heri)}
+  h1{font-family:var(--serif);font-weight:500;font-size:clamp(26px,3.2vw,34px);
+     letter-spacing:-.015em;margin:0 0 5px;text-wrap:balance}
+  .stage{display:inline-block;font-family:var(--mono);font-size:10.5px;letter-spacing:.09em;
+         text-transform:uppercase;color:var(--accent);background:var(--warm);
+         border:1px solid var(--line);padding:2px 7px;margin-bottom:9px}
+  .sub{color:var(--dim);margin:0;max-width:74ch;font-size:14.5px}
+  .crumbs{position:absolute;top:26px;right:22px;display:flex;gap:6px;align-items:center}
+  .crumbs a,.crumbs button{font-family:var(--sans);font-size:12.5px;background:var(--panel);
+         color:var(--ink);border:1px solid var(--line);padding:4px 10px;cursor:pointer;
+         text-decoration:none;border-radius:0}
+  .crumbs a:hover,.crumbs button:hover{border-color:var(--accent);color:var(--accent)}
+  nav{display:flex;gap:0;margin-top:16px}
+  nav button{font-family:var(--sans);font-size:13px;background:none;color:var(--dim);
+             border:0;border-bottom:2px solid transparent;padding:6px 13px;cursor:pointer}
+  nav button:hover{color:var(--ink)}
+  nav button.on{color:var(--accent);border-bottom-color:var(--accent)}
+  main{max-width:1360px;margin:0 auto;padding:18px 22px 90px}
   h2{font-size:11px;text-transform:uppercase;letter-spacing:.09em;color:var(--dim);
      margin:26px 0 8px;font-weight:600}
   h2:first-child{margin-top:0}
@@ -69,17 +81,17 @@
         padding:10px 12px;font-size:12.5px;margin-top:10px}
   .key{display:flex;gap:16px;font-size:12px;color:var(--dim);margin:4px 0 10px}
   .key i{display:inline-block;width:11px;height:11px;border-radius:2px;margin-right:5px;vertical-align:-1px}
-  .themebtn{position:absolute;top:18px;right:26px;padding:5px 11px;border:1px solid var(--line);
-            border-radius:5px;background:var(--panel);color:var(--dim);font:inherit;font-size:12px;
-            cursor:pointer}
-  .themebtn:hover{border-color:var(--accent);color:var(--accent)}
-  header{position:relative}
+  .themebtn{font:inherit}
   .arrow{color:var(--accent);font-size:20px;text-align:center;padding:6px 0}
 </style>
 </head>
 <body>
 <header>
-  <button class="themebtn" id="themebtn">dark</button>
+  <div class="crumbs">
+    <a id="toplayground" href="#">&larr; Phase 1 &middot; playground</a>
+    <button class="themebtn" id="themebtn">dark</button>
+  </div>
+  <div class="stage">Phase 2 &middot; the schema, stored and queried</div>
   <h1>tatami</h1>
   <div class="sub" id="sub">schemaless JSON &rarr; a typed columnar schema, and what that buys</div>
   <nav>
@@ -121,6 +133,12 @@
 })();
 
 const $ = s => document.querySelector(s);
+/* The playground is a separate server on its own port; same host, so the link
+   is built rather than hard-coded to localhost. */
+(function () {
+  const a = document.getElementById('toplayground');
+  if (a) a.href = location.protocol + '//' + location.hostname + ':8420/';
+})();
 const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const cell = v => v === null || v === undefined
   ? '<span class="null">NULL</span>' : esc(v);
