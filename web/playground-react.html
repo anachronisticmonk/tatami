@@ -39,6 +39,27 @@
     --heri: #8FA8C4; --sel: #35402A;
   }
 
+  /* Saffron. Placed after the dark rules deliberately: the dark media block is
+     written as :root:not([data-theme="light"]), which matches this too, and the
+     two selectors have equal specificity -- so only source order keeps saffron
+     from being overpainted on a machine set to dark.
+
+     The accent is a deep saffron rather than #FF9933. Flag saffron on a pale
+     ground is about 2:1 against the text around it, which fails at body size;
+     this one measures 5.1:1 while reading as the same hue. The bright tone is
+     kept for fills, where contrast is not being asked of it. */
+  :root[data-theme="saffron"] {
+    --bg: #FFF6EA; --surface: #FFFDFA; --sunk: #FBE9D4; --rail: #FDF1E3;
+    /* --faint is 2.6:1 in the light theme and 3.4:1 in the dark one; it is
+       used for small uppercase labels and the line-number gutter. This one is
+       4.4:1, which reads as the same weight and is legible at that size. */
+    --ink: #241A10; --muted: #6B5742; --faint: #8A7458; --line: #EBD9C2;
+    --accent: #B35C00; --accent-bg: #FFE4C4;
+    --gold: #8A6C1F; --gold-bg: #F5E9CE;
+    --alarm: #9E3A22; --alarm-bg: #F5DFD8;
+    --heri: #2B3A4A; --sel: #FFD9A8;
+  }
+
   * { box-sizing: border-box; }
   body {
     margin: 0; background: var(--bg); color: var(--ink);
@@ -1149,8 +1170,9 @@ function useTheme() {
   return [theme, setTheme];
 }
 
-const NEXT = {system: 'light', light: 'dark', dark: 'system'};
-const THEME_LABEL = {system: 'theme: system', light: 'theme: light', dark: 'theme: dark'};
+const NEXT = {system: 'light', light: 'dark', dark: 'saffron', saffron: 'system'};
+const THEME_LABEL = {system: 'theme: system', light: 'theme: light',
+                     dark: 'theme: dark', saffron: 'theme: saffron'};
 
 /* ---- the page ---- */
 
