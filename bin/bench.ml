@@ -17,19 +17,42 @@ let median xs =
   Array.sort compare a;
   a.(Array.length a / 2)
 
-(* Median of a few, first discarded: the first pays for a cold page cache and
-   says more about the machine than about the store. *)
+(* Median of a few, and each of those a batch rather than a single call.
+
+   [document] is a hash lookup and a walk of one repo's subtree -- a few dozen
+   steps, a fraction of a microsecond -- where the clock resolves about one. So
+   timing it once measures the clock and reports 0.00. Each run repeats the
+   call until at least [floor_s] has passed and divides back down: still the
+   cost of one call, but measured where the clock has something to say.
+
+   The count is calibrated per store and per query rather than fixed, because
+   the same question costs a fraction of a microsecond in one store and four
+   seconds in another, and no one count suits both. Calibration doubles as the
+   warm-up that used to be discarded here: the first call pays for a cold page
+   cache and says more about the machine than about the store. *)
+let floor_s = 0.05
+let max_reps = 1 lsl 22
+
+let batch f k =
+  let t0 = now () in
+  for _ = 1 to k do ignore (f ()) done;
+  now () -. t0
+
+let calibrate f =
+  let rec go k = if k >= max_reps || batch f k >= floor_s then k else go (k * 4) in
+  go 1
+
 let best ?(n = 5) f =
-  ignore (f ());
-  let rec go k acc =
-    if k = 0 then acc
-    else
-      let t0 = now () in
-      let x = f () in
-      go (k - 1) ((now () -. t0, x) :: acc)
-  in
-  let rs = go n [] in
-  (median (List.map fst rs), snd (List.hd rs))
+  let k = calibrate f in
+  let per () = batch f k /. float_of_int k in
+  let rec go i acc = if i = 0 then acc else go (i - 1) (per () :: acc) in
+  (median (go n []), f ())
+
+(* Sub-millisecond figures are the whole point of calibrating, so they are
+   printed where they can be read rather than rounded to 0.00. *)
+let show t =
+  let m = ms t in
+  if m >= 1. then Printf.sprintf "%.2fms" m else Printf.sprintf "%.2fus" (m *. 1000.)
 
 let corpus = ref "corpus/ci.json"
 let results_path = ref ""
@@ -188,7 +211,7 @@ let () =
     (fun (q, _) ->
       Printf.printf "%-10s" q;
       let get r = List.assoc q r.timings in
-      List.iter (fun r -> Printf.printf " %11.2fms" (ms (get r))) results;
+      List.iter (fun r -> Printf.printf " %12s" (show (get r))) results;
       let rec_t = get (List.nth results 1) and col_t = get (List.nth results 2) in
       Printf.printf " %9.2fx\n" (rec_t /. col_t))
     reference.timings;
@@ -212,7 +235,7 @@ let () =
         List.iteri
           (fun k (q, t) ->
             if k > 0 then Buffer.add_char b ',';
-            Buffer.add_string b (Printf.sprintf "{\"q\":\"%s\",\"ms\":%.3f}" q (ms t)))
+            Buffer.add_string b (Printf.sprintf "{\"q\":\"%s\",\"ms\":%.6f}" q (ms t)))
           r.timings;
         Buffer.add_string b "]}")
       results;

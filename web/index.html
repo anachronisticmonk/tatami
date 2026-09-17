@@ -84,6 +84,16 @@ const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'
 const cell = v => v === null || v === undefined
   ? '<span class="null">NULL</span>' : esc(v);
 
+/* The bench reports the cost of one call. For `document` that is a hash lookup
+   and a walk of one repo's subtree -- a fraction of a microsecond -- and
+   milliseconds to two decimals would round every such figure to 0.00. So the
+   unit follows the magnitude. */
+const dur = v =>
+  !(v > 0)      ? 'too fast'
+  : v >= 1      ? v.toFixed(2) + 'ms'
+  : v >= 0.001  ? (v * 1000).toFixed(2) + '\u00b5s'
+  :               (v * 1e6).toFixed(0) + 'ns';
+
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   ['data','query','perf'].forEach(t => $('#' + t).hidden = (t !== b.dataset.tab));
@@ -148,7 +158,7 @@ Promise.all([fetch('/api/sample').then(r => r.json()),
     {k:'scan',      p:'30000', label:'steps over 30s',        sql:'select count(*) from step where ms > 30000'},
     {k:'computed',  p:'30000', label:'what slow steps cost',  sql:'select sum(ms * rate) from step where ms > 30000'},
     {k:'by_status', p:'',      label:'slowest per command',   sql:'select name, max(ms) from step group by name'},
-    {k:'document',  p:'',      label:'everything about one repo', sql:'-- reassemble one repo: its runs, jobs, steps'},
+    {k:'document',  p:'',      label:'everything about one repo', sql:"select count(distinct u.id) runs, count(distinct j.id) jobs, count(s.id) steps, coalesce(sum(s.ms),0) ms from repo r left join run u on u.repo_id=r.id left join job j on j.run_id=u.id left join step s on s.job_id=j.id where r.id='<repo id>'"},
     {k:'three_hop', p:'stark', label:'build time for an org', sql:"select sum(s.ms) from repo r join run u on u.repo_id=r.id join job j on j.run_id=u.id join step s on s.job_id=j.id where r.org='stark'"},
   ];
   let cur = 0;
@@ -183,7 +193,7 @@ Promise.all([fetch('/api/sample').then(r => r.json()),
     const max = Math.max(d.records.ms, d.columnar.ms) || 1;
     const row = (name, o, colour) => `
       <div style="margin:8px 0 2px"><b>${name}</b>
-        <span class="hint">${o.ms.toFixed(3)}ms &middot; median of 5</span></div>
+        <span class="hint">${dur(o.ms)} &middot; median of 5</span></div>
       <div style="height:14px;background:var(--code);border:1px solid var(--line);border-radius:3px">
         <div style="width:${o.ms / max * 100}%;height:100%;background:${colour};border-radius:2px"></div></div>`;
     $('#qout').innerHTML = `
@@ -293,7 +303,11 @@ const NOISE = 1.3;
 
 /* Below this both answers are quicker than the clock can resolve, and a ratio
    of two unmeasurable numbers is not a measurement. */
-const FLOOR = 0.01;
+/* Was 0.01ms, the point below which a single timed call said more about the
+   clock than the store. bin/bench.ml repeats a call until it can be resolved
+   and divides back down, so figures below that are real and only an outright
+   zero means nothing was measured. */
+const FLOOR = 0;
 
 function verdict(rec, col) {
   if (!(rec > FLOOR) && !(col > FLOOR))
@@ -348,8 +362,8 @@ function Perf({data}) {
             h('td', {className: 'mono'}, q),
             h('td', {style: {whiteSpace: 'normal', color: 'var(--dim)', fontSize: 12}},
               (WHAT[q] || ['', ''])[1]),
-            h('td', {className: 'num'}, rec > FLOOR ? rec.toFixed(2) + 'ms' : '<0.01ms'),
-            h('td', {className: 'num'}, col > FLOOR ? col.toFixed(2) + 'ms' : '<0.01ms'),
+            h('td', {className: 'num'}, dur(rec)),
+            h('td', {className: 'num'}, dur(col)),
             h('td', {}, h('span', {className: cls === 'hint' ? 'hint' : cls},
               who + (cls === 'hint' ? '' : ' by ' + by))));
         })))),
