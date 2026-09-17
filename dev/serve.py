@@ -9,6 +9,22 @@ JavaScript fallback.
 
 Two pages, the same engine behind both: the React one at /, and the original
 at /classic. TATAMI_PLAYGROUND_PORT moves it off 8420.
+
+Everything a checkout gets for free -- the binary under .lake, the pages under
+web/, loopback -- an image has to be told, because an image has no checkout to
+infer them from. So each of those is a default rather than a constant:
+
+    TATAMI_PLAYGROUND_ADDR   bind address        (default 127.0.0.1)
+    TATAMI_PLAYGROUND_PORT   bind port           (default 8420)
+    TATAMI_WEB               directory of pages  (default <root>/web)
+    TATAMI_BINARY            the generator       (default <root>/.lake/build/bin/tatami)
+
+TATAMI_WEB is spelled the same as bin/serve.ml's, so one variable points both
+servers at the same pages. The address stays loopback unless asked: a server
+should not appear on the network because someone started it -- but published
+ports forward to the container's external interface, so inside a container
+127.0.0.1 is reachable only from inside that container, which looks exactly
+like a working server and a broken port mapping.
 """
 
 import http.server
@@ -20,9 +36,20 @@ import sys
 import tempfile
 
 ROOT = pathlib.Path(__file__).resolve().parent.parent
-BINARY = ROOT / ".lake" / "build" / "bin" / "tatami"
-PAGE = ROOT / "web" / "playground-react.html"
-CLASSIC = ROOT / "web" / "playground.html"
+
+
+def _path(env, default):
+    """Env override for a path, taken as written (so a relative TATAMI_WEB
+    means the same thing here as it does to bin/serve.exe: relative to cwd)."""
+    value = os.environ.get(env)
+    return pathlib.Path(value) if value else default
+
+
+WEB = _path("TATAMI_WEB", ROOT / "web")
+BINARY = _path("TATAMI_BINARY", ROOT / ".lake" / "build" / "bin" / "tatami")
+PAGE = _path("TATAMI_PLAYGROUND_PAGE", WEB / "playground-react.html")
+CLASSIC = _path("TATAMI_PLAYGROUND_CLASSIC", WEB / "playground.html")
+ADDR = os.environ.get("TATAMI_PLAYGROUND_ADDR", "127.0.0.1")
 PORT = int(os.environ.get("TATAMI_PLAYGROUND_PORT", 8420))
 
 
@@ -95,8 +122,15 @@ class Handler(http.server.BaseHTTPRequestHandler):
 
 
 if __name__ == "__main__":
+    # flush=True throughout: under a container runtime stdout is a pipe, and a
+    # block-buffered pipe holds these lines until the process ends, which is
+    # exactly when nobody needs them any more.
     if not BINARY.exists():
-        print(f"warning: {BINARY} does not exist. Run `lake build` first.", file=sys.stderr)
-    print(f"tatami playground on http://localhost:{PORT}  (serving {PAGE.name} through {BINARY.name})")
-    print(f"the original page is at http://localhost:{PORT}/classic")
-    http.server.ThreadingHTTPServer(("127.0.0.1", PORT), Handler).serve_forever()
+        print(f"warning: {BINARY} does not exist. Run `lake build` first.",
+              file=sys.stderr, flush=True)
+    host = "localhost" if ADDR in ("127.0.0.1", "0.0.0.0", "::", "") else ADDR
+    print(f"tatami playground on http://{host}:{PORT}  (serving {PAGE.name} through {BINARY.name})",
+          flush=True)
+    print(f"the original page is at http://{host}:{PORT}/classic", flush=True)
+    print(f"  bound to {ADDR}:{PORT}", flush=True)
+    http.server.ThreadingHTTPServer((ADDR, PORT), Handler).serve_forever()

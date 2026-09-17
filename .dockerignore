@@ -9,9 +9,8 @@ _build
 docs
 *.pdf
 *.tsv
-Proofs
-Tatami
-*.lean
-lake-manifest.json
-lakefile.toml
-lean-toolchain
+
+# The Lean sources are IN the context now: the image builds the generator as
+# well as the servers, so the playground's /translate reaches the real binary
+# rather than falling back to the page's own JavaScript. They used to be
+# excluded, back when the image was the OCaml half alone.
