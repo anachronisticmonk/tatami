@@ -69,12 +69,14 @@ as well would say what this file says at the level of documents rather than of
 observations, and is the obvious next step.
 
 **Not covered, though it sounds as if it were.**
-* *Nullability.* Every theorem about types is silent about `option`.
-  `inferFinish` computes `absent` as `visits - values - nulls` in `Nat`, where
-  subtraction truncates, and nothing bounds `values + nulls` by `visits`. If
-  that ever failed, a column a document omitted would report `absent = 0` and
-  come out non-optional. It is the one obligation the restructure did not
-  remove.
+* *Nullability, the last step.* `Proofs.Counts` proves `infer_counts`: for
+  every column, `values + nulls + absent = visits`. That is the fact the
+  `option` marking rests on, since `inferFinish` computes `absent` by
+  truncating subtraction and would report `0` for a column a document omitted
+  if the counts ever exceeded the visits. What is still missing is the step
+  above it: that a document which omitted a key really does leave `absent`
+  positive, and so that `Obs.nullable` marks exactly the columns some document
+  left out. The counting is done; the reading of it is not.
 * *Null-only columns.* A member that only ever held `null` has an empty `seen`,
   so `joined` is `bot` and both halves of `types_principal` hold vacuously.
   There is no type information to constrain, but nothing constrains it.

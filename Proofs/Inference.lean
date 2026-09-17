@@ -49,9 +49,9 @@ alone, so neither proof uses its `inferCorpus` hypothesis; it is kept so the
 statement reads as a fact about an inferred schema.
 
 What they do *not* cover is nullability. `Obs.nullable` is derived from the
-`nulls` and `absent` counts, and `inferFinish` computes `absent` by truncating
-subtraction; nothing here bounds `values + nulls` by `visits`, so the `option`
-marking on a column is outside the guarantee.
+`nulls` and `absent` counts; `Proofs.Counts` proves those add up to the visit
+count, which is what makes `absent` meaningful, but nothing yet connects it
+back to the documents that omitted the key.
 -/
 
 namespace Tatami
