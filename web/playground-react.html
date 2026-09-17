@@ -907,6 +907,19 @@ const {useState, useEffect, useMemo, useRef, useCallback} = React;
    server is a cheap differential test. */
 let serverUp = null;
 
+/* Lifted from web/playground.html with esc(). The textarea in .stack is
+   painted transparent on purpose: what you read is this highlighted <pre>
+   sitting behind it, the textarea carrying only the caret and the selection.
+   Porting the textarea without the <pre> left the editor showing nothing. */
+const escHtml = s =>
+  String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+
+const highlight = src =>
+  escHtml(src)
+    .replace(/\b(type|module|rec|sig|end|val|and)\b/g, '<span class="kw">$1</span>')
+    .replace(/\b(int|float|string|bool|unit|option|list|id)\b/g, '<span class="ty">$1</span>')
+    .replace(/\(\*[^*]*\*\)/g, '<span class="cm">$&</span>');
+
 function localReport(src, config) {
   try {
     const docs = Engine.documents(Engine.readJson(src));
@@ -973,7 +986,7 @@ const isCollection = p => /\[\]$|\{\}$/.test(p);
 /* ---- panes ---- */
 
 function Modules({report, file, setFile, edits, setEdits}) {
-  if (!report) return null;
+  if (!report) return h('p', {className: 'lead'}, 'reading the JSON\u2026');
   if (!report.ok)
     return h('div', {id: 'errbox'}, h('div', {className: 'err'}, report.error));
   const files = report.files || [];
@@ -1001,9 +1014,17 @@ function Modules({report, file, setFile, edits, setEdits}) {
       h('div', {className: 'surface'},
         h('pre', {className: 'gutter'}, lines.map((_, n) => n + 1).join('\n')),
         h('div', {className: 'stack'},
+          h('pre', {
+            'aria-hidden': true,
+            dangerouslySetInnerHTML: {__html: highlight(text) + '\n'},
+          }),
           h('textarea', {
             spellCheck: false, value: text,
             'aria-label': 'Generated OCaml',
+            onScroll: e => {
+              const pre = e.target.previousSibling;
+              if (pre) { pre.scrollTop = e.target.scrollTop; pre.scrollLeft = e.target.scrollLeft; }
+            },
             onChange: e => setEdits({...edits, [f.name]: e.target.value}),
           })))));
 }
@@ -1111,6 +1132,26 @@ function Obs({report}) {
                 h('span', {key: k, className: 'note ' + tag, title: why}, tag)))))))))); 
 }
 
+/* The stylesheet already answers to data-theme on the root element, but
+   nothing ever set it, so the page could only follow the OS. This cycles
+   system -> light -> dark and remembers the choice. localStorage throws in a
+   private window, so every touch of it is guarded. */
+function useTheme() {
+  const [theme, setTheme] = useState(() => {
+    try { return localStorage.getItem('tatami-theme') || 'system'; } catch (e) { return 'system'; }
+  });
+  useEffect(() => {
+    const el = document.documentElement;
+    if (theme === 'system') el.removeAttribute('data-theme');
+    else el.setAttribute('data-theme', theme);
+    try { localStorage.setItem('tatami-theme', theme); } catch (e) {}
+  }, [theme]);
+  return [theme, setTheme];
+}
+
+const NEXT = {system: 'light', light: 'dark', dark: 'system'};
+const THEME_LABEL = {system: 'theme: system', light: 'theme: light', dark: 'theme: dark'};
+
 /* ---- the page ---- */
 
 function App() {
@@ -1121,6 +1162,7 @@ function App() {
   const [tab, setTab] = useState('modules');
   const [file, setFile] = useState(0);
   const [edits, setEdits] = useState({});
+  const [theme, setTheme] = useTheme();
   const seq = useRef(0);
 
   useEffect(() => {
@@ -1178,6 +1220,11 @@ function App() {
         h('div', {className: 'bar'},
           h('span', {className: 'title'}, 'JSON in'),
           h('span', {className: 'right'},
+            h('button', {
+              className: 'act', style: {marginRight: 8},
+              title: 'system follows the operating system',
+              onClick: () => setTheme(NEXT[theme]),
+            }, THEME_LABEL[theme]),
             h('span', {
               className: 'engine' + (via === 'lean' ? ' live' : ''),
               title: via === 'lean'
