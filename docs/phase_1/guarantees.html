@@ -1,0 +1,791 @@
+<!doctype html>
+<html lang="en" data-theme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>What Tatami Guarantees</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Spectral:ital,wght@0,400;0,600;1,400&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+  :root {
+    --paper:     #F2F4F6;
+    --surface:   #FFFFFF;
+    --surface-2: #E8ECF0;
+    --ink:       #151B21;
+    --ink-2:     #3D4A57;
+    --muted:     #667585;
+    --line:      #D3DAE1;
+    --line-soft: #E3E8ED;
+    --accent:    #1F6A8C;
+    --accent-bg: #E3EFF5;
+    --ok:        #2C6E4E;
+    --ok-bg:     #DFEDE5;
+    --todo:      #A83B2A;
+    --todo-bg:   #F6E3DF;
+
+    --sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+    --serif: Spectral, ui-serif, Georgia, serif;
+    --mono: "IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+    color-scheme: light;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --paper: #101419; --surface: #171C23; --surface-2: #1E252E;
+      --ink: #E4EAF0; --ink-2: #B7C2CE; --muted: #8695A4;
+      --line: #29313A; --line-soft: #212831;
+      --accent: #6FB6D6; --accent-bg: #15303D;
+      --ok: #63BE93; --ok-bg: #14301F;
+      --todo: #E0887A; --todo-bg: #341914;
+    }
+  }
+  :root[data-theme="dark"] {
+    --paper: #101419; --surface: #171C23; --surface-2: #1E252E;
+    --ink: #E4EAF0; --ink-2: #B7C2CE; --muted: #8695A4;
+    --line: #29313A; --line-soft: #212831;
+    --accent: #6FB6D6; --accent-bg: #15303D;
+    --ok: #63BE93; --ok-bg: #14301F;
+    --todo: #E0887A; --todo-bg: #341914;
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    margin: 0;
+    background: var(--paper);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 16px;
+    line-height: 1.62;
+    -webkit-font-smoothing: antialiased;
+  }
+  img { max-width: 100%; }
+  [hidden] { display: none !important; }
+
+  .wrap { max-width: 64rem; margin: 0 auto; padding-inline: 20px; padding-block: 0 64px; }
+  .col { max-width: 40rem; }
+
+  header.masthead {
+    border-bottom: 2px solid var(--ink);
+    padding-block: 44px 22px;
+    margin-bottom: 36px;
+  }
+
+  .eyebrow {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--accent); margin: 0 0 14px;
+  }
+
+  h1 {
+    font-family: var(--serif); font-weight: 600;
+    font-size: clamp(2rem, 5vw, 2.9rem); line-height: 1.1;
+    letter-spacing: -0.015em; margin: 0 0 14px; text-wrap: balance;
+  }
+
+  .standfirst {
+    font-family: var(--serif); font-size: clamp(1.05rem, 2.2vw, 1.22rem);
+    line-height: 1.5; color: var(--ink-2); margin: 0; max-width: 44rem;
+  }
+
+  .meta {
+    display: flex; flex-wrap: wrap; gap: 6px 26px; margin-top: 24px;
+    font-family: var(--mono); font-size: 12px; color: var(--muted);
+  }
+  .meta b { color: var(--ink-2); font-weight: 500; }
+
+  section { margin-bottom: 46px; }
+
+  h2 {
+    font-family: var(--serif); font-weight: 600; font-size: 1.45rem;
+    line-height: 1.25; margin: 0 0 4px; text-wrap: balance;
+  }
+  .sec-num {
+    font-family: var(--mono); font-size: 11.5px; letter-spacing: 0.08em;
+    color: var(--muted); display: block; margin-bottom: 8px;
+  }
+  h3 { font-family: var(--sans); font-weight: 600; font-size: 1rem; margin: 0 0 8px; }
+
+  p { margin: 0 0 15px; }
+  p:last-child { margin-bottom: 0; }
+  .lede { color: var(--ink-2); }
+
+  code {
+    font-family: var(--mono); font-size: 0.87em;
+    background: var(--surface-2); padding: 1px 5px; border-radius: 3px;
+  }
+  strong { font-weight: 600; }
+
+  pre.code {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.55;
+    background: var(--surface); border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    padding: 12px 14px; margin: 16px 0 0; overflow-x: auto;
+  }
+  pre.code .c { color: var(--muted); }
+
+  figure { margin: 0; }
+  figure svg { display: block; width: 100%; height: auto; color: var(--ink-2); }
+  figcaption {
+    font-size: 13.5px; color: var(--muted); margin-top: 12px;
+    max-width: 46rem; line-height: 1.55;
+  }
+
+  .figframe {
+    background: var(--surface); border: 1px solid var(--line);
+    padding: 18px 16px 12px;
+  }
+
+  .table-scroll { overflow-x: auto; }
+  table { border-collapse: collapse; width: 100%; min-width: 34rem; font-size: 14.5px; }
+  th, td { text-align: left; padding: 10px 13px; border-bottom: 1px solid var(--line-soft); vertical-align: top; }
+  thead th {
+    font-family: var(--mono); font-size: 11px; letter-spacing: 0.07em;
+    text-transform: uppercase; color: var(--muted); font-weight: 500;
+    border-bottom: 1px solid var(--line);
+  }
+  tbody th { font-family: var(--mono); font-weight: 400; font-size: 12.5px; color: var(--ink-2); white-space: nowrap; }
+
+  .pill {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.06em;
+    text-transform: uppercase; padding: 2px 7px; border-radius: 2px; white-space: nowrap;
+  }
+  .pill.ok   { color: var(--ok);   background: var(--ok-bg); }
+  .pill.todo { color: var(--todo); background: var(--todo-bg); }
+
+  .two { display: grid; grid-template-columns: repeat(2, minmax(0, 1fr)); gap: 22px; }
+
+  .card { background: var(--surface); border: 1px solid var(--line); padding: 18px 20px; }
+  .card h3 { font-family: var(--serif); font-size: 1.15rem; font-weight: 600; margin-bottom: 6px; }
+
+  .nums { display: grid; grid-template-columns: repeat(4, minmax(0,1fr)); gap: 0; border: 1px solid var(--line); background: var(--surface); }
+  .nums div { padding: 13px 15px; border-right: 1px solid var(--line-soft); }
+  .nums div:last-child { border-right: none; }
+  .nums .k { font-family: var(--mono); font-size: 11px; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+  .nums .v { font-family: var(--mono); font-size: 17px; color: var(--ink); margin-top: 3px; font-variant-numeric: tabular-nums; }
+
+  ol.left { margin: 0; padding-left: 1.3em; display: flex; flex-direction: column; gap: 11px; font-size: 15px; color: var(--ink-2); max-width: 42rem; }
+  ol.left li::marker { font-family: var(--mono); font-size: 13px; color: var(--todo); }
+
+  ul.plain { margin: 0; padding-left: 1.2em; display: flex; flex-direction: column; gap: 9px; font-size: 15px; color: var(--ink-2); max-width: 44rem; }
+
+  .ask { border-top: 2px solid var(--ink); padding-top: 22px; }
+
+  @media (max-width: 860px) {
+    .two { grid-template-columns: minmax(0,1fr); }
+    .nums { grid-template-columns: repeat(2, minmax(0,1fr)); }
+  }
+
+  @page { size: A4 portrait; margin: 13mm 12mm 14mm; }
+  @media print {
+    html, body { background: #fff !important; }
+    body { font-size: 10.2pt; line-height: 1.48; }
+    .wrap { max-width: none; padding-inline: 4mm; padding-block: 0; }
+    .two  { grid-template-columns: repeat(2, minmax(0,1fr)) !important; gap: 14px !important; }
+    .nums { grid-template-columns: repeat(4, minmax(0,1fr)) !important; }
+    header.masthead { padding-block: 0 14px; margin-bottom: 22px; }
+    h1 { font-size: 26pt; }
+    .standfirst { font-size: 11.4pt; }
+    section { margin-bottom: 20px; }
+    h2 { font-size: 15pt; }
+    figcaption { font-size: 9.2pt; }
+    table { min-width: 0; font-size: 9.4pt; }
+    th, td { padding: 7px 9px; }
+    .card { padding: 13px 15px; }
+    ol.left, ul.plain { font-size: 10.2pt; }
+    pre.code { font-size: 8.8pt; }
+    h1, h2, h3, .sec-num { break-after: avoid; }
+    figure, .card, .nums, .figframe, pre.code { break-inside: avoid; }
+    /* a long table may cross a page, but never mid-row, and never
+       leaving its heading stranded at the foot of one */
+    tr { break-inside: avoid; }
+    thead { break-after: avoid; }
+    .meta::after {
+      content: "docs/phase_1/pipeline.html \00B7 rebuild with make -C docs pipeline";
+      color: var(--muted);
+    }
+  }
+</style>
+<style>
+  ul.tree { list-style: none; margin: 0; padding-left: 0; }
+  ul.tree ul { list-style: none; margin: 0; padding-left: 15px; border-left: 1px solid var(--line); }
+  ul.tree li { margin: 0; padding: 1.5px 0 1.5px 9px; position: relative; }
+  ul.tree ul > li::before {
+    content: ""; position: absolute; left: -15px; top: 0.72em;
+    width: 12px; height: 1px; background: var(--line); }
+  ul.tree code { font-size: 11.5px; background: none; padding: 0; color: var(--accent); }
+  ul.tree a { text-decoration: none; }
+  .fileTag { font-family: var(--mono); font-size: 9.5px; color: var(--muted);
+             border: 1px solid var(--line-soft); border-radius: 2px;
+             padding: 0 3px; margin-left: 5px; vertical-align: 1px; }
+  .gloss { font-size: 11.5px; color: var(--ink-2); margin-left: 7px; }
+  .again { font-size: 10.5px; color: var(--muted); margin-left: 7px; font-style: italic; }
+  .repeat > a code { color: var(--muted); }
+  .prop { border-top: 1px solid var(--line-soft); padding: 11px 0 3px; }
+  .prop h4 { margin: 0 0 4px; font-family: var(--mono); font-size: 12.5px;
+             font-weight: 500; color: var(--accent); }
+  .prop .say { font-size: 14px; color: var(--ink); margin: 0 0 6px; max-width: 46rem; }
+  .prop pre { font-family: var(--mono); font-size: 10.8px; line-height: 1.45;
+              background: var(--surface-2); padding: 8px 10px; margin: 0;
+              overflow-x: auto; white-space: pre; border-radius: 2px; }
+  .lead { display: grid; grid-template-columns: 1.1fr 1fr; gap: 0 26px; align-items: start; }
+  @media print {
+    .meta::after { content: "docs/phase_1/guarantees.html \00B7 rebuild with make -C docs guarantees" !important; }
+    ul.tree code { font-size: 8pt; }
+    .gloss, .again { font-size: 8pt; }
+    .fileTag { font-size: 7pt; }
+    .prop pre { font-size: 7.6pt; }
+    .prop { break-inside: avoid; }
+    ul.tree > li { break-inside: avoid; }
+  }
+  @media (max-width: 860px) { .lead { grid-template-columns: minmax(0,1fr); } }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <header class="masthead">
+    <p class="eyebrow">Tatami &middot; Phase 1 &middot; formal guarantees</p>
+    <h1>What Tatami Guarantees</h1>
+    <p class="standfirst">One theorem in four parts, and the 116 results they rest on. Every statement below is checked by Lean's kernel; none is assumed, and none is left open.</p>
+    <div class="meta">
+      <span><b>Checked by</b> Lean 4.33.0, no Mathlib</span>
+      <span><b>Open goals</b> none</span>
+      <span><b>Theorems</b> 117</span>
+    </div>
+  </header>
+
+
+  <section>
+    <div class="col">
+      <span class="sec-num">01</span>
+      <h2>What &ldquo;proved&rdquo; means here</h2>
+      <p class="lede">Every claim in this document is a theorem in the repository, accepted by Lean's type checker. Nothing is asserted in prose and taken on trust.</p>
+    </div>
+    <div class="two" style="margin-top:18px">
+      <div class="card">
+        <h3>No open goals</h3>
+        <p style="font-size:14.5px;color:var(--ink-2);margin:0">Lean records an unfinished proof as <code>sorry</code> and warns on every one. The build reports none. This is mechanical, not a claim about our diligence: <code>lake build</code> prints a warning for each, and there are no warnings to print.</p>
+      </div>
+      <div class="card">
+        <h3>No extra axioms</h3>
+        <p style="font-size:14.5px;color:var(--ink-2);margin:0"><code>#print axioms pipeline_correct</code> reports <code>propext</code>, <code>Classical.choice</code> and <code>Quot.sound</code> &mdash; the three Lean itself is built on. In particular <em>not</em> <code>sorryAx</code>, which is what an unfinished proof would leave behind even if the warning were suppressed.</p>
+      </div>
+    </div>
+    <p style="margin-top:16px;font-size:13.5px;color:var(--muted);max-width:46rem">Mathlib is not used. Everything below rests on Lean's own library, which means the lemmas about lists, orders and sorting that the proofs need were either found in core or proved here.</p>
+  </section>
+
+
+  <section>
+    <div class="col">
+      <span class="sec-num">02</span>
+      <h2>The guarantee</h2>
+      <p class="lede">For a corpus inference accepted and a schema the generator accepted, four things hold of the output. This is one theorem, <code>pipeline_correct</code>; everything else in this document is what it rests on.</p>
+    </div>
+    <div class="table-scroll" style="margin-top:16px">
+      <table>
+        <thead><tr><th scope="col">#</th><th scope="col">Guarantee</th><th scope="col">Groups</th></tr></thead>
+        <tbody>
+
+<tr><th scope="row">1</th><td><a href="#t-signature-wellFormed"><strong>Well-formedness</strong></a>. The emitted signature repeats no module name, no value name within a module, and no field name within a record. That is what &ldquo;a legal OCaml signature&rdquo; amounts to for this fragment.<div style="margin-top:5px;font-size:13px;color:var(--muted)">Without it the generator could emit two record fields of one name, which OCaml rejects outright.</div></td><td style="font-size:12px;line-height:1.9"><a href="#t-gen-wellFormed"><code>gen_wellFormed</code></a></td></tr>
+<tr><th scope="row">2</th><td><a href="#t-schema-canonical"><strong>Canonicity</strong></a>. The schema is determined by the corpus as a collection of documents, not by the order they arrived in. Shuffle the corpus and the answer is <em>equal</em>, not merely equivalent.<div style="margin-top:5px;font-size:13px;color:var(--muted)">Without it two runs over the same data could disagree, and the output would depend on the order files happened to be read in.</div></td><td style="font-size:12px;line-height:1.9"><a href="#t-infer-perm"><code>infer_perm</code></a></td></tr>
+<tr><th scope="row">3</th><td><a href="#t-structure-preserved"><strong>Structure preservation</strong></a>. The tree the documents induce and the graph a reader finds in the generated signatures are the same graph &mdash; every edge one has the other has, distinct tables get distinct modules, and every table is reachable from the root.<div style="margin-top:5px;font-size:13px;color:var(--muted)">Each clause earns its place. Without the first two an edge could be lost; without the next two one could be invented; without injectivity two tables could collapse into one module and the agreement would be vacuous; without rootedness a table could be declared and never reached, which is a table the loader creates and never fills.</div></td><td style="font-size:12px;line-height:1.9"><a href="#t-gen-tree-complete"><code>gen_tree_complete</code></a> <a href="#t-gen-tree-sound"><code>gen_tree_sound</code></a> <a href="#t-gen-moduleName-injOn"><code>gen_moduleName_injOn</code></a> <a href="#t-gen-rooted"><code>gen_rooted</code></a></td></tr>
+<tr><th scope="row">4</th><td><a href="#t-types-principal"><strong>Principality</strong></a>. Each member is given the principal type of the values seen there: one that admits every one of them (<em>adequacy</em>), and the least type that does (<em>minimality</em>).<div style="margin-top:5px;font-size:13px;color:var(--muted)">Adequacy alone is nearly free &mdash; a corpus of integers is adequately described by <code>float</code>, or by <code>int option</code>. Minimality rules the loose answers out, and the two together pin the type from both sides.</div></td><td style="font-size:12px;line-height:1.9"><a href="#t-infer-admits"><code>infer_admits</code></a> <a href="#t-infer-least"><code>infer_least</code></a></td></tr>
+
+        </tbody>
+      </table>
+    </div>
+    <p style="margin-top:16px;max-width:46rem"><strong>What it does not say.</strong> Every part is conditional on both stages returning <code>ok</code>. Both refuse inputs &mdash; a member holding two types with no common type, a schema whose tree a signature cannot express &mdash; and the guarantee is about what is emitted, not about what is accepted. It also says nothing about rows: the program emits a description of tables, and the loader that fills them is OCaml, outside what Lean sees here.</p>
+  </section>
+
+
+  <section>
+    <div class="col">
+      <span class="sec-num">03</span>
+      <h2>What rests on what</h2>
+      <p class="lede">The dependency tree, read off the proof terms themselves rather than written by hand: a result appears under another exactly when the second proof mentions the first. A result used in more than one place is expanded the first time it appears and marked thereafter.</p>
+    </div>
+
+<div class="figframe" style="margin-top:16px"><h3 style="margin:0 0 8px;font-family:var(--serif);font-size:1.1rem">1. Well-formedness</h3>
+<ul class="tree"><li class="node"><a href="#t-signature-wellFormed"><code>signature_wellFormed</code></a><span class="fileTag">Guarantees</span><span class="gloss">The emitted signature repeats no module name, no value name within a module and no field name within a record.</span><ul><li class="node"><a href="#t-gen-wellFormed"><code>gen_wellFormed</code></a><span class="fileTag">Wellformed</span><span class="gloss">Every generated signature is well formed: no module, value or record field name repeats.</span><ul><li class="node"><a href="#t-certify-wellFormed"><code>certify_wellFormed</code></a><span class="fileTag">Wellformed</span><span class="gloss">The generator checks its own output before returning it.</span><ul><li class="node"><a href="#t-okB-sound"><code>okB_sound</code></a><span class="fileTag">Wellformed</span><span class="gloss">That check means what the proposition says.</span><ul><li class="node"><a href="#t-nodupNames-sound"><code>nodupNames_sound</code></a><span class="fileTag">Wellformed</span><span class="gloss">And so does its distinctness test.</span></li></ul></li></ul></li></ul></li></ul></li></ul></div>
+<div class="figframe" style="margin-top:16px"><h3 style="margin:0 0 8px;font-family:var(--serif);font-size:1.1rem">2. Canonicity</h3>
+<ul class="tree"><li class="node"><a href="#t-schema-canonical"><code>schema_canonical</code></a><span class="fileTag">Guarantees</span><span class="gloss">The schema is determined by the corpus as a collection of documents, not by the order they arrived in -- shuffle it and the answer is equal, not merely equivalent.</span><ul><li class="node"><a href="#t-infer-perm"><code>infer_perm</code></a><span class="fileTag">Inference</span><span class="gloss">The schema is a property of the corpus and not of the order its documents arrived in: shuffle the corpus and you get the same answer.</span><ul><li class="node"><a href="#t-Tables-merge-ok"><code>Tables.merge_ok</code></a><span class="fileTag">Merge</span><span class="gloss">Merging preserves the order invariant.</span><ul><li class="node"><a href="#t-TableObs-merge-ok"><code>TableObs.merge_ok</code></a><span class="fileTag">Merge</span><span class="gloss">The same, one level down.</span><ul><li class="node"><a href="#t-Obs-merge-ok"><code>Obs.merge_ok</code></a><span class="fileTag">Merge</span><span class="gloss">And one level down again.</span><ul><li class="node"><a href="#t-tyOrder"><code>tyOrder</code></a><span class="fileTag">Order</span><span class="gloss">So are types.</span></li><li class="node"><a href="#t-unionBy-sorted"><code>unionBy_sorted</code></a><span class="fileTag">Sorted</span><span class="gloss">And preserves order.</span><ul><li class="node"><a href="#t-belowK-of-lt"><code>belowK_of_lt</code></a><span class="fileTag">Sorted</span><span class="gloss">Transitivity carries `below` down from a smaller key.</span></li><li class="node"><a href="#t-unionBy-belowK"><code>unionBy_belowK</code></a><span class="fileTag">Sorted</span><span class="gloss">A key below both sets is below their union.</span></li></ul></li></ul></li></ul></li></ul></li><li class="node"><a href="#t-Tables-merge-right-comm"><code>Tables.merge_right_comm</code></a><span class="fileTag">Merge</span><span class="gloss">Together: two documents merged into an accumulator commute, which is what the corpus fold needs.</span><ul><li class="node"><a href="#t-Tables-merge-assoc"><code>Tables.merge_assoc</code></a><span class="fileTag">Merge</span><span class="gloss">And grouping three of them either way gives the same answer.</span><ul><li class="node"><a href="#t-TableObs-merge-assoc"><code>TableObs.merge_assoc</code></a><span class="fileTag">Merge</span><span class="gloss">The same, one level down.</span><ul><li class="node"><a href="#t-Obs-merge-assoc"><code>Obs.merge_assoc</code></a><span class="fileTag">Merge</span><span class="gloss">And one level down again.</span><ul><li class="node repeat"><a href="#t-tyOrder"><code>tyOrder</code></a><span class="fileTag">Order</span><span class="again">shown above</span></li><li class="node"><a href="#t-unionBy-assoc"><code>unionBy_assoc</code></a><span class="fileTag">Sorted</span><span class="gloss">And associative.</span><ul><li class="node"><a href="#t-sortedK-ext"><code>sortedK_ext</code></a><span class="fileTag">Sorted</span><span class="gloss">Two sorted sets with the same members are the same list.</span><ul><li class="node repeat"><a href="#t-belowK-of-lt"><code>belowK_of_lt</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node"><a href="#t-memBy-of-below"><code>memBy_of_below</code></a><span class="fileTag">Sorted</span><span class="gloss">A key below everything in a set is not in it.</span></li></ul></li><li class="node"><a href="#t-unionBy-mem"><code>unionBy_mem</code></a><span class="fileTag">Sorted</span><span class="gloss">A union is exactly the two memberships, disjoined.</span><ul><li class="node repeat"><a href="#t-belowK-of-lt"><code>belowK_of_lt</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-memBy-of-below"><code>memBy_of_below</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node repeat"><a href="#t-unionBy-sorted"><code>unionBy_sorted</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li></ul></li><li class="node repeat"><a href="#t-Obs-merge-ok"><code>Obs.merge_ok</code></a><span class="fileTag">Merge</span><span class="again">shown above</span></li><li class="node"><a href="#t-mergeBy-assocOn"><code>mergeBy_assocOn</code></a><span class="fileTag">Sorted</span><span class="gloss">Merging is associative, for the same reason.</span><ul><li class="node"><a href="#t-lookupBy-allV"><code>lookupBy_allV</code></a><span class="fileTag">Sorted</span><span class="gloss">A value looked up satisfies whatever the list&#x27;s values do.</span></li><li class="node"><a href="#t-mergeBy-lookup"><code>mergeBy_lookup</code></a><span class="fileTag">Sorted</span><span class="gloss">A merge is exactly its two lookups combined -- this is the whole content of merging, and both laws below read it off.</span><ul><li class="node"><a href="#t-below-of-lt"><code>below_of_lt</code></a><span class="fileTag">Sorted</span><span class="gloss">The same, for association lists.</span></li><li class="node"><a href="#t-lookupBy-of-below"><code>lookupBy_of_below</code></a><span class="fileTag">Sorted</span><span class="gloss">A key below everything in a list is not in it.</span></li></ul></li><li class="node"><a href="#t-mergeBy-sorted"><code>mergeBy_sorted</code></a><span class="fileTag">Sorted</span><span class="gloss">Merging two ordered lists gives an ordered list.</span><ul><li class="node repeat"><a href="#t-below-of-lt"><code>below_of_lt</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node"><a href="#t-mergeBy-below"><code>mergeBy_below</code></a><span class="fileTag">Sorted</span><span class="gloss">A key below both lists is below their merge.</span></li></ul></li><li class="node"><a href="#t-sorted-ext"><code>sorted_ext</code></a><span class="fileTag">Sorted</span><span class="gloss">Two sorted lists that agree on every lookup are the same list.</span><ul><li class="node repeat"><a href="#t-below-of-lt"><code>below_of_lt</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-lookupBy-of-below"><code>lookupBy_of_below</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li></ul></li><li class="node"><a href="#t-strOrder"><code>strOrder</code></a><span class="fileTag">Order</span><span class="gloss">Member names are strictly totally ordered.</span></li></ul></li><li class="node repeat"><a href="#t-TableObs-merge-ok"><code>TableObs.merge_ok</code></a><span class="fileTag">Merge</span><span class="again">shown above</span></li><li class="node"><a href="#t-pathOrder"><code>pathOrder</code></a><span class="fileTag">Order</span><span class="gloss">So are table paths.</span></li></ul></li><li class="node"><a href="#t-Tables-merge-comm"><code>Tables.merge_comm</code></a><span class="fileTag">Merge</span><span class="gloss">Merging two documents&#x27; observations gives the same answer in either order.</span><ul><li class="node"><a href="#t-TableObs-merge-comm"><code>TableObs.merge_comm</code></a><span class="fileTag">Merge</span><span class="gloss">The same, one level down, for a single table&#x27;s observations.</span><ul><li class="node"><a href="#t-Obs-merge-comm"><code>Obs.merge_comm</code></a><span class="fileTag">Merge</span><span class="gloss">And one level down again, for a single member&#x27;s: counts add, type sets union, flags disjoin.</span><ul><li class="node repeat"><a href="#t-tyOrder"><code>tyOrder</code></a><span class="fileTag">Order</span><span class="again">shown above</span></li><li class="node"><a href="#t-unionBy-comm"><code>unionBy_comm</code></a><span class="fileTag">Sorted</span><span class="gloss">The same for a set: union is commutative.</span></li></ul></li><li class="node"><a href="#t-mergeBy-commOn"><code>mergeBy_commOn</code></a><span class="fileTag">Sorted</span><span class="gloss">Merging is commutative, because combining lookups is.</span><ul><li class="node repeat"><a href="#t-lookupBy-allV"><code>lookupBy_allV</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-mergeBy-lookup"><code>mergeBy_lookup</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-mergeBy-sorted"><code>mergeBy_sorted</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-sorted-ext"><code>sorted_ext</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node repeat"><a href="#t-strOrder"><code>strOrder</code></a><span class="fileTag">Order</span><span class="again">shown above</span></li></ul></li><li class="node repeat"><a href="#t-pathOrder"><code>pathOrder</code></a><span class="fileTag">Order</span><span class="again">shown above</span></li></ul></li></ul></li><li class="node"><a href="#t-TablesOk-nil"><code>TablesOk.nil</code></a><span class="fileTag">Merge</span><span class="gloss">Observing nothing is trivially in order.</span></li><li class="node"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="gloss">A computation that succeeded had both halves succeed.</span></li><li class="node"><a href="#t-foldl-perm-on"><code>foldl_perm_on</code></a><span class="fileTag">Inference</span><span class="gloss">The same, where the laws hold only of values satisfying an invariant.</span></li><li class="node"><a href="#t-mapM-perm"><code>mapM_perm</code></a><span class="fileTag">Inference</span><span class="gloss">Permuted inputs give permuted outputs, when both succeed.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node"><a href="#t-mapM-ok-of-all"><code>mapM_ok_of_all</code></a><span class="fileTag">Inference</span><span class="gloss">If every element succeeds then the whole list does.</span></li><li class="node"><a href="#t-mapM-ok-pointwise"><code>mapM_ok_pointwise</code></a><span class="fileTag">Sorted</span><span class="gloss">And every input reached some output.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li></ul></li><li class="node"><a href="#t-mem-of-mapM-ok"><code>mem_of_mapM_ok</code></a><span class="fileTag">Sorted</span><span class="gloss">Every output of a mapped list came from some input.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-observeDocument-ok"><code>observeDocument_ok</code></a><span class="fileTag">Walk</span><span class="gloss">So one document, observed from nothing, comes out in order.</span><ul><li class="node repeat"><a href="#t-TablesOk-nil"><code>TablesOk.nil</code></a><span class="fileTag">Merge</span><span class="again">shown above</span></li><li class="node"><a href="#t-observe-ok"><code>observe_ok</code></a><span class="fileTag">Walk</span><span class="gloss">Everything the inference walk records is kept in key order -- tables by path, members by name, types by their order.</span><ul><li class="node"><a href="#t-Tables-upsert-ok"><code>Tables.upsert_ok</code></a><span class="fileTag">Merge</span><span class="gloss">Recording a table keeps everything in order.</span><ul><li class="node"><a href="#t-TableObsOk-empty"><code>TableObsOk.empty</code></a><span class="fileTag">Merge</span><span class="gloss">So is a table with no members yet.</span></li><li class="node"><a href="#t-allV-map"><code>allV_map</code></a><span class="fileTag">Sorted</span><span class="gloss">And preserves a property of the values.</span></li><li class="node"><a href="#t-insertBy-allV"><code>insertBy_allV</code></a><span class="fileTag">Sorted</span><span class="gloss">And preserves a property of the values.</span></li><li class="node"><a href="#t-insertBy-sorted"><code>insertBy_sorted</code></a><span class="fileTag">Sorted</span><span class="gloss">Inserting one entry keeps the list ordered.</span><ul><li class="node repeat"><a href="#t-below-of-lt"><code>below_of_lt</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node"><a href="#t-insertBy-below"><code>insertBy_below</code></a><span class="fileTag">Sorted</span><span class="gloss">And keeps a smaller key below it.</span></li></ul></li><li class="node repeat"><a href="#t-pathOrder"><code>pathOrder</code></a><span class="fileTag">Order</span><span class="again">shown above</span></li><li class="node"><a href="#t-sortedBy-map"><code>sortedBy_map</code></a><span class="fileTag">Sorted</span><span class="gloss">Rewriting values in place leaves the order alone.</span><ul><li class="node"><a href="#t-below-map"><code>below_map</code></a><span class="fileTag">Sorted</span><span class="gloss">So it leaves `below` alone.</span></li></ul></li></ul></li><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node"><a href="#t-keep"><code>keep</code></a><span class="fileTag">Walk</span><span class="gloss">Each record update the walk makes leaves the member list alone.</span></li><li class="node"><a href="#t-recordMember-ok"><code>recordMember_ok</code></a><span class="fileTag">Merge</span><span class="gloss">So does recording one observation at one member.</span><ul><li class="node repeat"><a href="#t-Obs-merge-ok"><code>Obs.merge_ok</code></a><span class="fileTag">Merge</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-Tables-upsert-ok"><code>Tables.upsert_ok</code></a><span class="fileTag">Merge</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-insertBy-allV"><code>insertBy_allV</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-insertBy-sorted"><code>insertBy_sorted</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-strOrder"><code>strOrder</code></a><span class="fileTag">Order</span><span class="again">shown above</span></li></ul></li></ul></li></ul></li></ul></li></ul></li></ul></div>
+<div class="figframe" style="margin-top:16px"><h3 style="margin:0 0 8px;font-family:var(--serif);font-size:1.1rem">3. Structure preservation</h3>
+<ul class="tree"><li class="node"><a href="#t-structure-preserved"><code>structure_preserved</code></a><span class="fileTag">Guarantees</span><span class="gloss">The tree the documents induce and the graph a reader finds in the generated signatures are the same graph, and it is rooted.</span><ul><li class="node"><a href="#t-gen-moduleName-injOn"><code>gen_moduleName_injOn</code></a><span class="fileTag">Tree</span><span class="gloss">Two different tables never get the same module name, so the file&#x27;s graph is the same graph and not a collapse of it.</span><ul><li class="node"><a href="#t-genModule-name"><code>genModule_name</code></a><span class="fileTag">Tree</span><span class="gloss">A table&#x27;s module is named after that table.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-gen-faithful"><code>gen_faithful</code></a><span class="fileTag">Tree</span><span class="gloss">The generator checks its input has the shape a corpus produces, so the tree properties hold of whatever it is handed.</span><ul><li class="node"><a href="#t-gen-schemaOk"><code>gen_schemaOk</code></a><span class="fileTag">Tree</span><span class="gloss">If generation succeeded, the schema passed that check.</span></li><li class="node repeat"><a href="#t-nodupNames-sound"><code>nodupNames_sound</code></a><span class="fileTag">Wellformed</span><span class="again">shown above</span></li><li class="node"><a href="#t-nodupPaths-sound"><code>nodupPaths_sound</code></a><span class="fileTag">Tree</span><span class="gloss">The check that no two tables share a path means what it says.</span></li><li class="node"><a href="#t-path-mem"><code>path_mem</code></a><span class="fileTag">Tree</span><span class="gloss">A path the check found in the schema is the path of a table of it.</span></li></ul></li><li class="node"><a href="#t-gen-modules"><code>gen_modules</code></a><span class="fileTag">Tree</span><span class="gloss">Every module in the output came from one of the three generation passes.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node"><a href="#t-gen-inv"><code>gen_inv</code></a><span class="fileTag">Tree</span><span class="gloss">Generation is the raw pass followed by a check that hands back its input unchanged.</span></li><li class="node"><a href="#t-noClash-modules"><code>noClash_modules</code></a><span class="fileTag">Tree</span><span class="gloss">The duplicate-name check hands back its input unchanged.</span></li></ul></li><li class="node repeat"><a href="#t-gen-wellFormed"><code>gen_wellFormed</code></a><span class="fileTag">Wellformed</span><span class="again">shown above</span></li><li class="node"><a href="#t-inj-of-nodup-map"><code>inj_of_nodup_map</code></a><span class="fileTag">Tree</span><span class="gloss">If a list&#x27;s keys are all distinct then two elements with the same key are the same element.</span></li><li class="node"><a href="#t-mapM-ok-map"><code>mapM_ok_map</code></a><span class="fileTag">Sorted</span><span class="gloss">A mapped list agrees pointwise with its inputs under any function that agrees on each.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-mem-orderTables-complete"><code>mem_orderTables_complete</code></a><span class="fileTag">Tree</span><span class="gloss">The same, said of the sort as a whole.</span><ul><li class="node"><a href="#t-mem-orderGo-complete"><code>mem_orderGo_complete</code></a><span class="fileTag">Tree</span><span class="gloss">And it loses none, given that no two tables share a path.</span><ul><li class="node repeat"><a href="#t-inj-of-nodup-map"><code>inj_of_nodup_map</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li></ul></li></ul></li></ul></li><li class="node"><a href="#t-gen-rooted"><code>gen_rooted</code></a><span class="fileTag">Tree</span><span class="gloss">Every table is reachable from the root, so walking the signatures from the root module enumerates the whole schema.</span><ul><li class="node repeat"><a href="#t-gen-schemaOk"><code>gen_schemaOk</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node"><a href="#t-reachable-sound"><code>reachable_sound</code></a><span class="fileTag">Tree</span><span class="gloss">Everything the search reports is genuinely reachable from the root.</span><ul><li class="node"><a href="#t-reachGo-sound"><code>reachGo_sound</code></a><span class="fileTag">Tree</span><span class="gloss">So does the whole search.</span><ul><li class="node"><a href="#t-stepReach-sound"><code>stepReach_sound</code></a><span class="fileTag">Tree</span><span class="gloss">One round of the reachability search only ever reports tables genuinely one edge further out.</span></li></ul></li></ul></li></ul></li><li class="node"><a href="#t-gen-tree-complete"><code>gen_tree_complete</code></a><span class="fileTag">Tree</span><span class="gloss">Nothing in the document&#x27;s tree is lost: every nesting the documents induce is declared in the generated signatures.</span><ul><li class="node"><a href="#t-gen-tree-complete-coll"><code>gen_tree_complete_coll</code></a><span class="fileTag">Tree</span><span class="gloss">The half of that for collections: a table whose rows sit inside another declares the lookup that finds them.</span><ul><li class="node"><a href="#t-genModule-lookup"><code>genModule_lookup</code></a><span class="fileTag">Tree</span><span class="gloss">A table whose rows sit in a collection declares the lookup that finds them from the holder&#x27;s key.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node repeat"><a href="#t-genModule-name"><code>genModule_name</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-gen-faithful"><code>gen_faithful</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node"><a href="#t-gen-module-of"><code>gen_module_of</code></a><span class="fileTag">Tree</span><span class="gloss">Every table of the schema has a module in the output.</span><ul><li class="node repeat"><a href="#t-gen-faithful"><code>gen_faithful</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-gen-modules"><code>gen_modules</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-mapM-ok-pointwise"><code>mapM_ok_pointwise</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-mem-orderTables-complete"><code>mem_orderTables_complete</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li></ul></li></ul></li><li class="node"><a href="#t-gen-tree-complete-ref"><code>gen_tree_complete_ref</code></a><span class="fileTag">Tree</span><span class="gloss">The half for references: a member that was an object and became a table leaves an accessor holding that table&#x27;s key.</span><ul><li class="node"><a href="#t-genModule-accessor"><code>genModule_accessor</code></a><span class="fileTag">Tree</span><span class="gloss">Every column of the layout becomes an accessor in the signature.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-genModule-layout"><code>genModule_layout</code></a><span class="fileTag">Tree</span><span class="gloss">A module was only generated if its column layout was computed first.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-genModule-lookup-only"><code>genModule_lookup_only</code></a><span class="fileTag">Tree</span><span class="gloss">And that is the only declaration of that shape, so a reader who finds one has found a parent and not something that merely resembles one.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node repeat"><a href="#t-genModule-name"><code>genModule_name</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-gen-faithful"><code>gen_faithful</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-gen-moduleName-injOn"><code>gen_moduleName_injOn</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-gen-module-of"><code>gen_module_of</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node"><a href="#t-gen-module-source"><code>gen_module_source</code></a><span class="fileTag">Tree</span><span class="gloss">Every module carrying any declaration at all is some table&#x27;s.</span><ul><li class="node"><a href="#t-genLoader-decls"><code>genLoader_decls</code></a><span class="fileTag">Tree</span><span class="gloss">A loader has no signature at all, so it carries no edges.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-genRegistry-decls"><code>genRegistry_decls</code></a><span class="fileTag">Tree</span><span class="gloss">Neither does the registry.</span></li><li class="node repeat"><a href="#t-gen-modules"><code>gen_modules</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-mem-of-mapM-ok"><code>mem_of_mapM_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node"><a href="#t-mem-orderTables-sound"><code>mem_orderTables_sound</code></a><span class="fileTag">Tree</span><span class="gloss">The same, said of the sort as a whole.</span><ul><li class="node"><a href="#t-mem-orderGo-sound"><code>mem_orderGo_sound</code></a><span class="fileTag">Tree</span><span class="gloss">The compile-order sort invents no tables.</span></li></ul></li></ul></li><li class="node repeat"><a href="#t-inj-of-nodup-map"><code>inj_of_nodup_map</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node"><a href="#t-keyTyOf-id-not-ref"><code>keyTyOf_id_not_ref</code></a><span class="fileTag">Tree</span><span class="gloss">A member called `id` that is an object is refused outright, so a reference never hides in the key.</span><ul><li class="node"><a href="#t-find--id-eq"><code>find?_id_eq</code></a><span class="fileTag">Tree</span><span class="gloss">With distinct member names, looking up the key finds the column that is there to be found.</span><ul><li class="node repeat"><a href="#t-inj-of-nodup-map"><code>inj_of_nodup_map</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li></ul></li></ul></li><li class="node"><a href="#t-layoutOf-keyTy"><code>layoutOf_keyTy</code></a><span class="fileTag">Tree</span><span class="gloss">If the layout was computed, the key&#x27;s type was settled first.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-layoutOf-mapM"><code>layoutOf_mapM</code></a><span class="fileTag">Tree</span><span class="gloss">If the layout was computed, every member was considered.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-layoutOf-member"><code>layoutOf_member</code></a><span class="fileTag">Tree</span><span class="gloss">A column produced for a member of the table reaches the layout.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-mapM-ok-pointwise"><code>mapM_ok_pointwise</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node repeat"><a href="#t-mapM-ok-pointwise"><code>mapM_ok_pointwise</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node"><a href="#t-memberCol-ref"><code>memberCol_ref</code></a><span class="fileTag">Tree</span><span class="gloss">A member that is an object and is not the key becomes a column holding that object&#x27;s key.</span></li></ul></li></ul></li><li class="node"><a href="#t-gen-tree-sound"><code>gen_tree_sound</code></a><span class="fileTag">Tree</span><span class="gloss">Nothing is invented: every edge a reader finds between two tables is one the documents actually induced.</span><ul><li class="node"><a href="#t-baseCols-ref"><code>baseCols_ref</code></a><span class="fileTag">Tree</span><span class="gloss">Of the columns a table&#x27;s position adds, only the back reference is a key into another table.</span><ul><li class="node"><a href="#t-keyTyOf-not-ref"><code>keyTyOf_not_ref</code></a><span class="fileTag">Tree</span><span class="gloss">A table&#x27;s key is never an object.</span></li></ul></li><li class="node"><a href="#t-colTyExpr-ref"><code>colTyExpr_ref</code></a><span class="fileTag">Tree</span><span class="gloss">Only a reference column is typed as another module&#x27;s key; a collection becomes a list and a scalar a scalar.</span></li><li class="node"><a href="#t-genModule-accessor-only"><code>genModule_accessor_only</code></a><span class="fileTag">Tree</span><span class="gloss">And accessors are the only declarations that take a row and return another module&#x27;s key.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node repeat"><a href="#t-genModule-lookup"><code>genModule_lookup</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-genModule-lookup-only"><code>genModule_lookup_only</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-genModule-name"><code>genModule_name</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-gen-faithful"><code>gen_faithful</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-gen-moduleName-injOn"><code>gen_moduleName_injOn</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-gen-module-source"><code>gen_module_source</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-inj-of-nodup-map"><code>inj_of_nodup_map</code></a><span class="fileTag">Tree</span><span class="again">shown above</span></li><li class="node"><a href="#t-mem-layoutOf"><code>mem_layoutOf</code></a><span class="fileTag">Tree</span><span class="gloss">Every member that is neither the table&#x27;s key nor a collection becomes a column, under its mangled name, at the type inference gave it.</span><ul><li class="node repeat"><a href="#t-except-bind-ok"><code>except_bind_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li><li class="node repeat"><a href="#t-mem-of-mapM-ok"><code>mem_of_mapM_ok</code></a><span class="fileTag">Sorted</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-memberCol-ty"><code>memberCol_ty</code></a><span class="fileTag">Tree</span><span class="gloss">A member column keeps the member&#x27;s own type.</span></li></ul></li></ul></li></ul></div>
+<div class="figframe" style="margin-top:16px"><h3 style="margin:0 0 8px;font-family:var(--serif);font-size:1.1rem">4. Principality</h3>
+<ul class="tree"><li class="node"><a href="#t-types-principal"><code>types_principal</code></a><span class="fileTag">Guarantees</span><span class="gloss">Each member is given the principal type of the values seen there: one that admits every one of them, and the least type that does.</span><ul><li class="node"><a href="#t-infer-admits"><code>infer_admits</code></a><span class="fileTag">Inference</span><span class="gloss">Every type ever seen at a member fits the type that member was given.</span><ul><li class="node"><a href="#t-obs-admits"><code>obs_admits</code></a><span class="fileTag">Inference</span><span class="gloss">Said of one member&#x27;s observations on their own.</span><ul><li class="node"><a href="#t-foldJoin-le"><code>foldJoin_le</code></a><span class="fileTag">Inference</span><span class="gloss">Folding the type-join over a list of observed types lands above every one of them.</span><ul><li class="node"><a href="#t-foldJoin-none"><code>foldJoin_none</code></a><span class="fileTag">Inference</span><span class="gloss">Once the join is undefined it stays undefined, so a fold that succeeded never passed through failure.</span></li><li class="node"><a href="#t-join-idem"><code>join_idem</code></a><span class="fileTag">Lattice</span><span class="gloss">A type joined with itself is itself.</span></li><li class="node"><a href="#t-le-join-left"><code>le_join_left</code></a><span class="fileTag">Lattice</span><span class="gloss">The common type is above the first argument.</span></li><li class="node"><a href="#t-le-join-right"><code>le_join_right</code></a><span class="fileTag">Lattice</span><span class="gloss">And above the second.</span><ul><li class="node"><a href="#t-join-comm"><code>join_comm</code></a><span class="fileTag">Lattice</span><span class="gloss">The common type of two types does not depend on which is named first.</span></li><li class="node repeat"><a href="#t-le-join-left"><code>le_join_left</code></a><span class="fileTag">Lattice</span><span class="again">shown above</span></li></ul></li><li class="node"><a href="#t-le-trans"><code>le_trans</code></a><span class="fileTag">Inference</span><span class="gloss">The type order is transitive.</span><ul><li class="node"><a href="#t-join-assoc"><code>join_assoc</code></a><span class="fileTag">Lattice</span><span class="gloss">Nor on how three of them are grouped, which is what makes folding observations order-independent.</span></li></ul></li></ul></li></ul></li></ul></li><li class="node"><a href="#t-infer-least"><code>infer_least</code></a><span class="fileTag">Inference</span><span class="gloss">And that type is the least one that fits, so nothing is widened further than the data forces.</span><ul><li class="node"><a href="#t-obs-least"><code>obs_least</code></a><span class="fileTag">Inference</span><span class="gloss">Said of one member&#x27;s observations on their own.</span><ul><li class="node"><a href="#t-bot-le"><code>bot_le</code></a><span class="fileTag">Lattice</span><span class="gloss">The empty type sits below everything.</span></li><li class="node"><a href="#t-foldJoin-least"><code>foldJoin_least</code></a><span class="fileTag">Inference</span><span class="gloss">And lands below anything else that is above them all.</span><ul><li class="node repeat"><a href="#t-foldJoin-none"><code>foldJoin_none</code></a><span class="fileTag">Inference</span><span class="again">shown above</span></li><li class="node"><a href="#t-join-least"><code>join_least</code></a><span class="fileTag">Lattice</span><span class="gloss">The common type is the *least* type above both -- the tightest answer, not merely an answer.</span></li></ul></li></ul></li></ul></li></ul></li></ul></div>
+  </section>
+
+  <section>
+    <div class="col">
+      <span class="sec-num">04</span>
+      <h2>Every property, in full</h2>
+      <p class="lede">All 117 results, grouped by the area they belong to: what each says in plain words, and the Lean statement verbatim.</p>
+    </div>
+
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Guarantees <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">5</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">The summary theorem itself.</p>
+<div class="prop" id="t-pipeline-correct"><h4>pipeline_correct</h4><p class="say">Everything below in one statement: for a corpus inference accepted and a schema the generator accepted, the signature is well formed, the schema is canonical, the structure is preserved and the types are principal.</p><pre>theorem pipeline_correct (cfg : Config) (nm : Naming) (ds : List Doc)
+    (ts : Tables) (f : File)
+    (hinf : inferCorpus cfg ds = .ok ts)
+    (hgen : gen nm (toSchema ts) = .ok f) :
+    f.WellFormed
+  ∧ (∀ es ts&#x27;, ds.Perm es → inferCorpus cfg es = .ok ts&#x27; → ts = ts&#x27;)
+  ∧ ((∀ p q, CollEdge (toSchema ts) p q →
+        FileCollEdge f (moduleName nm p) (moduleName nm q))
+     ∧ (∀ p q, RefEdge (toSchema ts) p q →
+        FileRefEdge f (moduleName nm p) (moduleName nm q))
+     ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+          FileCollEdge f (moduleName nm t.path) (moduleName nm u.path) →
+          CollEdge (toSchema ts) t.path u.path)
+     ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+          FileRefEdge f (moduleName nm t.path) (moduleName nm u.path) →
+          RefEdge (toSchema ts) t.path u.path)
+     ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+          moduleName nm t.path = moduleName nm u.path → t.path = u.path)
+     ∧ Rooted (toSchema ts))
+  ∧ (∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members → ∀ τ, o.joined = some τ →
+        (∀ ty, ty ∈ o.seen → ty ⊑ τ) ∧ (∀ σ, (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ))</pre></div>
+<div class="prop" id="t-schema-canonical"><h4>schema_canonical</h4><p class="say">The schema is determined by the corpus as a collection of documents, not by the order they arrived in -- shuffle it and the answer is equal, not merely equivalent.</p><pre>theorem schema_canonical (cfg : Config) (ds : List Doc) (ts : Tables)
+    (hinf : inferCorpus cfg ds = .ok ts) :
+    ∀ es ts&#x27;, ds.Perm es → inferCorpus cfg es = .ok ts&#x27; → ts = ts&#x27;</pre></div>
+<div class="prop" id="t-signature-wellFormed"><h4>signature_wellFormed</h4><p class="say">The emitted signature repeats no module name, no value name within a module and no field name within a record.</p><pre>theorem signature_wellFormed (nm : Naming) (s : Schema) (f : File)
+    (hgen : gen nm s = .ok f) : f.WellFormed</pre></div>
+<div class="prop" id="t-structure-preserved"><h4>structure_preserved</h4><p class="say">The tree the documents induce and the graph a reader finds in the generated signatures are the same graph, and it is rooted.</p><pre>theorem structure_preserved (nm : Naming) (s : Schema) (f : File)
+    (hgen : gen nm s = .ok f) :
+    -- nothing lost
+    (∀ p q, CollEdge s p q → FileCollEdge f (moduleName nm p) (moduleName nm q))
+  ∧ (∀ p q, RefEdge s p q → FileRefEdge f (moduleName nm p) (moduleName nm q))
+    -- nothing invented
+  ∧ (∀ t u, t ∈ s → u ∈ s →
+        FileCollEdge f (moduleName nm t.path) (moduleName nm u.path) →
+        CollEdge s t.path u.path)
+  ∧ (∀ t u, t ∈ s → u ∈ s →
+        FileRefEdge f (moduleName nm t.path) (moduleName nm u.path) →
+        RefEdge s t.path u.path)
+    -- the same graph, not a quotient of it
+  ∧ (∀ t u, t ∈ s → u ∈ s →
+        moduleName nm t.path = moduleName nm u.path → t.path = u.path)
+    -- and rooted
+  ∧ Rooted s</pre></div>
+<div class="prop" id="t-types-principal"><h4>types_principal</h4><p class="say">Each member is given the principal type of the values seen there: one that admits every one of them, and the least type that does.</p><pre>theorem types_principal (cfg : Config) (ds : List Doc) (ts : Tables)
+    (hinf : inferCorpus cfg ds = .ok ts) :
+    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members → ∀ τ, o.joined = some τ →
+      (∀ ty, ty ∈ o.seen → ty ⊑ τ) ∧ (∀ σ, (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ)</pre></div>
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Tree <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">42</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">That the nesting of the JSON and the shape of the generated signatures are the same tree. The largest group, because the correspondence has to be proved in both directions and the generator taken apart to do it.</p>
+<div class="prop" id="t-baseCols-ref"><h4>baseCols_ref</h4><p class="say">Of the columns a table&#x27;s position adds, only the back reference is a key into another table.</p><pre>theorem baseCols_ref {nm : Naming} {t : Table} {kt : Ty} {c : Col} {p : Path}
+    (hkt : keyTyOf t = .ok kt) (hc : c ∈ baseCols nm t kt) (hty : c.ty = .ref p) :
+    t.parent = some p</pre></div>
+<div class="prop" id="t-colTyExpr-ref"><h4>colTyExpr_ref</h4><p class="say">Only a reference column is typed as another module&#x27;s key; a collection becomes a list and a scalar a scalar.</p><pre>theorem colTyExpr_ref {nm : Naming} {c : Col} {a : String}
+    (h : colTyExpr nm c = TyExpr.qualified a &quot;id&quot; ∨
+         colTyExpr nm c = (TyExpr.qualified a &quot;id&quot;).option) :
+    ∃ p, c.ty = .ref p ∧ a = moduleName nm p</pre></div>
+<div class="prop" id="t-find--id-eq"><h4>find?_id_eq</h4><p class="say">With distinct member names, looking up the key finds the column that is there to be found.</p><pre>theorem find?_id_eq : ∀ {l : List Column}, (l.map Column.name).Nodup →
+    ∀ {c : Column}, c ∈ l → c.name = &quot;id&quot; →
+    l.find? (fun x =&gt; x.name == &quot;id&quot;) = some c</pre></div>
+<div class="prop" id="t-genLoader-decls"><h4>genLoader_decls</h4><p class="say">A loader has no signature at all, so it carries no edges.</p><pre>theorem genLoader_decls {s : Schema} {nm : Naming} {t : Table} {m : Module}
+    (h : genLoader s nm t = .ok m) : m.decls = []</pre></div>
+<div class="prop" id="t-genModule-accessor"><h4>genModule_accessor</h4><p class="say">Every column of the layout becomes an accessor in the signature.</p><pre>theorem genModule_accessor {nm : Naming} {t : Table} {m : Module} {cols : List Col} {c : Col}
+    (h : genModule nm t = .ok m) (hl : layoutOf nm t = .ok cols) (hc : c ∈ cols) :
+    Decl.value c.name (.arrow (.named &quot;t&quot;) (colTyExpr nm c)) ∈ m.decls</pre></div>
+<div class="prop" id="t-genModule-accessor-only"><h4>genModule_accessor_only</h4><p class="say">And accessors are the only declarations that take a row and return another module&#x27;s key.</p><pre>theorem genModule_accessor_only {nm : Naming} {t : Table} {m : Module}
+    {n : String} {X : TyExpr}
+    (h : genModule nm t = .ok m)
+    (hd : Decl.value n ((TyExpr.named &quot;t&quot;).arrow X) ∈ m.decls)
+    (hX : ∀ Y Z, X ≠ TyExpr.arrow Y Z) :
+    ∃ cols c, layoutOf nm t = .ok cols ∧ c ∈ cols ∧ X = colTyExpr nm c</pre></div>
+<div class="prop" id="t-genModule-layout"><h4>genModule_layout</h4><p class="say">A module was only generated if its column layout was computed first.</p><pre>theorem genModule_layout {nm : Naming} {t : Table} {m : Module}
+    (h : genModule nm t = .ok m) : ∃ cols, layoutOf nm t = .ok cols</pre></div>
+<div class="prop" id="t-genModule-lookup"><h4>genModule_lookup</h4><p class="say">A table whose rows sit in a collection declares the lookup that finds them from the holder&#x27;s key.</p><pre>theorem genModule_lookup {nm : Naming} {t : Table} {m : Module} {pp : Path}
+    (h : genModule nm t = .ok m) (hp : t.parent = some pp) :
+    Decl.value (childLookupName nm pp)
+      (.arrow (.qualified (moduleName nm pp) &quot;id&quot;) (.list (.named &quot;t&quot;))) ∈ m.decls</pre></div>
+<div class="prop" id="t-genModule-lookup-only"><h4>genModule_lookup_only</h4><p class="say">And that is the only declaration of that shape, so a reader who finds one has found a parent and not something that merely resembles one.</p><pre>theorem genModule_lookup_only {nm : Naming} {t : Table} {m : Module} {a n : String}
+    (h : genModule nm t = .ok m)
+    (hd : Decl.value n ((TyExpr.qualified a &quot;id&quot;).arrow (TyExpr.list (TyExpr.named &quot;t&quot;)))
+            ∈ m.decls) :
+    ∃ pp, t.parent = some pp ∧ a = moduleName nm pp</pre></div>
+<div class="prop" id="t-genModule-name"><h4>genModule_name</h4><p class="say">A table&#x27;s module is named after that table.</p><pre>theorem genModule_name {nm : Naming} {t : Table} {m : Module}
+    (h : genModule nm t = .ok m) : m.name = moduleName nm t.path</pre></div>
+<div class="prop" id="t-genRegistry-decls"><h4>genRegistry_decls</h4><p class="say">Neither does the registry.</p><pre>theorem genRegistry_decls {s : Schema} {nm : Naming} {m : Module}
+    (h : genRegistry s nm = .ok m) : m.decls = []</pre></div>
+<div class="prop" id="t-gen-faithful"><h4>gen_faithful</h4><p class="say">The generator checks its input has the shape a corpus produces, so the tree properties hold of whatever it is handed.</p><pre>theorem gen_faithful (nm : Naming) (s : Schema) (f : File) (h : gen nm s = .ok f) :
+    Faithful s</pre></div>
+<div class="prop" id="t-gen-inv"><h4>gen_inv</h4><p class="say">Generation is the raw pass followed by a check that hands back its input unchanged.</p><pre>theorem gen_inv {nm : Naming} {s : Schema} {f : File} (h : gen nm s = .ok f) :
+    genRaw nm s = .ok f</pre></div>
+<div class="prop" id="t-gen-moduleName-injOn"><h4>gen_moduleName_injOn</h4><p class="say">Two different tables never get the same module name, so the file&#x27;s graph is the same graph and not a collapse of it.</p><pre>theorem gen_moduleName_injOn (nm : Naming) (s : Schema) (f : File)
+    (h : gen nm s = .ok f) :
+    ∀ t u, t ∈ s → u ∈ s → moduleName nm t.path = moduleName nm u.path → t.path = u.path</pre></div>
+<div class="prop" id="t-gen-module-of"><h4>gen_module_of</h4><p class="say">Every table of the schema has a module in the output.</p><pre>theorem gen_module_of {nm : Naming} {s : Schema} {f : File} {t : Table}
+    (h : gen nm s = .ok f) (ht : t ∈ s) :
+    ∃ m, m ∈ f.modules ∧ genModule nm t = .ok m</pre></div>
+<div class="prop" id="t-gen-module-source"><h4>gen_module_source</h4><p class="say">Every module carrying any declaration at all is some table&#x27;s.</p><pre>theorem gen_module_source {nm : Naming} {s : Schema} {f : File} {m : Module}
+    (h : gen nm s = .ok f) (hm : m ∈ f.modules) (hd : m.decls ≠ []) :
+    ∃ t, t ∈ s ∧ genModule nm t = .ok m</pre></div>
+<div class="prop" id="t-gen-modules"><h4>gen_modules</h4><p class="say">Every module in the output came from one of the three generation passes.</p><pre>theorem gen_modules {nm : Naming} {s : Schema} {f : File} (h : gen nm s = .ok f) :
+    ∃ units loaders registry,
+      (orderTables s).mapM (genModule nm) = .ok units ∧
+      (orderTables s).mapM (genLoader s nm) = .ok loaders ∧
+      genRegistry s nm = .ok registry ∧
+      f.modules = units ++ loaders ++ [registry]</pre></div>
+<div class="prop" id="t-gen-rooted"><h4>gen_rooted</h4><p class="say">Every table is reachable from the root, so walking the signatures from the root module enumerates the whole schema.</p><pre>theorem gen_rooted (nm : Naming) (s : Schema) (f : File) (h : gen nm s = .ok f) :
+    Rooted s</pre></div>
+<div class="prop" id="t-gen-schemaOk"><h4>gen_schemaOk</h4><p class="say">If generation succeeded, the schema passed that check.</p><pre>theorem gen_schemaOk {nm : Naming} {s : Schema} {f : File} (h : gen nm s = .ok f) :
+    schemaOkB s = true</pre></div>
+<div class="prop" id="t-gen-tree-complete"><h4>gen_tree_complete</h4><p class="say">Nothing in the document&#x27;s tree is lost: every nesting the documents induce is declared in the generated signatures.</p><pre>theorem gen_tree_complete (nm : Naming) (s : Schema) (f : File)
+    (h : gen nm s = .ok f) :
+    (∀ p q, CollEdge s p q → FileCollEdge f (moduleName nm p) (moduleName nm q)) ∧
+    (∀ p q, RefEdge  s p q → FileRefEdge  f (moduleName nm p) (moduleName nm q))</pre></div>
+<div class="prop" id="t-gen-tree-complete-coll"><h4>gen_tree_complete_coll</h4><p class="say">The half of that for collections: a table whose rows sit inside another declares the lookup that finds them.</p><pre>theorem gen_tree_complete_coll (nm : Naming) (s : Schema) (f : File)
+    (h : gen nm s = .ok f) :
+    ∀ p q, CollEdge s p q → FileCollEdge f (moduleName nm p) (moduleName nm q)</pre></div>
+<div class="prop" id="t-gen-tree-complete-ref"><h4>gen_tree_complete_ref</h4><p class="say">The half for references: a member that was an object and became a table leaves an accessor holding that table&#x27;s key.</p><pre>theorem gen_tree_complete_ref (nm : Naming) (s : Schema) (f : File)
+    (h : gen nm s = .ok f) :
+    ∀ p q, RefEdge s p q → FileRefEdge f (moduleName nm p) (moduleName nm q)</pre></div>
+<div class="prop" id="t-gen-tree-sound"><h4>gen_tree_sound</h4><p class="say">Nothing is invented: every edge a reader finds between two tables is one the documents actually induced.</p><pre>theorem gen_tree_sound (nm : Naming) (s : Schema) (f : File)
+    (h : gen nm s = .ok f) :
+    (∀ t u, t ∈ s → u ∈ s →
+        FileCollEdge f (moduleName nm t.path) (moduleName nm u.path) →
+        CollEdge s t.path u.path) ∧
+    (∀ t u, t ∈ s → u ∈ s →
+        FileRefEdge f (moduleName nm t.path) (moduleName nm u.path) →
+        RefEdge s t.path u.path)</pre></div>
+<div class="prop" id="t-inj-of-nodup-map"><h4>inj_of_nodup_map</h4><p class="say">If a list&#x27;s keys are all distinct then two elements with the same key are the same element.</p><pre>theorem inj_of_nodup_map {α β : Type} {f : α → β} :
+    ∀ {l : List α}, (l.map f).Nodup → ∀ {a b : α}, a ∈ l → b ∈ l → f a = f b → a = b</pre></div>
+<div class="prop" id="t-keyTyOf-id-not-ref"><h4>keyTyOf_id_not_ref</h4><p class="say">A member called `id` that is an object is refused outright, so a reference never hides in the key.</p><pre>theorem keyTyOf_id_not_ref {t : Table} {kt : Ty} {c : Column} {q : Path}
+    (h : keyTyOf t = .ok kt) (hn : (t.columns.map Column.name).Nodup)
+    (hc : c ∈ t.columns) (hid : c.name = &quot;id&quot;) (hty : c.field.ty = .ref q) : False</pre></div>
+<div class="prop" id="t-keyTyOf-not-ref"><h4>keyTyOf_not_ref</h4><p class="say">A table&#x27;s key is never an object.</p><pre>theorem keyTyOf_not_ref {t : Table} {kt : Ty} {p : Path}
+    (h : keyTyOf t = .ok kt) : kt ≠ .ref p</pre></div>
+<div class="prop" id="t-layoutOf-keyTy"><h4>layoutOf_keyTy</h4><p class="say">If the layout was computed, the key&#x27;s type was settled first.</p><pre>theorem layoutOf_keyTy {nm : Naming} {t : Table} {cols : List Col}
+    (h : layoutOf nm t = .ok cols) : ∃ kt, keyTyOf t = .ok kt</pre></div>
+<div class="prop" id="t-layoutOf-mapM"><h4>layoutOf_mapM</h4><p class="say">If the layout was computed, every member was considered.</p><pre>theorem layoutOf_mapM {nm : Naming} {t : Table} {cols : List Col}
+    (h : layoutOf nm t = .ok cols) :
+    ∃ ms, t.columns.mapM (memberCol (generatedNames nm t)) = .ok ms</pre></div>
+<div class="prop" id="t-layoutOf-member"><h4>layoutOf_member</h4><p class="say">A column produced for a member of the table reaches the layout.</p><pre>theorem layoutOf_member {nm : Naming} {t : Table} {cols : List Col}
+    {c : Column} {col : Col}
+    (h : layoutOf nm t = .ok cols) (hc : c ∈ t.columns)
+    (hmc : memberCol (generatedNames nm t) c = .ok (some col)) : col ∈ cols</pre></div>
+<div class="prop" id="t-mem-layoutOf"><h4>mem_layoutOf</h4><p class="say">Every member that is neither the table&#x27;s key nor a collection becomes a column, under its mangled name, at the type inference gave it.</p><pre>theorem mem_layoutOf {nm : Naming} {t : Table} {cols : List Col} {c : Col}
+    (h : layoutOf nm t = .ok cols) (hc : c ∈ cols) :
+    (∃ kt, keyTyOf t = .ok kt ∧ c ∈ baseCols nm t kt) ∨
+    (∃ col, col ∈ t.columns ∧ memberCol (generatedNames nm t) col = .ok (some c))</pre></div>
+<div class="prop" id="t-mem-orderGo-complete"><h4>mem_orderGo_complete</h4><p class="say">And it loses none, given that no two tables share a path.</p><pre>theorem mem_orderGo_complete {t : Table} :
+    ∀ (fuel : Nat) (pending acc : List Table),
+      (pending.map Table.path).Nodup →
+      (t ∈ pending ∨ t ∈ acc) → t ∈ orderGo fuel pending acc</pre></div>
+<div class="prop" id="t-mem-orderGo-sound"><h4>mem_orderGo_sound</h4><p class="say">The compile-order sort invents no tables.</p><pre>theorem mem_orderGo_sound {t : Table} :
+    ∀ (fuel : Nat) (pending acc : List Table),
+      t ∈ orderGo fuel pending acc → t ∈ pending ∨ t ∈ acc</pre></div>
+<div class="prop" id="t-mem-orderTables-complete"><h4>mem_orderTables_complete</h4><p class="say">The same, said of the sort as a whole.</p><pre>theorem mem_orderTables_complete {t : Table} {s : Schema}
+    (hn : (s.map Table.path).Nodup) (h : t ∈ s) : t ∈ orderTables s</pre></div>
+<div class="prop" id="t-mem-orderTables-sound"><h4>mem_orderTables_sound</h4><p class="say">The same, said of the sort as a whole.</p><pre>theorem mem_orderTables_sound {t : Table} {s : Schema} (h : t ∈ orderTables s) : t ∈ s</pre></div>
+<div class="prop" id="t-memberCol-ref"><h4>memberCol_ref</h4><p class="say">A member that is an object and is not the key becomes a column holding that object&#x27;s key.</p><pre>theorem memberCol_ref {gen : List String} {c : Column} {q : Path} {o : Option Col}
+    (hok : memberCol gen c = .ok o) (hid : ¬ (c.name == idColumn) = true)
+    (hty : c.field.ty = .ref q) :
+    o = some { name := mangle c.name, ty := .ref q
+             , nullable := c.field.nullable, kind := .member c.name }</pre></div>
+<div class="prop" id="t-memberCol-ty"><h4>memberCol_ty</h4><p class="say">A member column keeps the member&#x27;s own type.</p><pre>theorem memberCol_ty {gen : List String} {c : Column} {col : Col}
+    (h : memberCol gen c = .ok (some col)) : col.ty = c.field.ty</pre></div>
+<div class="prop" id="t-noClash-modules"><h4>noClash_modules</h4><p class="say">The duplicate-name check hands back its input unchanged.</p><pre>theorem noClash_modules {mods : List Module} {f : File}
+    (h : noClash mods = .ok f) : f.modules = mods</pre></div>
+<div class="prop" id="t-nodupPaths-sound"><h4>nodupPaths_sound</h4><p class="say">The check that no two tables share a path means what it says.</p><pre>theorem nodupPaths_sound : ∀ {l : List Path}, nodupPaths l = true → l.Nodup</pre></div>
+<div class="prop" id="t-path-mem"><h4>path_mem</h4><p class="say">A path the check found in the schema is the path of a table of it.</p><pre>private theorem path_mem {s : Schema} {p : Path}
+    (h : (s.map Table.path).contains p = true) : ∃ u, u ∈ s ∧ u.path = p</pre></div>
+<div class="prop" id="t-reachGo-sound"><h4>reachGo_sound</h4><p class="say">So does the whole search.</p><pre>theorem reachGo_sound {s : Schema} : ∀ (fuel : Nat) (acc : List Path),
+    (∀ p, p ∈ acc → Reaches s p) → ∀ p, p ∈ reachGo s fuel acc → Reaches s p</pre></div>
+<div class="prop" id="t-reachable-sound"><h4>reachable_sound</h4><p class="say">Everything the search reports is genuinely reachable from the root.</p><pre>theorem reachable_sound {s : Schema} : ∀ p, p ∈ reachable s → Reaches s p</pre></div>
+<div class="prop" id="t-stepReach-sound"><h4>stepReach_sound</h4><p class="say">One round of the reachability search only ever reports tables genuinely one edge further out.</p><pre>theorem stepReach_sound {s : Schema} {acc : List Path}
+    (hacc : ∀ p, p ∈ acc → Reaches s p) : ∀ p, p ∈ stepReach s acc → Reaches s p</pre></div>
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Inference <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">12</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">That the corpus determines the schema, and that each member's type is the tightest one its values allow.</p>
+<div class="prop" id="t-foldJoin-le"><h4>foldJoin_le</h4><p class="say">Folding the type-join over a list of observed types lands above every one of them.</p><pre>theorem foldJoin_le : ∀ {l : List Ty} {a τ : Ty},
+    l.foldl (fun acc t =&gt; acc.bind (Ty.join · t)) (some a) = some τ →
+    a ⊑ τ ∧ ∀ t, t ∈ l → t ⊑ τ</pre></div>
+<div class="prop" id="t-foldJoin-least"><h4>foldJoin_least</h4><p class="say">And lands below anything else that is above them all.</p><pre>theorem foldJoin_least : ∀ {l : List Ty} {a τ σ : Ty},
+    l.foldl (fun acc t =&gt; acc.bind (Ty.join · t)) (some a) = some τ →
+    a ⊑ σ → (∀ t, t ∈ l → t ⊑ σ) → τ ⊑ σ</pre></div>
+<div class="prop" id="t-foldJoin-none"><h4>foldJoin_none</h4><p class="say">Once the join is undefined it stays undefined, so a fold that succeeded never passed through failure.</p><pre>theorem foldJoin_none (l : List Ty) :
+    l.foldl (fun acc t =&gt; acc.bind (Ty.join · t)) none = none</pre></div>
+<div class="prop" id="t-foldl-perm-on"><h4>foldl_perm_on</h4><p class="say">The same, where the laws hold only of values satisfying an invariant.</p><pre>theorem foldl_perm_on {α β : Type} {f : β → α → β} {P : β → Prop} {Q : α → Prop}
+    (hP : ∀ b x, P b → Q x → P (f b x))
+    (hrc : ∀ b x y, P b → Q x → Q y → f (f b x) y = f (f b y) x) :
+    ∀ {l₁ l₂ : List α}, l₁.Perm l₂ → (∀ x, x ∈ l₁ → Q x) →
+      ∀ b, P b → l₁.foldl f b = l₂.foldl f b</pre></div>
+<div class="prop" id="t-infer-admits"><h4>infer_admits</h4><p class="say">Every type ever seen at a member fits the type that member was given.</p><pre>theorem infer_admits (cfg : Config) (ds : List Doc) (ts : Tables)
+    (h : inferCorpus cfg ds = .ok ts) :
+    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
+      ∀ τ, o.joined = some τ → ∀ ty, ty ∈ o.seen → ty ⊑ τ</pre></div>
+<div class="prop" id="t-infer-least"><h4>infer_least</h4><p class="say">And that type is the least one that fits, so nothing is widened further than the data forces.</p><pre>theorem infer_least (cfg : Config) (ds : List Doc) (ts : Tables)
+    (h : inferCorpus cfg ds = .ok ts) :
+    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
+      ∀ τ σ, o.joined = some τ → (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ</pre></div>
+<div class="prop" id="t-infer-perm"><h4>infer_perm</h4><p class="say">The schema is a property of the corpus and not of the order its documents arrived in: shuffle the corpus and you get the same answer.</p><pre>theorem infer_perm (cfg : Config) (ds es : List Doc) (h : ds.Perm es)
+    {ta tb : Tables} (hda : inferCorpus cfg ds = .ok ta)
+    (hdb : inferCorpus cfg es = .ok tb) :
+    ta = tb</pre></div>
+<div class="prop" id="t-le-trans"><h4>le_trans</h4><p class="say">The type order is transitive.</p><pre>theorem le_trans {a b c : Ty} (hab : a ⊑ b) (hbc : b ⊑ c) : a ⊑ c</pre></div>
+<div class="prop" id="t-mapM-ok-of-all"><h4>mapM_ok_of_all</h4><p class="say">If every element succeeds then the whole list does.</p><pre>theorem mapM_ok_of_all {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l : List α}, (∀ x, x ∈ l → ∃ b, f x = .ok b) → ∃ r, l.mapM f = .ok r</pre></div>
+<div class="prop" id="t-mapM-perm"><h4>mapM_perm</h4><p class="say">Permuted inputs give permuted outputs, when both succeed.</p><pre>theorem mapM_perm {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l₁ l₂ : List α}, l₁.Perm l₂ → ∀ {r₁ r₂ : List β},
+      l₁.mapM f = .ok r₁ → l₂.mapM f = .ok r₂ → r₁.Perm r₂</pre></div>
+<div class="prop" id="t-obs-admits"><h4>obs_admits</h4><p class="say">Said of one member&#x27;s observations on their own.</p><pre>theorem obs_admits {o : Obs} {τ : Ty} (h : o.joined = some τ) :
+    ∀ t, t ∈ o.seen → t ⊑ τ</pre></div>
+<div class="prop" id="t-obs-least"><h4>obs_least</h4><p class="say">Said of one member&#x27;s observations on their own.</p><pre>theorem obs_least {o : Obs} {τ σ : Ty} (h : o.joined = some τ)
+    (hσ : ∀ t, t ∈ o.seen → t ⊑ σ) : τ ⊑ σ</pre></div>
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Walk <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">3</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">That the traversal which reads the documents keeps its observations in order &mdash; the invariant everything in the previous group relies on.</p>
+<div class="prop" id="t-keep"><h4>keep</h4><p class="say">Each record update the walk makes leaves the member list alone.</p><pre>private theorem keep {f : TableObs → TableObs}
+    (hm : ∀ t, (f t).members = t.members) : ∀ t, TableObsOk t → TableObsOk (f t)</pre></div>
+<div class="prop" id="t-observeDocument-ok"><h4>observeDocument_ok</h4><p class="say">So one document, observed from nothing, comes out in order.</p><pre>theorem observeDocument_ok {cfg : Config} {d : Doc} {ts : Tables}
+    (h : observeDocument cfg d = .ok ts) : TablesOk ts</pre></div>
+<div class="prop" id="t-observe-ok"><h4>observe_ok</h4><p class="say">Everything the inference walk records is kept in key order -- tables by path, members by name, types by their order.</p><pre>theorem observe_ok (cfg : Config) :
+    ∀ ts target inCollection j, TablesOk ts → ∀ ts&#x27;,
+      observeObject cfg ts target inCollection j = .ok ts&#x27; → TablesOk ts&#x27;</pre></div>
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Merge <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">14</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">That combining two documents' observations is commutative and associative, at each of the three levels the data has.</p>
+<div class="prop" id="t-Obs-merge-assoc"><h4>Obs.merge_assoc</h4><p class="say">And one level down again.</p><pre>theorem Obs.merge_assoc {a b c : Obs} (ha : ObsOk a) (hb : ObsOk b) (hc : ObsOk c) :
+    Obs.merge (Obs.merge a b) c = Obs.merge a (Obs.merge b c)</pre></div>
+<div class="prop" id="t-Obs-merge-comm"><h4>Obs.merge_comm</h4><p class="say">And one level down again, for a single member&#x27;s: counts add, type sets union, flags disjoin.</p><pre>theorem Obs.merge_comm {a b : Obs} (ha : ObsOk a) (hb : ObsOk b) :
+    Obs.merge a b = Obs.merge b a</pre></div>
+<div class="prop" id="t-Obs-merge-ok"><h4>Obs.merge_ok</h4><p class="say">And one level down again.</p><pre>theorem Obs.merge_ok {a b : Obs} (ha : ObsOk a) (hb : ObsOk b) :
+    ObsOk (Obs.merge a b)</pre></div>
+<div class="prop" id="t-TableObs-merge-assoc"><h4>TableObs.merge_assoc</h4><p class="say">The same, one level down.</p><pre>theorem TableObs.merge_assoc {a b c : TableObs}
+    (ha : TableObsOk a) (hb : TableObsOk b) (hc : TableObsOk c) :
+    TableObs.merge (TableObs.merge a b) c = TableObs.merge a (TableObs.merge b c)</pre></div>
+<div class="prop" id="t-TableObs-merge-comm"><h4>TableObs.merge_comm</h4><p class="say">The same, one level down, for a single table&#x27;s observations.</p><pre>theorem TableObs.merge_comm {a b : TableObs} (ha : TableObsOk a) (hb : TableObsOk b) :
+    TableObs.merge a b = TableObs.merge b a</pre></div>
+<div class="prop" id="t-TableObs-merge-ok"><h4>TableObs.merge_ok</h4><p class="say">The same, one level down.</p><pre>theorem TableObs.merge_ok {a b : TableObs} (ha : TableObsOk a) (hb : TableObsOk b) :
+    TableObsOk (TableObs.merge a b) :=
+  ⟨mergeBy_sorted strOrder _ _ ha.1 hb.1,
+   mergeBy_allV (combine := Obs.merge) (P</pre></div>
+<div class="prop" id="t-TableObsOk-empty"><h4>TableObsOk.empty</h4><p class="say">So is a table with no members yet.</p><pre>theorem TableObsOk.empty : TableObsOk ({} : TableObs)</pre></div>
+<div class="prop" id="t-Tables-merge-assoc"><h4>Tables.merge_assoc</h4><p class="say">And grouping three of them either way gives the same answer.</p><pre>theorem Tables.merge_assoc {a b c : Tables}
+    (ha : TablesOk a) (hb : TablesOk b) (hc : TablesOk c) :
+    Tables.merge (Tables.merge a b) c = Tables.merge a (Tables.merge b c) :=
+  mergeBy_assocOn (combine := TableObs.merge) (P</pre></div>
+<div class="prop" id="t-Tables-merge-comm"><h4>Tables.merge_comm</h4><p class="say">Merging two documents&#x27; observations gives the same answer in either order.</p><pre>theorem Tables.merge_comm {a b : Tables} (ha : TablesOk a) (hb : TablesOk b) :
+    Tables.merge a b = Tables.merge b a :=
+  mergeBy_commOn (combine := TableObs.merge) (P</pre></div>
+<div class="prop" id="t-Tables-merge-ok"><h4>Tables.merge_ok</h4><p class="say">Merging preserves the order invariant.</p><pre>theorem Tables.merge_ok {a b : Tables} (ha : TablesOk a) (hb : TablesOk b) :
+    TablesOk (Tables.merge a b) :=
+  ⟨mergeBy_sorted pathOrder _ _ ha.1 hb.1,
+   mergeBy_allV (combine := TableObs.merge) (P</pre></div>
+<div class="prop" id="t-Tables-merge-right-comm"><h4>Tables.merge_right_comm</h4><p class="say">Together: two documents merged into an accumulator commute, which is what the corpus fold needs.</p><pre>theorem Tables.merge_right_comm {b x y : Tables}
+    (hb : TablesOk b) (hx : TablesOk x) (hy : TablesOk y) :
+    Tables.merge (Tables.merge b x) y = Tables.merge (Tables.merge b y) x</pre></div>
+<div class="prop" id="t-Tables-upsert-ok"><h4>Tables.upsert_ok</h4><p class="say">Recording a table keeps everything in order.</p><pre>theorem Tables.upsert_ok {ts : Tables} {p : Path} {f : TableObs → TableObs}
+    (h : TablesOk ts) (hf : ∀ t, TableObsOk t → TableObsOk (f t)) :
+    TablesOk (ts.upsert p f)</pre></div>
+<div class="prop" id="t-TablesOk-nil"><h4>TablesOk.nil</h4><p class="say">Observing nothing is trivially in order.</p><pre>theorem TablesOk.nil : TablesOk []</pre></div>
+<div class="prop" id="t-recordMember-ok"><h4>recordMember_ok</h4><p class="say">So does recording one observation at one member.</p><pre>theorem recordMember_ok {ts : Tables} {p : Path} {k : String} {sn : Seen}
+    (h : TablesOk ts) : TablesOk (recordMember ts p k sn)</pre></div>
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Order <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">3</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">That the three things used as keys &mdash; member names, table paths, types &mdash; are each strictly totally ordered.</p>
+<div class="prop" id="t-pathOrder"><h4>pathOrder</h4><p class="say">So are table paths.</p><pre>theorem pathOrder : StrictOrder Path.lt (· == ·) where
+  eq_iff a b</pre></div>
+<div class="prop" id="t-strOrder"><h4>strOrder</h4><p class="say">Member names are strictly totally ordered.</p><pre>theorem strOrder : StrictOrder (fun a b : String =&gt; decide (a &lt; b)) (· == ·) where
+  eq_iff a b</pre></div>
+<div class="prop" id="t-tyOrder"><h4>tyOrder</h4><p class="say">So are types.</p><pre>theorem tyOrder : StrictOrder Ty.lt (· == ·) where
+  eq_iff a b</pre></div>
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Sorted <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">27</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">The generic machinery: sorted association lists, and the fact that merging them is characterised entirely by what they look up.</p>
+<div class="prop" id="t-allV-map"><h4>allV_map</h4><p class="say">And preserves a property of the values.</p><pre>theorem allV_map {P : V → Prop} {g : K × V → K × V} (hg : ∀ p, P p.2 → P (g p).2) :
+    ∀ l : List (K × V), AllV P l → AllV P (l.map g)</pre></div>
+<div class="prop" id="t-belowK-of-lt"><h4>belowK_of_lt</h4><p class="say">Transitivity carries `below` down from a smaller key.</p><pre>theorem belowK_of_lt {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) {j k : K} :
+    ∀ {l : List K}, BelowK lt k l → lt j k = true → BelowK lt j l</pre></div>
+<div class="prop" id="t-below-map"><h4>below_map</h4><p class="say">So it leaves `below` alone.</p><pre>theorem below_map {lt : K → K → Bool} {j : K} {g : K × V → K × V}
+    (hg : ∀ p, (g p).1 = p.1) : ∀ l : List (K × V), Below lt j l → Below lt j (l.map g)</pre></div>
+<div class="prop" id="t-below-of-lt"><h4>below_of_lt</h4><p class="say">The same, for association lists.</p><pre>theorem below_of_lt {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) {j k : K} :
+    ∀ {l : List (K × V)}, Below lt k l → lt j k = true → Below lt j l</pre></div>
+<div class="prop" id="t-except-bind-ok"><h4>except_bind_ok</h4><p class="say">A computation that succeeded had both halves succeed.</p><pre>theorem except_bind_ok {ε α β : Type} {x : Except ε α} {g : α → Except ε β} {b : β}
+    (h : (x &gt;&gt;= g) = .ok b) : ∃ a, x = .ok a ∧ g a = .ok b</pre></div>
+<div class="prop" id="t-insertBy-allV"><h4>insertBy_allV</h4><p class="say">And preserves a property of the values.</p><pre>theorem insertBy_allV {lt eqk : K → K → Bool} {combine : V → V → V} {P : V → Prop}
+    (hP : ∀ x y, P x → P y → P (combine x y)) {k : K} {v : V} (hv : P v) :
+    ∀ l : List (K × V), AllV P l → AllV P (insertBy lt eqk combine k v l)</pre></div>
+<div class="prop" id="t-insertBy-below"><h4>insertBy_below</h4><p class="say">And keeps a smaller key below it.</p><pre>theorem insertBy_below {lt eqk : K → K → Bool} {combine : V → V → V} {j k : K} {v : V} :
+    ∀ l : List (K × V), Below lt j l → lt j k = true →
+      Below lt j (insertBy lt eqk combine k v l)</pre></div>
+<div class="prop" id="t-insertBy-sorted"><h4>insertBy_sorted</h4><p class="say">Inserting one entry keeps the list ordered.</p><pre>theorem insertBy_sorted {lt eqk : K → K → Bool} {combine : V → V → V}
+    (ho : StrictOrder lt eqk) {k : K} {v : V} :
+    ∀ l : List (K × V), SortedBy lt l → SortedBy lt (insertBy lt eqk combine k v l)</pre></div>
+<div class="prop" id="t-lookupBy-allV"><h4>lookupBy_allV</h4><p class="say">A value looked up satisfies whatever the list&#x27;s values do.</p><pre>theorem lookupBy_allV {eqk : K → K → Bool} {P : V → Prop} {k : K} {v : V} :
+    ∀ {l : List (K × V)}, AllV P l → lookupBy eqk k l = some v → P v</pre></div>
+<div class="prop" id="t-lookupBy-of-below"><h4>lookupBy_of_below</h4><p class="say">A key below everything in a list is not in it.</p><pre>theorem lookupBy_of_below {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) {k : K} :
+    ∀ {l : List (K × V)}, Below lt k l → lookupBy eqk k l = none</pre></div>
+<div class="prop" id="t-mapM-ok-map"><h4>mapM_ok_map</h4><p class="say">A mapped list agrees pointwise with its inputs under any function that agrees on each.</p><pre>theorem mapM_ok_map {α β γ ε : Type} {f : α → Except ε β} {g : β → γ} {k : α → γ}
+    (hgk : ∀ a b, f a = .ok b → g b = k a) :
+    ∀ {l : List α} {r : List β}, l.mapM f = .ok r → r.map g = l.map k</pre></div>
+<div class="prop" id="t-mapM-ok-pointwise"><h4>mapM_ok_pointwise</h4><p class="say">And every input reached some output.</p><pre>theorem mapM_ok_pointwise {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l : List α} {r : List β}, l.mapM f = .ok r →
+      ∀ a, a ∈ l → ∃ b, b ∈ r ∧ f a = .ok b</pre></div>
+<div class="prop" id="t-memBy-of-below"><h4>memBy_of_below</h4><p class="say">A key below everything in a set is not in it.</p><pre>theorem memBy_of_below {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) {k : K} :
+    ∀ {l : List K}, BelowK lt k l → memBy eqk k l = false</pre></div>
+<div class="prop" id="t-mem-of-mapM-ok"><h4>mem_of_mapM_ok</h4><p class="say">Every output of a mapped list came from some input.</p><pre>theorem mem_of_mapM_ok {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l : List α} {r : List β}, l.mapM f = .ok r → ∀ b, b ∈ r → ∃ a, a ∈ l ∧ f a = .ok b</pre></div>
+<div class="prop" id="t-mergeBy-assocOn"><h4>mergeBy_assocOn</h4><p class="say">Merging is associative, for the same reason.</p><pre>theorem mergeBy_assocOn {lt eqk : K → K → Bool} {combine : V → V → V} {P : V → Prop}
+    (ho : StrictOrder lt eqk)
+    (hP : ∀ x y, P x → P y → P (combine x y))
+    (hca : ∀ x y z, P x → P y → P z → combine (combine x y) z = combine x (combine y z)) :
+    ∀ a b c : List (K × V), SortedBy lt a → SortedBy lt b → SortedBy lt c →
+      AllV P a → AllV P b → AllV P c →
+      mergeBy lt eqk combine (mergeBy lt eqk combine a b) c
+        = mergeBy lt eqk combine a (mergeBy lt eqk combine b c)</pre></div>
+<div class="prop" id="t-mergeBy-below"><h4>mergeBy_below</h4><p class="say">A key below both lists is below their merge.</p><pre>theorem mergeBy_below {lt eqk : K → K → Bool} {combine : V → V → V} {j : K} :
+    ∀ a b : List (K × V), Below lt j a → Below lt j b →
+      Below lt j (mergeBy lt eqk combine a b)</pre></div>
+<div class="prop" id="t-mergeBy-commOn"><h4>mergeBy_commOn</h4><p class="say">Merging is commutative, because combining lookups is.</p><pre>theorem mergeBy_commOn {lt eqk : K → K → Bool} {combine : V → V → V} {P : V → Prop}
+    (ho : StrictOrder lt eqk)
+    (hc : ∀ x y, P x → P y → combine x y = combine y x) :
+    ∀ a b : List (K × V), SortedBy lt a → SortedBy lt b → AllV P a → AllV P b →
+      mergeBy lt eqk combine a b = mergeBy lt eqk combine b a</pre></div>
+<div class="prop" id="t-mergeBy-lookup"><h4>mergeBy_lookup</h4><p class="say">A merge is exactly its two lookups combined -- this is the whole content of merging, and both laws below read it off.</p><pre>theorem mergeBy_lookup {lt eqk : K → K → Bool} {combine : V → V → V}
+    (ho : StrictOrder lt eqk) :
+    ∀ a b : List (K × V), SortedBy lt a → SortedBy lt b → ∀ k,
+      lookupBy eqk k (mergeBy lt eqk combine a b)
+        = combineOpt combine (lookupBy eqk k a) (lookupBy eqk k b)</pre></div>
+<div class="prop" id="t-mergeBy-sorted"><h4>mergeBy_sorted</h4><p class="say">Merging two ordered lists gives an ordered list.</p><pre>theorem mergeBy_sorted {lt eqk : K → K → Bool} {combine : V → V → V}
+    (ho : StrictOrder lt eqk) :
+    ∀ a b : List (K × V), SortedBy lt a → SortedBy lt b →
+      SortedBy lt (mergeBy lt eqk combine a b)</pre></div>
+<div class="prop" id="t-sortedBy-map"><h4>sortedBy_map</h4><p class="say">Rewriting values in place leaves the order alone.</p><pre>theorem sortedBy_map {lt : K → K → Bool} {g : K × V → K × V}
+    (hg : ∀ p, (g p).1 = p.1) :
+    ∀ l : List (K × V), SortedBy lt l → SortedBy lt (l.map g)</pre></div>
+<div class="prop" id="t-sortedK-ext"><h4>sortedK_ext</h4><p class="say">Two sorted sets with the same members are the same list.</p><pre>theorem sortedK_ext {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) :
+    ∀ {a b : List K}, SortedK lt a → SortedK lt b →
+      (∀ k, memBy eqk k a = memBy eqk k b) → a = b</pre></div>
+<div class="prop" id="t-sorted-ext"><h4>sorted_ext</h4><p class="say">Two sorted lists that agree on every lookup are the same list.</p><pre>theorem sorted_ext {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) :
+    ∀ {a b : List (K × V)}, SortedBy lt a → SortedBy lt b →
+      (∀ k, lookupBy eqk k a = lookupBy eqk k b) → a = b</pre></div>
+<div class="prop" id="t-unionBy-assoc"><h4>unionBy_assoc</h4><p class="say">And associative.</p><pre>theorem unionBy_assoc {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) :
+    ∀ a b c : List K, SortedK lt a → SortedK lt b → SortedK lt c →
+      unionBy lt eqk (unionBy lt eqk a b) c = unionBy lt eqk a (unionBy lt eqk b c)</pre></div>
+<div class="prop" id="t-unionBy-belowK"><h4>unionBy_belowK</h4><p class="say">A key below both sets is below their union.</p><pre>theorem unionBy_belowK {lt eqk : K → K → Bool} {j : K} :
+    ∀ a b : List K, BelowK lt j a → BelowK lt j b → BelowK lt j (unionBy lt eqk a b)</pre></div>
+<div class="prop" id="t-unionBy-comm"><h4>unionBy_comm</h4><p class="say">The same for a set: union is commutative.</p><pre>theorem unionBy_comm {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) :
+    ∀ a b, unionBy lt eqk a b = unionBy lt eqk b a</pre></div>
+<div class="prop" id="t-unionBy-mem"><h4>unionBy_mem</h4><p class="say">A union is exactly the two memberships, disjoined.</p><pre>theorem unionBy_mem {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) :
+    ∀ a b : List K, SortedK lt a → SortedK lt b → ∀ k,
+      memBy eqk k (unionBy lt eqk a b) = (memBy eqk k a || memBy eqk k b)</pre></div>
+<div class="prop" id="t-unionBy-sorted"><h4>unionBy_sorted</h4><p class="say">And preserves order.</p><pre>theorem unionBy_sorted {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) :
+    ∀ a b : List K, SortedK lt a → SortedK lt b → SortedK lt (unionBy lt eqk a b)</pre></div>
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Lattice <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">7</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">That the type order is a lattice and the join is the least upper bound, which is what makes an inferred type the tightest one.</p>
+<div class="prop" id="t-bot-le"><h4>bot_le</h4><p class="say">The empty type sits below everything.</p><pre>theorem bot_le (a : Ty) : Ty.bot ⊑ a</pre></div>
+<div class="prop" id="t-join-assoc"><h4>join_assoc</h4><p class="say">Nor on how three of them are grouped, which is what makes folding observations order-independent.</p><pre>theorem join_assoc (a b c : Ty) :
+    (Ty.join a b).bind (fun ab =&gt; Ty.join ab c)
+      = (Ty.join b c).bind (fun bc =&gt; Ty.join a bc)</pre></div>
+<div class="prop" id="t-join-comm"><h4>join_comm</h4><p class="say">The common type of two types does not depend on which is named first.</p><pre>theorem join_comm (a b : Ty) : Ty.join a b = Ty.join b a</pre></div>
+<div class="prop" id="t-join-idem"><h4>join_idem</h4><p class="say">A type joined with itself is itself.</p><pre>theorem join_idem (a : Ty) : Ty.join a a = some a</pre></div>
+<div class="prop" id="t-join-least"><h4>join_least</h4><p class="say">The common type is the *least* type above both -- the tightest answer, not merely an answer.</p><pre>theorem join_least {a b c d : Ty} (h : Ty.join a b = some c) (ha : a ⊑ d) (hb : b ⊑ d) :
+    c ⊑ d</pre></div>
+<div class="prop" id="t-le-join-left"><h4>le_join_left</h4><p class="say">The common type is above the first argument.</p><pre>theorem le_join_left {a b c : Ty} (h : Ty.join a b = some c) : a ⊑ c</pre></div>
+<div class="prop" id="t-le-join-right"><h4>le_join_right</h4><p class="say">And above the second.</p><pre>theorem le_join_right {a b c : Ty} (h : Ty.join a b = some c) : b ⊑ c</pre></div>
+<h3 style="font-family:var(--serif);font-size:1.25rem;margin:26px 0 4px">Wellformed <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">4</span></h3>
+<p style="font-size:14px;color:var(--ink-2);max-width:46rem;margin:0 0 10px">That the emitted signature never repeats a name.</p>
+<div class="prop" id="t-certify-wellFormed"><h4>certify_wellFormed</h4><p class="say">The generator checks its own output before returning it.</p><pre>theorem certify_wellFormed {f g : File} (h : certify f = .ok g) : g.WellFormed</pre></div>
+<div class="prop" id="t-gen-wellFormed"><h4>gen_wellFormed</h4><p class="say">Every generated signature is well formed: no module, value or record field name repeats.</p><pre>theorem gen_wellFormed (nm : Naming) (s : Schema) (f : File) (h : gen nm s = .ok f) :
+    f.WellFormed</pre></div>
+<div class="prop" id="t-nodupNames-sound"><h4>nodupNames_sound</h4><p class="say">And so does its distinctness test.</p><pre>theorem nodupNames_sound : ∀ {l : List String}, nodupNames l = true → l.Nodup</pre></div>
+<div class="prop" id="t-okB-sound"><h4>okB_sound</h4><p class="say">That check means what the proposition says.</p><pre>theorem okB_sound {f : File} (h : f.okB = true) : f.WellFormed</pre></div>
+  </section>
+
+  <section>
+    <div class="col">
+      <span class="sec-num">05</span>
+      <h2>Proved, but not needed for the guarantee</h2>
+      <p class="lede">A further 52 results are proved in the repository and do not appear in the tree above. That is not an oversight, and in one case it is the point.</p>
+      <p style="max-width:46rem"><strong>Name mangling is the interesting case.</strong> One might expect &ldquo;distinct members become distinct columns&rdquo; to be what makes the signature well formed. It is not how the proof goes: <code>gen</code> checks its own output for repeated names before returning it, and <code>gen_wellFormed</code> is proved by inverting that check. So well-formedness holds of <em>every</em> schema, including ones inference could never build, and it does not rest on <code>mangle_injective</code> at all. Injectivity is what makes the design sound rather than lucky &mdash; without it the generator would be relying on a runtime check to catch a collision it should never create &mdash; but the theorem above stands without it.</p>
+      <p style="max-width:46rem">The rest are results that were superseded. <code>toSchema_paths_nodup</code> and its neighbours proved distinctness from the walk invariant; once <code>gen</code> began checking the same condition itself, the shorter route won. They are kept because they say something true about inference that the check does not.</p>
+    </div>
+
+<h3 style="font-family:var(--serif);font-size:1.15rem;margin:22px 0 6px">Tree <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">2</span></h3>
+<ul class="plain" style="max-width:48rem">
+<li><code>gen_edges_only_on_tables</code> &mdash; Only a table&#x27;s own module carries edges; loaders and the registry carry none.</li>
+<li><code>parentOfElement_shorter</code> &mdash; Following a table to its parent strictly shortens the path, so the tree has no cycles and the walk up from any table terminates.</li>
+</ul>
+<h3 style="font-family:var(--serif);font-size:1.15rem;margin:22px 0 6px">Inference <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">1</span></h3>
+<ul class="plain" style="max-width:48rem">
+<li><code>foldl_perm</code> &mdash; Folding an operation that commutes in this sense over a list does not depend on the order.</li>
+</ul>
+<h3 style="font-family:var(--serif);font-size:1.15rem;margin:22px 0 6px">Walk <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">2</span></h3>
+<ul class="plain" style="max-width:48rem">
+<li><code>inferCorpus_ok</code> &mdash; Everything inference builds is kept in key order.</li>
+<li><code>inferFinish_ok</code> &mdash; The final pass, which fills in absence counts, keeps it that way.</li>
+</ul>
+<h3 style="font-family:var(--serif);font-size:1.15rem;margin:22px 0 6px">Merge <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">3</span></h3>
+<ul class="plain" style="max-width:48rem">
+<li><code>toSchema_mem</code> &mdash; A table of the schema came from an observation of that path.</li>
+<li><code>toSchema_members_nodup</code> &mdash; No table has two columns of one name.</li>
+<li><code>toSchema_paths_nodup</code> &mdash; No two tables of the schema share a path.</li>
+</ul>
+<h3 style="font-family:var(--serif);font-size:1.15rem;margin:22px 0 6px">Order <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">1</span></h3>
+<ul class="plain" style="max-width:48rem">
+<li><code>segOrder</code> &mdash; Path segments are strictly totally ordered.</li>
+</ul>
+<h3 style="font-family:var(--serif);font-size:1.15rem;margin:22px 0 6px">Sorted <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">14</span></h3>
+<ul class="plain" style="max-width:48rem">
+<li><code>StrictOrder.eq_symm</code> &mdash; Key equality does not depend on which side is named first.</li>
+<li><code>StrictOrder.irrefl</code> &mdash; Nothing is strictly below itself -- which follows from asymmetry rather than being assumed.</li>
+<li><code>allV_mem</code> &mdash; A value in a list satisfies whatever all its values do.</li>
+<li><code>below_not_mem</code> &mdash; A key below everything in a list does not appear in it.</li>
+<li><code>combineOpt_assoc</code> &mdash; Nor on how three are grouped.</li>
+<li><code>combineOpt_comm</code> &mdash; Combining two lookups does not depend on their order.</li>
+<li><code>insertSorted_perm</code> &mdash; Inserting one entry into a sorted list permutes it.</li>
+<li><code>lookupBy_head</code> &mdash; The head of a sorted list looks up to its own value.</li>
+<li><code>mergeBy_allV</code> &mdash; Merging preserves a property of the values.</li>
+<li><code>mergeBy_assoc</code> &mdash; Merging is associative, for combining functions with no side conditions.</li>
+<li><code>mergeBy_comm</code> &mdash; Merging is commutative, proved directly by induction rather than through lookups.</li>
+<li><code>mergeBy_right_comm</code> &mdash; Two merges into an accumulator commute.</li>
+<li><code>sortBy_perm</code> &mdash; So insertion sort returns a permutation of its input.</li>
+<li><code>sortedBy_nodup</code> &mdash; A list sorted by a strict order repeats no key.</li>
+</ul>
+<h3 style="font-family:var(--serif);font-size:1.15rem;margin:22px 0 6px">Mangle <span style="font-family:var(--mono);font-size:11px;color:var(--muted);font-weight:400">29</span></h3>
+<ul class="plain" style="max-width:48rem">
+<li><code>encodeByte_append_inj</code> &mdash; Because it is prefix-free: one encoded byte determines where it ends.</li>
+<li><code>encodeByte_ne_nil</code> &mdash; An encoded byte is never empty.</li>
+<li><code>encodeBytes_eq_nil</code> &mdash; Only the empty name encodes to nothing.</li>
+<li><code>encodeBytes_injective</code> &mdash; The byte encoding is injective.</li>
+<li><code>encodeBytes_ne_f2</code> &mdash; No encoded name can begin with the escape prefix.</li>
+<li><code>encodeBytes_ne_snoc_underscore</code> &mdash; Nor can it end in an underscore.</li>
+<li><code>encodeBytes_ne_underscore2</code> &mdash; Nor can it be a lone pair of underscores.</li>
+<li><code>hexDigit_inj</code> &mdash; Hex digits are distinct.</li>
+<li><code>hexDigit_ne_underscore</code> &mdash; And none of them is an underscore.</li>
+<li><code>hexVal_hexDigit</code> &mdash; Reading a hex digit back gives what was written.</li>
+<li><code>isKeyword_props</code> &mdash; What it means to be a keyword, as the proof uses it.</li>
+<li><code>keywordSuffixed_inj</code> &mdash; Distinct keywords stay distinct once escaped.</li>
+<li><code>keywords_len</code> &mdash; Every OCaml keyword is at least two characters.</li>
+<li><code>lt_128_valid</code> &mdash; Every byte below 128 is a valid character.</li>
+<li><code>mangleChars_of_mangle</code> &mdash; The mangled name is the encoding of the name&#x27;s characters.</li>
+<li><code>mangle_injective</code> &mdash; Two distinct member names never give one OCaml identifier, so two members never become one column and two tables never one module.</li>
+<li><code>mangle_starts_lower</code> &mdash; A mangled name begins with a lowercase letter, which is what makes capitalising one character injective.</li>
+<li><code>no_underscore_in_keywords</code> &mdash; No keyword contains an underscore.</li>
+<li><code>pass_ne_underscore</code> &mdash; A character that passes through unescaped is not the escape character.</li>
+<li><code>passesThrough_lt</code> &mdash; Characters that pass through are exactly the safe ones.</li>
+<li><code>prefixedCore_inj</code> &mdash; Prefixed and unprefixed names stay disjoint.</li>
+<li><code>prefixedCore_ne_snoc</code> &mdash; A prefixed name is never a keyword with an underscore appended.</li>
+<li><code>prefixedCore_starts_lower</code> &mdash; The escaped form begins with a lowercase letter too.</li>
+<li><code>startsLower_cons</code> &mdash; Prefixing a lowercase letter keeps a name starting lowercase.</li>
+<li><code>toNat_inj</code> &mdash; Character codes are distinct for distinct characters.</li>
+<li><code>toNat_lt_256</code> &mdash; An encoded byte is a byte.</li>
+<li><code>toNat_ofNat</code> &mdash; Round-tripping a byte through a character is the identity.</li>
+<li><code>toNat_ofNat_pass</code> &mdash; The same, for characters that pass through unescaped.</li>
+<li><code>toUTF8_data_toList_inj</code> &mdash; Distinct strings have distinct UTF-8 encodings.</li>
+</ul>
+  </section>
+
+  <section class="ask col">
+    <span class="sec-num">06</span>
+    <h2>What is not proved</h2>
+    <p>No goal in the repository is left open, so this section is about scope rather than about unfinished work.</p>
+    <ol class="left" style="margin-top:14px">
+      <li><strong>That inference never trips the generator's check.</strong> Guarantees 3&ndash;6 hold because <code>gen</code> checks its input has the shape a corpus produces and refuses one that does not. That is the stronger arrangement for a reader of the output &mdash; the properties hold of every file emitted, whatever it was handed &mdash; but it does not by itself say the check never fires on a real corpus. It does not: tables are keyed by path, a repeated member is refused, and the walk records a table before descending into what it holds. Turning that sentence into a theorem is the obvious next piece.</li>
+      <li><strong>That the emitted OCaml compiles.</strong> Well-formedness constrains names, not references. A module naming a unit that is compiled after it satisfies the definition and still does not build. The generator does emit units in a topological order; nothing yet states that it is one.</li>
+      <li><strong>Anything about rows surviving.</strong> This program emits a description of tables and never emits a row, so there is no object for a preservation theorem to be about. A round trip could only ever hold up to member order, explicit <code>null</code> versus an absent key, and the written form of a number &mdash; all three discarded by design.</li>
+    </ol>
+  </section>
+
+</div>
+</body></html>

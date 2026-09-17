@@ -1,96 +1,88 @@
 import Proofs.Spec
-import Proofs.Layout
 import Proofs.Lattice
 import Proofs.Mangle
+import Proofs.Sorted
+import Proofs.Order
+import Proofs.Merge
+import Proofs.Walk
 import Proofs.Wellformed
+import Proofs.Tree
 import Proofs.Inference
+import Proofs.Guarantees
 
 /-!
 # Proofs about the shredder
 
-What is stated here, and where each stands.
+`Proofs.Guarantees` is the summary: `pipeline_correct`, in four named parts.
+Everything below is what those parts rest on. There are no `sorry`s.
 
-**Proved.**
+**The four guarantees** (`Proofs.Guarantees`).
+* `signature_wellFormed` --- the emitted signature repeats no module name, no
+  value name within a module, and no field name within a record.
+* `schema_canonical` --- shuffle the corpus and the answer is *equal*, not
+  merely equivalent, so two runs agree byte for byte.
+* `structure_preserved` --- the tree the documents induce and the graph a
+  reader finds in the signatures are the same graph: no edge lost, none
+  invented, distinct tables to distinct modules, and rooted.
+* `types_principal` --- each member gets the principal type of the values seen
+  there: adequate (`infer_admits`) and least (`infer_least`).
+
+**The type order** (`Proofs.Lattice`).
 * `join_comm`, `join_idem`, `bot_le`, `le_join_left`, `le_join_right` --- the
-  type order is a genuine order and the join sits above both arguments.
+  join sits above both arguments.
 * `join_least`, `join_assoc` --- the join is the *least* upper bound, and
-  folding observations is order-independent. Together with the above, an
-  inferred type is the tightest one the data admits.
-* `le_refl`, `le_antisymm`, `le_trans` --- the type order is a partial order.
-  Transitivity falls out of `join_assoc`.
+  folding is order-independent.
+* `le_refl`, `le_antisymm`, `le_trans` --- it is a partial order. Transitivity
+  falls out of `join_assoc`, and the fold in `Proofs.Inference` needs it at
+  every step.
+
+**Names** (`Proofs.Mangle`).
 * `mangle_injective` --- two distinct member names never give one identifier,
   so two members never become one column and two tables never one module.
-  Three layers, each injective on the image of the one below: the byte
-  encoding is prefix-free, so its concatenation is injective; no core can
-  reach `f__`, so prefixed and unprefixed names stay disjoint; and no core
-  ends in `_`, so a keyword with `_` appended is not a prefixed core.
+  Three layers, each injective on the image of the one below.
 * `mangle_starts_lower` --- a mangled name begins with a lowercase letter,
   which is what makes capitalising one character injective.
-* `mangleChars_not_keyword`, `mangle_not_keyword` --- a generated identifier
-  is never an OCaml keyword. With `mangle_starts_lower` this is what "legal
-  identifier" amounts to for this fragment. Neither follows from injectivity:
-  drop the keyword rule and injectivity and the lowercase-start property both
-  stay true while the generator emits `type t = { let : int }`, which OCaml
-  rejects.
-* `gen_wellFormed` --- every generated signature is well formed. Proved by
-  inverting the check `gen` runs on its own output, so it holds of every
-  `Schema` and does not need `mangle_injective`.
-* `scalarTy_seeScalar` --- specification and implementation agree on scalars.
-* `ref_le`, `coll_le` --- a reference only widens to a reference to the same
-  table.
-* `matchesField_mono` --- a value that matched a field still matches it after
-  later documents widen that field. This is the step adequacy turns on.
-* `mem_layoutOf` --- every member becomes a column, under its mangled name, at
-  the type inference gave it, optional exactly when the member was ever
-  missing or null. The design note's first correspondence, with the two
-  exceptions the implementation makes and the prose does not state: a member
-  named `id` is consumed as the key, and a member holding a collection
-  contributes no column, since the elements carry the key back instead.
+* `mangleChars_not_keyword`, `mangle_not_keyword` --- a generated identifier is
+  never an OCaml keyword. This does not follow from the other two: drop the
+  keyword rule and both still hold while the generator emits
+  `type t = { let : int }`, which OCaml rejects.
 
-**The specification.**
-* `Proofs.Spec` says, independently of the implementation, when a document is
-  *described by* a schema (`Conforms`) and when one schema is *below* another
-  (`Schema.le`). Without it, `inferCorpus` is the only account of a schema the
-  project has, and "correct" means "whatever that produces". `scalarTy` there
-  restates the rule in `seeScalar` rather than calling it; `scalarTy_seeScalar`
-  is the lemma that fails if the two drift apart, and it has already caught
-  one drift --- `seeScalar` gained a `uuid` case that `scalarTy` had not.
+**Order-independence, structurally** (`Proofs.Sorted`, `Order`, `Merge`,
+`Walk`). `Obs` holds the *set* of types seen rather than their running join,
+each document is observed from nothing, and the results are merged. The merge
+is commutative and associative in every field, and tables, members and type
+sets are kept in order, so it is commutative *as a function*. `infer_perm` is
+then an equality of `Tables`, proved from `foldl_perm_on` rather than by an
+induction through the walk.
 
-**Unblocked, not yet proved.**
-* `Tatami.observeObject` is total now, on the measure `Doc.size`, so
-  inference is reasonable about: it has equations and an induction principle.
-  What was nested `for` loops is four mutually recursive functions.
-* `infer_perm` is a real claim, and stating it correctly took two corrections.
-  As an equation between `Tables` it is false, because that list carries
-  discovery order and order of last update; and it was false on `toSchema`
-  too while `parent` was observed, because it overwrote rather than merged.
-  Removing the `recursive` marking removed the only way to reach one table
-  from two places, so parent and `keyed` are read off the path and nothing
-  left in `TableObs` overwrites. It is now conditional on success, since
-  which error is reported first legitimately depends on order while whether
-  inference succeeds does not. Three obstacles remain, including that `Array.qsort` has no
-  correctness lemmas in core -- see the docstring.
-* `infer_admits` and `infer_least` are now stated against `Conforms` and
-  `Schema.le`, so they are real claims rather than the reserved names they
-  used to be. Both rest on a monotonicity invariant --- that a column's type
-  only ever moves up as documents arrive --- which has to hold of the whole
-  `Tables` state at once and is not yet established. Adequacy additionally
-  needs the counts identity, which is not yet stated.
+**The specification** (`Proofs.Spec`). Says, independently of the
+implementation, when a document is *described by* a schema (`Conforms`) and
+when one schema is *below* another (`Schema.le`). `scalarTy` there restates the
+rule in `seeScalar` rather than calling it, and `scalarTy_seeScalar` is the
+lemma that fails if the two drift apart --- it has already caught one drift,
+when `seeScalar` gained a `uuid` case that `scalarTy` had not.
+
+Nothing currently consumes `Conforms`: `infer_admits` and `infer_least` are
+stated over `Obs.seen` and `Obs.joined` instead. Stating them over `Conforms`
+as well would say what this file says at the level of documents rather than of
+observations, and is the obvious next step.
 
 **Not covered, though it sounds as if it were.**
-* `File.WellFormed` constrains names only, not references. A `qualified M n`
-  naming a module that does not exist, or one that is compiled *after* the
-  unit naming it, satisfies this definition and still does not compile. Each
-  module is now its own `.mli`, so the ordering obligation is real and
-  external: `File.units` emits `Ids` first and the rest deepest-first, and
-  nothing states that this order is a topological sort of the references.
-  "The emitted OCaml compiles" needs that, plus a scoping clause.
+* *Nullability.* Every theorem about types is silent about `option`.
+  `inferFinish` computes `absent` as `visits - values - nulls` in `Nat`, where
+  subtraction truncates, and nothing bounds `values + nulls` by `visits`. If
+  that ever failed, a column a document omitted would report `absent = 0` and
+  come out non-optional. It is the one obligation the restructure did not
+  remove.
+* *Null-only columns.* A member that only ever held `null` has an empty `seen`,
+  so `joined` is `bot` and both halves of `types_principal` hold vacuously.
+  There is no type information to constrain, but nothing constrains it.
 
 **Out of reach, and not for want of effort.**
 * Anything about the data surviving. The program emits a description of
-  tables and never emits a row, so there is no object for a preservation
-  theorem to be about. That needs shredding first. Note also that a
-  round-trip could only ever hold up to member order, explicit `null` versus
-  an absent key, and the written form of a number --- all three are discarded
-  by design --- and not at all for integers past `maxNativeInt`.
+  tables; the loader that fills them is OCaml, outside what Lean sees here. A
+  preservation theorem needs the shredder first. Note also that a round-trip
+  could only ever hold up to member order, explicit `null` versus an absent
+  key, and the written form of a number --- all three are discarded by design
+  --- and not at all for integers past `maxNativeInt`.
 -/

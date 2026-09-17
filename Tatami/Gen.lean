@@ -184,6 +184,48 @@ def storageTy (s : Schema) : Ty → Ty
       | none => .uuid
   | ty => ty
 
+/-- The names the generator puts in a module of its own accord. A member
+    mangling to one of these cannot become a column: it would collide. -/
+def generatedNames (nm : Naming) (t : Table) : List String :=
+  [idColumn, "get", "make", "t", "id"]
+  ++ (match t.parent with
+      | some pp => [ keyColumnName nm pp
+                   , if t.keyed then keyColumn else indexColumn
+                   , childLookupName nm pp ]
+      | none => [])
+
+/-- The columns that come from the table's position rather than its contents:
+    its key, and -- when its rows sit in a collection -- the back reference and
+    the position within that collection. -/
+def baseCols (nm : Naming) (t : Table) (keyTy : Ty) : List Col :=
+  { name := idColumn, ty := keyTy, nullable := false, kind := .key } ::
+  (match t.parent with
+   | some pp =>
+       [ { name := keyColumnName nm pp, ty := .ref pp, nullable := false, kind := .parent }
+       , { name := if t.keyed then keyColumn else indexColumn
+         , ty := if t.keyed then .str else .int, nullable := false, kind := .position } ]
+   | none => [])
+
+/-- What one member of the document contributes to the layout, which is a
+    column or nothing at all.
+
+    `none` twice over, for different reasons: a member called `id` was
+    consumed as the key above, and an array contributes no column here -- the
+    elements carry the key back, and the accessor that finds them is `of_` in
+    their module, where the rows and the key are.
+
+    Its own definition rather than the body of a loop over a mutable list, so
+    that `Proofs.Tree` can say which member a column came from. -/
+def memberCol (generated : List String) (c : Column) : Except Error (Option Col) :=
+  if c.name == idColumn then pure none
+  else
+    let name := mangle c.name
+    if generated.contains name then throw (.reservedColumnName c.name name)
+    else match c.field.ty with
+      | .coll _ => pure none
+      | ty => pure (some { name := name, ty := ty
+                         , nullable := c.field.nullable, kind := .member c.name })
+
 /-- The columns a table emits, in order: its key, then the back reference and
     position if its rows sit in a collection, then the document's own members
     with collections dropped.
@@ -191,37 +233,9 @@ def storageTy (s : Schema) : Ty → Ty
     Both the OCaml modules and the SQL come from this one list, which is what
     makes their column order the same by construction rather than by care. -/
 def layoutOf (nm : Naming) (t : Table) : Except Error (List Col) := do
-  let keyName := idColumn
-  let positionColumn := if t.keyed then keyColumn else indexColumn
-  let keyTy : Ty ← keyTyOf t
-
-  let mut cols : List Col := [{ name := keyName, ty := keyTy, nullable := false, kind := .key }]
-  match t.parent with
-  | some pp =>
-      cols := cols ++
-        [ { name := keyColumnName nm pp, ty := .ref pp, nullable := false, kind := .parent }
-        , { name := positionColumn, ty := if t.keyed then .str else .int
-          , nullable := false, kind := .position } ]
-  | none => pure ()
-
-  let generated : List String :=
-    [keyName, "get", "make", "t", "id"]
-    ++ (match t.parent with
-        | some pp => [keyColumnName nm pp, positionColumn, childLookupName nm pp]
-        | none => [])
-
-  for c in t.columns do
-    if c.name == "id" then continue        -- consumed as the key above
-    let name := mangle c.name
-    if generated.contains name then throw (.reservedColumnName c.name name)
-    match c.field.ty with
-    | .coll _ =>
-        -- nothing here: the elements carry the key back, and the accessor that
-        -- finds them is `of_` in their module, where the rows and the key are
-        pure ()
-    | ty => cols := cols ++
-        [{ name := name, ty := ty, nullable := c.field.nullable, kind := .member c.name }]
-  return cols
+  let keyTy ← keyTyOf t
+  let members ← t.columns.mapM (memberCol (generatedNames nm t))
+  return baseCols nm t keyTy ++ members.filterMap id
 
 /-- An identifier, as SQL spells one.
 
@@ -285,6 +299,21 @@ def constraintsOf (nm : Naming) (t : Table) : List String :=
         , s!"create index {quoteIdent (tbl ++ "_" ++ c.name ++ "_idx")} on {quoteIdent tbl} ({quoteIdent c.name})" ]
     | _ => []
 
+/-- A column's type as it appears in a signature.
+
+    A reference is the key itself, not the row: `P.get` is where the lookup
+    happens, and it is also what lets the schema reader see it is a key.
+
+    Lifted out of `genModule` so that `Proofs.Tree` can name it: the
+    correspondence between a `ref` column and the accessor it becomes is
+    stated of this function. -/
+def colTyExpr (nm : Naming) (c : Col) : TyExpr :=
+  let base : TyExpr :=
+    match c.ty with
+    | .ref p => .qualified (moduleName nm p) "id"
+    | ty => tyExprOf nm ty
+  if c.nullable then .option base else base
+
 def genModule (nm : Naming) (t : Table) : Except Error Module := do
   let self := moduleName nm t.path
   -- where a row source would be: reaching a row is a hole, reading one is not
@@ -292,14 +321,7 @@ def genModule (nm : Naming) (t : Table) : Except Error Module := do
     .app (.var "failwith") [.str s!"{self}.{what}: no row source"]
   let cols ← layoutOf nm t
 
-  -- a reference is the key itself, not the row: `P.get` is where the lookup
-  -- happens, and it is also what lets the schema reader see it is a key
-  let tyOf (c : Col) : TyExpr :=
-    let base : TyExpr :=
-      match c.ty with
-      | .ref p => .qualified (moduleName nm p) "id"
-      | ty => tyExprOf nm ty
-    if c.nullable then .option base else base
+  let tyOf (c : Col) : TyExpr := colTyExpr nm c
 
   let fields : List RecField := cols.map fun c => { name := c.name, ty := tyOf c }
   let accessors : List Decl := cols.map fun c => .value c.name (.arrow (.named "t") (tyOf c))
@@ -449,11 +471,12 @@ def genLoader (s : Schema) (nm : Naming) (t : Table) : Except Error Module := do
 
 /-- The tables a unit names: its parent, for the foreign key, and the target
     of every `ref` column. -/
-private def depsOf (t : Table) : List Path :=
+def depsOf (t : Table) : List Path :=
   (match t.parent with | some pp => [pp] | none => []) ++
   t.columns.filterMap fun c => match c.field.ty with | .ref p => some p | _ => none
 
-private def orderGo : Nat → List Table → List Table → List Table
+-- not `private`: `Proofs.Tree` reasons about what `orderTables` keeps
+def orderGo : Nat → List Table → List Table → List Table
   | 0, pending, acc => acc.reverse ++ pending
   | _, [], acc => acc.reverse
   | fuel + 1, pending, acc =>
@@ -544,23 +567,115 @@ def genRegistry (s : Schema) (nm : Naming) : Except Error Module := do
       ]
   }
 
+/-! ## The shape a corpus produces
+
+    `gen` is total on `Schema`, deliberately: `Proofs.Wellformed` holds of
+    every schema, including ones inference would never build. The tree
+    correspondence in `Proofs.Tree` cannot be -- there are schemas whose tree
+    a signature simply cannot express -- so rather than assume the input came
+    from a corpus, the generator checks it and refuses one that did not.
+
+    Five conditions, and inference satisfies all five: `Tables` is keyed by
+    path, `checkDistinct` refuses a repeated member, and the walk records a
+    table before descending into what it holds, so a parent and a reference
+    target are always there and a reference always points *down* while a
+    parent points up. -/
+
+/-- Distinctness of a list of paths, the counterpart of `nodupNames`. -/
+def nodupPaths : List Path → Bool
+  | [] => true
+  | p :: tl => !tl.contains p && nodupPaths tl
+
+/-- One round of reachability: the tables one edge further from what is
+    already reached. A collection's rows are reached from the table holding
+    them; a reference's target from the table holding the key. -/
+def stepReach (s : Schema) (acc : List Path) : List Path :=
+  let viaColl := s.filterMap fun t =>
+    match t.parent with
+    | some pp => if acc.contains pp && !acc.contains t.path then some t.path else none
+    | none => none
+  let viaRef := s.flatMap fun t =>
+    if acc.contains t.path then
+      t.columns.filterMap fun c =>
+        match c.field.ty with
+        | .ref q => if acc.contains q then none else some q
+        | _ => none
+    else []
+  acc ++ viaColl ++ viaRef
+
+/-- Everything reachable from the root. Bounded by the number of tables: a
+    round that adds nothing is the last, and every other round adds at least
+    one. -/
+def reachGo (s : Schema) : Nat → List Path → List Path
+  | 0, acc => acc
+  | fuel + 1, acc =>
+      let acc' := stepReach s acc
+      if acc'.length == acc.length then acc else reachGo s fuel acc'
+
+def reachable (s : Schema) : List Path := reachGo s s.length [[]]
+
+/-- Did this schema come from a corpus? -/
+def schemaOkB (s : Schema) : Bool :=
+  let paths := s.map Table.path
+  nodupPaths paths
+  && s.all (fun t =>
+      nodupNames (t.columns.map Column.name)
+      && (match t.parent with
+          | some pp =>
+              paths.contains pp
+              && !(t.columns.any fun c => c.field.ty == .ref pp)
+          | none => true)
+      && t.columns.all (fun c =>
+          match c.field.ty with
+          | .ref q => paths.contains q
+          | _ => true))
+  && s.all (fun t => (reachable s).contains t.path)
+
+/-- Which condition failed, for the diagnostic. -/
+def schemaFault (s : Schema) : String :=
+  let paths := s.map Table.path
+  if !nodupPaths paths then "two tables share a path"
+  else if !(s.all fun t => nodupNames (t.columns.map Column.name)) then
+    "a table has two columns of one name"
+  else if !(s.all fun t => match t.parent with
+              | some pp => paths.contains pp | none => true) then
+    "a table sits in a collection held by a table that is not here"
+  else if !(s.all fun t => t.columns.all fun c =>
+              match c.field.ty with | .ref q => paths.contains q | _ => true) then
+    "a column holds a key into a table that is not here"
+  else if !(s.all fun t => match t.parent with
+              | some pp => !(t.columns.any fun c => c.field.ty == .ref pp)
+              | none => true) then
+    "a table both sits in a collection held by another and holds a key into it, \
+     which a signature cannot express"
+  else "a table is not reachable from the root"
+
+/-- The last step of `genRaw`: refuse a file that repeats a module name,
+    naming the first one that repeats.
+
+    Its own definition rather than a tail of the `do` block, so that a proof
+    can case on it without first having to see through the block's binders. -/
+def noClash (mods : List Module) : Except Error File :=
+  let names := mods.map (·.name)
+  match names.find? (fun n => (names.filter (· == n)).length > 1) with
+  | some n => .error (.moduleNameClash n)
+  | none => .ok { modules := mods }
+
 /-- Exposed, with `certify`, so `Proofs.Wellformed` can invert `gen`. -/
 def genRaw (nm : Naming) (s : Schema) : Except Error File := do
   let ordered := orderTables s
-  let mut mods : List Module := []
-  for t in ordered do
-    mods := mods ++ [← genModule nm t]
+  -- three `mapM`s and an append rather than a loop over a mutable list: the
+  -- result is then a function of `ordered` that `Proofs.Tree` can take apart,
+  -- which a `for` accumulating into `mut` is not. The order and the
+  -- first-error behaviour are the same.
+  let units ← ordered.mapM (genModule nm)
   -- after every module, not beside its own: a loader names the module it
   -- loads, and the modules are already in an order where nothing names a unit
   -- not yet compiled
-  for t in ordered do
-    mods := mods ++ [← genLoader s nm t]
+  let loaders ← ordered.mapM (genLoader s nm)
   -- last of all: it names every loader
-  mods := mods ++ [← genRegistry s nm]
-  let names := mods.map (·.name)
-  for n in names do
-    if (names.filter (· == n)).length > 1 then throw (.moduleNameClash n)
-  return { modules := mods }
+  let registry ← genRegistry s nm
+  noClash (units ++ loaders ++ [registry])
 
 /-- The generator checks its own output before handing it back, and refuses a
     file that repeats a name rather than emitting one that will not compile.
@@ -576,8 +691,9 @@ def certify (f : File) : Except Error File :=
   if f.okB then .ok f else .error (.illFormedSignature (f.badModule.getD "the file"))
 
 def gen (nm : Naming) (s : Schema) : Except Error File :=
-  match genRaw nm s with
-  | .error e => .error e
-  | .ok f => certify f
+  if !schemaOkB s then .error (.schemaNotFromCorpus (schemaFault s))
+  else match genRaw nm s with
+    | .error e => .error e
+    | .ok f => certify f
 
 end Tatami

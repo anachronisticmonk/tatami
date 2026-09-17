@@ -75,7 +75,7 @@ def columnJson (nm : Naming) (kv : String × Obs) : Json :=
     , ("widened", .bool obs.widened)
     , ("big", .bool obs.big)
     , ("renamed", .bool (mangle key != key))
-    , ("neverTyped", .bool (obs.ty == .bot)) ]
+    , ("neverTyped", .bool (obs.joined == some .bot)) ]
 
 def tableJson (nm : Naming) (pt : Path × TableObs) : Json :=
   let (p, t) := pt
