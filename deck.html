@@ -371,81 +371,102 @@
       <div class="eyebrow">The payoff</div>
       <h2>The proof is what lets us delete the mask</h2>
       <div class="diagram">
-        <svg viewBox="0 0 660 244" role="img" aria-label="Two memory layouts. When the signature says string option the store keeps a dense value array plus a parallel validity mask, sixteen bytes per row and a check on every row. When the signature says int the mask does not exist: eight bytes per row, no check, and one sixty-four byte cache line holds eight values.">
+        <svg viewBox="0 0 660 330" role="img" aria-label="Two array layouts. An int array stores the integers directly, so one 64-byte cache line holds eight values and one fetch answers eight comparisons. An int option array stores pointers, so the same line holds eight addresses and no values; each value then needs a dependent load to a separate 16-byte heap block of header plus value, scattered through the heap.">
 
-          <!-- ── panel A: optional ─────────────────────────────────────── -->
-          <text class="dl" x="0" y="12">the signature says <tspan class="dc" fill="var(--vermilion)">string option</tspan></text>
+          <!-- ── int array ─────────────────────────────────────────────── -->
+          <text class="dl" x="0" y="12"><tspan class="dc" fill="var(--blue)">int array</tspan>  —  the value <tspan font-style="italic">is</tspan> the array slot</text>
 
-          <g>
-            <rect x="0"   y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="82"  y="22" width="74" height="30" rx="3" fill="var(--paper)"     stroke="var(--rule-strong)" stroke-dasharray="3 3"></rect>
-            <rect x="164" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="246" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="328" y="22" width="74" height="30" rx="3" fill="var(--paper)"     stroke="var(--rule-strong)" stroke-dasharray="3 3"></rect>
-            <rect x="410" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="492" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="574" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <g class="dc" text-anchor="middle">
-              <text x="37"  y="42">"ok"</text>
-              <text x="119" y="42" fill="var(--muted)">""</text>
-              <text x="201" y="42">"E14"</text>
-              <text x="283" y="42">"ok"</text>
-              <text x="365" y="42" fill="var(--muted)">""</text>
-              <text x="447" y="42">"ok"</text>
-              <text x="529" y="42">"E2"</text>
-              <text x="611" y="42">"ok"</text>
-            </g>
+          <rect x="0" y="22" width="648" height="34" rx="3" fill="var(--surface-2)" stroke="var(--blue)" stroke-width="1.5"></rect>
+          <g stroke="var(--blue)" stroke-width="1" opacity="0.45">
+            <line x1="81"  y1="22" x2="81"  y2="56"></line>
+            <line x1="162" y1="22" x2="162" y2="56"></line>
+            <line x1="243" y1="22" x2="243" y2="56"></line>
+            <line x1="324" y1="22" x2="324" y2="56"></line>
+            <line x1="405" y1="22" x2="405" y2="56"></line>
+            <line x1="486" y1="22" x2="486" y2="56"></line>
+            <line x1="567" y1="22" x2="567" y2="56"></line>
+          </g>
+          <g class="dc" text-anchor="middle">
+            <text x="40"  y="44">11414</text><text x="121" y="44">28320</text>
+            <text x="202" y="44">3674</text> <text x="283" y="44">9051</text>
+            <text x="364" y="44">44120</text><text x="445" y="44">812</text>
+            <text x="526" y="44">6607</text> <text x="607" y="44">15903</text>
+          </g>
+          <text class="dm" x="0" y="74" fill="var(--blue)">one 64-byte cache line  =  8 values  →  1 fetch answers 8 comparisons, and the prefetcher runs ahead of the stride</text>
+
+          <!-- ── int option array ──────────────────────────────────────── -->
+          <text class="dl" x="0" y="122"><tspan class="dc" fill="var(--vermilion)">int option array</tspan>  —  the array slot is an <tspan font-style="italic">address</tspan></text>
+
+          <rect x="0" y="132" width="648" height="34" rx="3" fill="var(--paper)" stroke="var(--vermilion)" stroke-width="1.5"></rect>
+          <g stroke="var(--vermilion)" stroke-width="1" opacity="0.45">
+            <line x1="81"  y1="132" x2="81"  y2="166"></line>
+            <line x1="162" y1="132" x2="162" y2="166"></line>
+            <line x1="243" y1="132" x2="243" y2="166"></line>
+            <line x1="324" y1="132" x2="324" y2="166"></line>
+            <line x1="405" y1="132" x2="405" y2="166"></line>
+            <line x1="486" y1="132" x2="486" y2="166"></line>
+            <line x1="567" y1="132" x2="567" y2="166"></line>
+          </g>
+          <g fill="var(--vermilion)">
+            <circle cx="40"  cy="149" r="3.5"></circle><circle cx="121" cy="149" r="3.5"></circle>
+            <circle cx="202" cy="149" r="3.5"></circle><circle cx="283" cy="149" r="3.5"></circle>
+            <circle cx="364" cy="149" r="3.5"></circle><circle cx="445" cy="149" r="3.5"></circle>
+            <circle cx="526" cy="149" r="3.5"></circle><circle cx="607" cy="149" r="3.5"></circle>
+          </g>
+          <text class="dm" x="0" y="184" fill="var(--vermilion)">the same 64-byte line  =  8 pointers  =  0 values</text>
+
+          <!-- the indirection: pointers land on blocks in no particular order -->
+          <g stroke="var(--muted)" stroke-width="1" fill="none" opacity="0.75">
+            <path d="M40 153  L283 236"></path>
+            <path d="M121 153 L201 236"></path>
+            <path d="M202 153 L119 236"></path>
+            <path d="M283 153 L529 236"></path>
+            <path d="M364 153 L37 236"></path>
+            <path d="M445 153 L365 236"></path>
+            <path d="M526 153 L611 236"></path>
+            <path d="M607 153 L447 236"></path>
           </g>
 
           <g>
-            <rect x="0"   y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
-            <rect x="82"  y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
-            <rect x="164" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
-            <rect x="246" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
-            <rect x="328" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
-            <rect x="410" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
-            <rect x="492" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
-            <rect x="574" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
-            <g class="dc" text-anchor="middle" fill="var(--vermilion)">
-              <text x="37"  y="73">✓</text><text x="119" y="73">✗</text>
-              <text x="201" y="73">✓</text><text x="283" y="73">✓</text>
-              <text x="365" y="73">✗</text><text x="447" y="73">✓</text>
-              <text x="529" y="73">✓</text><text x="611" y="73">✓</text>
+            <rect x="0"   y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="82"  y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="164" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="246" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="328" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="410" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="492" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="574" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <g stroke="var(--rule-strong)" stroke-width="1" stroke-dasharray="2 2">
+              <line x1="37"  y1="236" x2="37"  y2="264"></line>
+              <line x1="119" y1="236" x2="119" y2="264"></line>
+              <line x1="201" y1="236" x2="201" y2="264"></line>
+              <line x1="283" y1="236" x2="283" y2="264"></line>
+              <line x1="365" y1="236" x2="365" y2="264"></line>
+              <line x1="447" y1="236" x2="447" y2="264"></line>
+              <line x1="529" y1="236" x2="529" y2="264"></line>
+              <line x1="611" y1="236" x2="611" y2="264"></line>
+            </g>
+            <g class="dm" text-anchor="middle" font-size="10">
+              <text x="18"  y="254">hdr</text><text x="100" y="254">hdr</text>
+              <text x="182" y="254">hdr</text><text x="264" y="254">hdr</text>
+              <text x="346" y="254">hdr</text><text x="428" y="254">hdr</text>
+              <text x="510" y="254">hdr</text><text x="592" y="254">hdr</text>
+            </g>
+            <g class="dc" text-anchor="middle" font-size="11">
+              <text x="56"  y="254">44120</text><text x="138" y="254">3674</text>
+              <text x="220" y="254">28320</text><text x="302" y="254">11414</text>
+              <text x="384" y="254">812</text>  <text x="466" y="254">15903</text>
+              <text x="548" y="254">9051</text> <text x="630" y="254">6607</text>
             </g>
           </g>
 
-          <text class="dm" x="0" y="98" fill="var(--vermilion)">the validity mask — only this knows the dashed slots hold an initialiser, not a value</text>
-          <text class="dm" x="0" y="116">16 bytes per row · one check before every value</text>
-
-          <!-- ── panel B: total ────────────────────────────────────────── -->
-          <text class="dl" x="0" y="158">the signature says <tspan class="dc" fill="var(--blue)">int</tspan></text>
-
-          <g>
-            <rect x="0"   y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
-            <rect x="82"  y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
-            <rect x="164" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
-            <rect x="246" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
-            <rect x="328" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
-            <rect x="410" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
-            <rect x="492" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
-            <rect x="574" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
-            <g class="dc" text-anchor="middle">
-              <text x="37"  y="188">11414</text><text x="119" y="188">28320</text>
-              <text x="201" y="188">3674</text> <text x="283" y="188">9051</text>
-              <text x="365" y="188">44120</text><text x="447" y="188">812</text>
-              <text x="529" y="188">6607</text> <text x="611" y="188">15903</text>
-            </g>
-          </g>
-
-          <!-- cache-line bracket -->
-          <g stroke="var(--ink-2)" stroke-width="1" fill="none">
-            <path d="M0 206 L0 212 L648 212 L648 206"></path>
-          </g>
-          <text class="dm" x="324" y="228" text-anchor="middle" fill="var(--ink-2)">one 64-byte cache line = 8 values = 8 comparisons · 8 bytes per row · no check at all</text>
+          <text class="dm" x="0" y="286">each <tspan fill="var(--vermilion)">Some</tspan> is its own 16-byte heap block — header + value — reached in no particular order</text>
+          <text class="dm" x="0" y="306" fill="var(--ink-2)">a <tspan font-weight="700">dependent load</tspan> per element: the next address is unknown until the pointer arrives, so the CPU cannot issue it early,</text>
+          <text class="dm" x="0" y="322" fill="var(--ink-2)">cannot reorder around it, and the prefetcher cannot follow a pointer it has not read yet</text>
         </svg>
       </div>
-      <p>The mask is not shrunk when a column is total — it is <strong>never allocated</strong>, and the per-row check is never generated. That is what the nullability theorem buys, and it is why <code class="em">option</code> in a signature is a memory-layout decision rather than a documentation choice.</p>
-      <p style="font-size:.9em;color:var(--muted)">Measured: <strong class="num" style="color:var(--ink)">264 MB</strong> columnar against <strong class="num" style="color:var(--ink)">297 MB</strong> row-major on the 200 MB corpus — and a <code>bool</code> costs a full word in OCaml, so a mask is not a bitset but a third of the column.</p>
+      <p><strong>8 bytes an element against 24</strong>, measured — but the size is the smaller half. The dense array is walked; the boxed one is <em>chased</em>.</p>
+      <p>This is why a columnar store never uses the boxed form: an optional column is kept dense with a separate validity mask beside it. And a column the signature calls <span class="em">total</span> needs neither the boxing nor the mask — it is already the top row. That is what the nullability theorem buys.</p>
     </section>
 
     <!-- 9 ------------------------------------------------------------------ -->
