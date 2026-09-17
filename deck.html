@@ -329,7 +329,7 @@
         </div>
       </div>
       <p>This matters because absence is computed by <em>truncating</em> subtraction. Without the identity, a field some document omitted could report <code>absent = 0</code>, come out non-optional, and the generator would emit <code>string</code> where the data needs <code class="em">string option</code>.</p>
-      <p>That OCaml <strong>compiles</strong>. It then fails on the first document missing the field, with nothing to say what went wrong. The theorem is what rules that out — and together with principality it pins the whole of what a generated field declaration claims: the type from both sides, the <code>option</code> from both sides.</p>
+      <p>That OCaml <strong>compiles</strong>. The store does defend itself — a total column meeting a <code>null</code> aborts with <code>step.error is NULL in the data, but its signature says otherwise</code> — so it is a loud failure, not corruption. But it lands at <em>load time, on production data, in code a theorem prover wrote and the compiler accepted</em>. The theorem does not make the crash survivable; it makes the condition <span class="em">unreachable</span>.</p>
     </section>
 
     <!-- 8 ------------------------------------------------------------------ -->

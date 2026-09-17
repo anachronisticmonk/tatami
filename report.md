@@ -56,10 +56,12 @@ mishandles them breaks here rather than passing by luck.
 steps by integers.
 
 The ordinary response is to guess the schema, hand-write a loader, and discover
-the guess was wrong in production. The failure is asymmetric and unpleasant: a
-schema that says `string` where the data needs `string option` produces OCaml
-that **compiles cleanly** and then dies on the first document missing that
-field, with nothing in the error to say what went wrong.
+the guess was wrong in production. The failure is asymmetric: a schema that says
+`string` where the data needs `string option` produces OCaml that **compiles
+cleanly**, passes whatever tests the sample data supports, and then fails at
+load on the first document that omits the field. A careful loader reports that
+well — ours names the column — but it is still a run-time discovery about a
+program that type-checked.
 
 So the real question is not *can we infer a schema*. It is **can we infer one we
 are entitled to rely on.**
@@ -173,8 +175,15 @@ visits.
 Why the identity is necessary: absence is computed by *truncating* subtraction.
 Without it, a member some document had omitted could report `absent = 0`, come
 out non-optional, and the generator would emit `string` where the data needs
-`string option`. As established in chapter 1, that code compiles and then fails
-at runtime with nothing to explain itself.
+`string option`.
+
+The columnar builder does defend itself — a total column that meets a `null`
+raises `<column> is NULL in the data, but its signature says otherwise` rather
+than storing an initialiser and calling it a value. So the consequence is a
+loud abort, not corruption. But it is an abort at load time, on production
+data, in code a theorem prover generated and the compiler accepted. The
+theorem does not make the crash survivable; it makes the condition
+unreachable.
 
 Together with principality, this is the whole of what a generated field
 declaration claims: principality pins the type from both sides, nullability pins
