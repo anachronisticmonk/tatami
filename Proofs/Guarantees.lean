@@ -4,10 +4,19 @@ import Proofs.Inference
 /-!
 # What Tatami guarantees
 
-One theorem, to be read as the summary of everything else: given a corpus the
-reader accepted and a generator run that succeeded, these eight things hold of
-the output. Each conjunct is proved elsewhere; this file only puts them in one
-place so that the guarantee can be stated without reading nine files.
+One theorem, `pipeline_correct`, in four named parts: given a corpus the
+reader accepted and a generator run that succeeded, the emitted signature is
+well formed, the schema is canonical, the document's structure is preserved,
+and the inferred types are principal. Each part is proved elsewhere; this file
+groups them so the guarantee can be stated without reading nine files.
+
+The four names are the standard ones. *Canonicity* because the output is a
+canonical form -- equal content gives an equal answer, not merely an
+equivalent one. *Adequacy* and *minimality* because a type that admits every
+value seen is adequate and one that admits no more is minimal, and the two
+together are what makes an inferred type **principal**; `Proofs.Inference`
+already uses those words. *Structure preservation* rather than "faithful",
+which in category theory means something narrower than what is proved here.
 
 Two things it deliberately does *not* say.
 
@@ -24,61 +33,109 @@ theorem would need the shredder first.
 
 namespace Tatami
 
-/-- **The guarantee.** For a corpus that inference accepted and a schema the
-    generator accepted:
+/-! ## The four parts -/
 
-    1. the emitted signature is well formed -- no module, value or record
-       field name repeats;
-    2. the schema is a property of the corpus and not of the order its
-       documents arrived in;
-    3. every collection edge the documents induce is declared in the
-       signatures, and 4. every reference edge is too;
-    5. and 6. conversely, every edge a reader finds between two tables is one
-       the documents induced -- so nothing is invented;
-    7. distinct tables get distinct module names, which is what makes 3--6 an
-       isomorphism of trees rather than a collapse of one onto a smaller one;
-    8. every table is reachable from the root, so walking the signatures from
-       the root module enumerates the whole schema;
-    9. and each member's type admits every type ever seen there, and is the
-       least type that does. -/
-theorem tatami_guarantees (cfg : Config) (nm : Naming) (ds : List Doc)
-    (ts : Tables) (f : File)
-    (hinf : inferCorpus cfg ds = .ok ts)
-    (hgen : gen nm (toSchema ts) = .ok f) :
-    -- 1. the signature compiles, as far as names go
-    f.WellFormed
-    -- 2. order-independence
-  ∧ (∀ es ts', ds.Perm es → inferCorpus cfg es = .ok ts' → ts = ts')
-    -- 3, 4. nothing in the document's tree is lost
-  ∧ (∀ p q, CollEdge (toSchema ts) p q →
-        FileCollEdge f (moduleName nm p) (moduleName nm q))
-  ∧ (∀ p q, RefEdge (toSchema ts) p q →
-        FileRefEdge f (moduleName nm p) (moduleName nm q))
-    -- 5, 6. and nothing is invented
-  ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+/-- **Well-formedness.** The emitted signature repeats no module name, no
+    value name within a module, and no field name within a record. This is
+    what "the output is a legal OCaml signature" amounts to for this fragment,
+    and it holds of every schema because `gen` checks its own output. -/
+theorem signature_wellFormed (nm : Naming) (s : Schema) (f : File)
+    (hgen : gen nm s = .ok f) : f.WellFormed :=
+  gen_wellFormed nm s f hgen
+
+/-- **Canonicity.** The schema is determined by the corpus as a collection of
+    documents, not by the order they arrived in. Shuffle the corpus and the
+    answer is *equal*, not merely equivalent -- which is what makes two runs
+    of the generator agree byte for byte. -/
+theorem schema_canonical (cfg : Config) (ds : List Doc) (ts : Tables)
+    (hinf : inferCorpus cfg ds = .ok ts) :
+    ∀ es ts', ds.Perm es → inferCorpus cfg es = .ok ts' → ts = ts' :=
+  fun es ts' hperm hinf' => infer_perm cfg ds es hperm hinf hinf'
+
+/-- **Structure preservation.** The tree the documents induce and the graph a
+    reader finds in the generated signatures are the same graph.
+
+    Six clauses, and each is needed. The first two say no edge is lost, the
+    next two that none is invented; together they make the edge sets agree.
+    The fifth says distinct tables get distinct modules, which is what lifts
+    that agreement from "the same edges" to "the same graph" rather than a
+    collapse of one onto a smaller one. The sixth says the graph is rooted, so
+    walking it from the root module reaches everything -- without it a table
+    could be declared and never reachable, which is a table the loader would
+    create and never fill. -/
+theorem structure_preserved (nm : Naming) (s : Schema) (f : File)
+    (hgen : gen nm s = .ok f) :
+    -- nothing lost
+    (∀ p q, CollEdge s p q → FileCollEdge f (moduleName nm p) (moduleName nm q))
+  ∧ (∀ p q, RefEdge s p q → FileRefEdge f (moduleName nm p) (moduleName nm q))
+    -- nothing invented
+  ∧ (∀ t u, t ∈ s → u ∈ s →
         FileCollEdge f (moduleName nm t.path) (moduleName nm u.path) →
-        CollEdge (toSchema ts) t.path u.path)
-  ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+        CollEdge s t.path u.path)
+  ∧ (∀ t u, t ∈ s → u ∈ s →
         FileRefEdge f (moduleName nm t.path) (moduleName nm u.path) →
-        RefEdge (toSchema ts) t.path u.path)
-    -- 7. it is the same tree, not a quotient of it
-  ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+        RefEdge s t.path u.path)
+    -- the same graph, not a quotient of it
+  ∧ (∀ t u, t ∈ s → u ∈ s →
         moduleName nm t.path = moduleName nm u.path → t.path = u.path)
-    -- 8. and it is rooted
-  ∧ Rooted (toSchema ts)
-    -- 9. the types are tight
-  ∧ (∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members → ∀ τ, o.joined = some τ →
-        (∀ ty, ty ∈ o.seen → ty ⊑ τ) ∧ (∀ σ, (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ)) := by
-  refine ⟨gen_wellFormed nm (toSchema ts) f hgen,
-          fun es ts' hperm hinf' => infer_perm cfg ds es hperm hinf hinf',
-          (gen_tree_complete nm (toSchema ts) f hgen).1,
-          (gen_tree_complete nm (toSchema ts) f hgen).2,
-          (gen_tree_sound nm (toSchema ts) f hgen).1,
-          (gen_tree_sound nm (toSchema ts) f hgen).2,
-          gen_moduleName_injOn nm (toSchema ts) f hgen,
-          gen_rooted nm (toSchema ts) f hgen, ?_⟩
+    -- and rooted
+  ∧ Rooted s :=
+  ⟨(gen_tree_complete nm s f hgen).1, (gen_tree_complete nm s f hgen).2,
+   (gen_tree_sound nm s f hgen).1, (gen_tree_sound nm s f hgen).2,
+   gen_moduleName_injOn nm s f hgen, gen_rooted nm s f hgen⟩
+
+/-- **Principality.** Each member is given the principal type of the values
+    seen there: one that admits every one of them (*adequacy*), and the least
+    type that does (*minimality*).
+
+    Adequacy alone is nearly free -- a corpus of integers is adequately
+    described by `float`, or by `int option`. Minimality is what rules the
+    loose answers out, and the two together pin the type from both sides. -/
+theorem types_principal (cfg : Config) (ds : List Doc) (ts : Tables)
+    (hinf : inferCorpus cfg ds = .ok ts) :
+    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members → ∀ τ, o.joined = some τ →
+      (∀ ty, ty ∈ o.seen → ty ⊑ τ) ∧ (∀ σ, (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ) := by
   intro p t hpt k o hko τ hτ
   exact ⟨infer_admits cfg ds ts hinf p t hpt k o hko τ hτ,
          fun σ hσ => infer_least cfg ds ts hinf p t hpt k o hko τ σ hτ hσ⟩
+
+/-! ## And the whole -/
+
+/-- **Correctness of the pipeline.** For a corpus inference accepted and a
+    schema the generator accepted: the signature is well formed, the schema is
+    canonical, the document's structure is preserved, and the types are
+    principal.
+
+    What it does not say. Every part is conditional on both stages returning
+    `ok`, and both refuse inputs -- a member holding two types with no common
+    type, a schema whose tree a signature cannot express. The guarantee is
+    about what is emitted, not about what is accepted. And it says nothing
+    about rows: the program emits a description of tables, and the loader that
+    fills them is OCaml, outside what Lean sees here. -/
+theorem pipeline_correct (cfg : Config) (nm : Naming) (ds : List Doc)
+    (ts : Tables) (f : File)
+    (hinf : inferCorpus cfg ds = .ok ts)
+    (hgen : gen nm (toSchema ts) = .ok f) :
+    f.WellFormed
+  ∧ (∀ es ts', ds.Perm es → inferCorpus cfg es = .ok ts' → ts = ts')
+  ∧ ((∀ p q, CollEdge (toSchema ts) p q →
+        FileCollEdge f (moduleName nm p) (moduleName nm q))
+     ∧ (∀ p q, RefEdge (toSchema ts) p q →
+        FileRefEdge f (moduleName nm p) (moduleName nm q))
+     ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+          FileCollEdge f (moduleName nm t.path) (moduleName nm u.path) →
+          CollEdge (toSchema ts) t.path u.path)
+     ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+          FileRefEdge f (moduleName nm t.path) (moduleName nm u.path) →
+          RefEdge (toSchema ts) t.path u.path)
+     ∧ (∀ t u, t ∈ toSchema ts → u ∈ toSchema ts →
+          moduleName nm t.path = moduleName nm u.path → t.path = u.path)
+     ∧ Rooted (toSchema ts))
+  ∧ (∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members → ∀ τ, o.joined = some τ →
+        (∀ ty, ty ∈ o.seen → ty ⊑ τ) ∧ (∀ σ, (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ)) :=
+  ⟨signature_wellFormed nm (toSchema ts) f hgen,
+   schema_canonical cfg ds ts hinf,
+   structure_preserved nm (toSchema ts) f hgen,
+   types_principal cfg ds ts hinf⟩
 
 end Tatami

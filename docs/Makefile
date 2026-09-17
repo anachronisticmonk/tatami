@@ -7,9 +7,9 @@ LATEXMK := latexmk -pdf -interaction=nonstopmode -halt-on-error
 
 DOCS := phase_1
 
-.PHONY: all clean pipeline $(DOCS)
+.PHONY: all clean pipeline guarantees $(DOCS)
 
-all: $(DOCS) pipeline
+all: $(DOCS) pipeline guarantees
 
 phase_1:
 	cd phase_1 && $(LATEXMK) lowering.tex
@@ -19,6 +19,11 @@ phase_1:
 pipeline:
 	cd phase_1 && google-chrome --headless=new --disable-gpu --no-pdf-header-footer \
 	  --virtual-time-budget=20000 --print-to-pdf=pipeline.pdf pipeline.html
+
+# Likewise: the dependency tree is generated markup, and Chrome paginates it.
+guarantees:
+	cd phase_1 && google-chrome --headless=new --disable-gpu --no-pdf-header-footer \
+	  --virtual-time-budget=20000 --print-to-pdf=guarantees.pdf guarantees.html
 
 clean:
 	cd phase_1 && latexmk -C
