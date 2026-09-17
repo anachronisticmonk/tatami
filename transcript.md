@@ -7,7 +7,6 @@ not a script to race against.*
 
 ## 0:00 — The problem (30s)
 
-*Screen: a terminal with `head -c 400 corpus/small.json` on it.*
 
 > Here's a pile of JSON. A CI service's build history — repos contain runs,
 > runs contain jobs, jobs contain steps. Nobody wrote down what shape it is.
@@ -157,15 +156,15 @@ and a `note` that is null in one record and absent in another.*
 
 ## Shot list
 
-| Time | Screen | Have ready beforehand |
-|---|---|---|
-| 0:00 | terminal | `head -c 400 corpus/small.json` |
+| Time | Screen           | Have ready beforehand                                    |
+|------|------------------|----------------------------------------------------------|
+| 0:00 | terminal         | `head -c 400 corpus/small.json`                          |
 | 0:30 | `localhost:8420` | JSON with `qty`/`price`/nullable `note` in the clipboard |
-| 1:15 | editor | `schema/step.mli` |
-| 1:50 | editor | `Proofs/Correctness.lean` at `nullability_sound` |
-| 3:00 | editor | `lib/columnar/columnar.ml` header |
-| 3:45 | `localhost:8000` | charts tab, then the sweep |
-| 4:45 | terminal | the `docker run` line |
+| 1:15 | editor           | `schema/step.mli`                                        |
+| 1:50 | editor           | `Proofs/Correctness.lean` at `nullability_sound`         |
+| 3:00 | editor           | `lib/columnar/columnar.ml` header                        |
+| 3:45 | `localhost:8000` | charts tab, then the sweep                               |
+| 4:45 | terminal         | the `docker run` line                                    |
 
 Start the container before recording — the first run pulls ~118 MB, and the
 backend spends a moment loading the corpus.

@@ -1,6 +1,6 @@
 # tatami
 
-**Derive a typed columnar schema from schemaless JSON - and prove the derivation is right.**
+**Derive a typed columnar schema from schemaless JSON and prove the derivation is right.**
 
 You are handed a pile of JSON. Nobody wrote down what shape it is. You want it
 in tables, you want the types to be correct, and you want to know ,not hope,
@@ -74,65 +74,23 @@ be cross-checked with SQL.
 **5. Store it columnar (OCaml).** One dense typed array per column, and the
 array's type comes from the `.mli` and from nowhere else.
 
-This is where the types start paying. Say a column holds three numbers. If
-nothing is ever missing, you store them the obvious way:
-
-```ocaml
-[| 1; 2; 3 |]
-```
-
-Three integers side by side. Reading row 2 is a jump; scanning is a walk from
-one end to the other. Nothing else exists.
-
-If something *can* be missing, the natural OCaml spelling is:
-
-```ocaml
-[| Some 1; None; Some 3 |]
-```
-
-which is correct and bad for scanning — every `Some` is its own little box on
-the heap, so the array holds pointers rather than numbers, and walking it
-means chasing one pointer per row.
-
-So a columnar store does this instead:
-
-```ocaml
-values = [| 1; 0; 3 |]              (* dense, no boxes *)
-mask   = [| true; false; true |]    (* the validity mask *)
-```
-
-The values stay dense and contiguous, and a second parallel array — the
-**validity mask** — says which slots are real. Slot 1 holds `0`, but that `0`
-is meaningless; it is whatever the array was initialised to, and only the mask
-knows it is not a genuine zero.
-
-The mask is not free: it costs a flag per row, and — the expensive part — a
-check per row on every scan, *look at the mask, then decide whether to use the
-value*, a branch that runs millions of times.
-
-**So: the mask is allocated only where the signature says `option`.** If the
-contract says `val ms : t -> int` rather than `int option`, then every slot is
-real and the first layout applies — no mask array, and the per-row check is
-not merely skipped at runtime, it is never generated. Nothing is special-cased
-by column name; the layout reads the signature.
 
 ### Why dense wins: it is about cache lines, not instructions
 
 Measured on this machine with `Obj.reachable_words`:
 
-| Representation | bytes per element |
-|---|---|
-| `int array` | **8** |
-| `int option array`, all `Some` | **24** |
-| `bool array` (a mask) | 8 |
+| Representation                 | bytes per element |
+|--------------------------------|-------------------|
+| `int array`                    | **8**             |
+| `int option array`, all `Some` | **24**            |
+| `bool array` (a mask)          | 8                 |
 
 An OCaml `int` is *immediate* — the value lives directly in the array word. So
 an `int array` **is** the numbers, laid end to end. `Some x` is a heap block —
 a header word plus the value — and the array holds a *pointer* to it: 8 bytes
 in the array plus 16 in the block.
 
-The consequence is not really about instruction count. Memory moves in 64-byte
-cache lines:
+Memory moves in 64-byte cache lines:
 
 - **Unboxed `int array`.** One line = 8 integers = 8 values you can compare
   immediately. One fetch, eight answers. The stride is linear, so the hardware
@@ -144,15 +102,6 @@ cache lines:
   sit adjacent, a line holds four of them and half of what you fetched is
   headers. A second trip bought four values where the first layout gave eight.
 
-And the part that costs most is subtler: the address you need next is not known
-until the pointer arrives. That is a **dependent load** — a serialised chain.
-The CPU cannot issue it early or reorder around it, and the prefetcher, happy
-to run ahead of a linear stride, cannot follow a pointer it has not read yet.
-
-To be fair to the boxed case: straight after construction those blocks are
-often laid out consecutively, so locality starts out reasonable. It degrades
-once the collector promotes and compacts them in some other order. The header
-overhead and the dependent load are paid from the first iteration onward.
 
 This is why the row-major store loses `scan` by 3.21×. Reading `ms` from a
 record means following a pointer, and the line that arrives also carries `id`,
@@ -178,32 +127,23 @@ anything — the builder checks, and dies with the column named:
 step.error is NULL in the data, but its signature says otherwise
 ```
 
-Which is the right behaviour, and still the wrong time to find out. The
-generated code compiled; the schema looked fine; the failure arrives at load,
-on real data, from a program a theorem prover wrote. The proof is what moves
-that discovery from run time to generation time — the point is not that the
-crash is prevented, it is that the condition causing it cannot arise.
+
 
 A wrong `option` in the other direction never crashes at all, which is worse
-in its own way: it silently costs a mask, a branch, and the memory to hold
+in its own way: it costs a mask, a branch, and the memory to hold
 them, on every row, forever, and nothing ever tells you.
 
 So we proved it. **221 theorems and lemmas, zero `sorry`s.** They compose into
 a single top-level result, `pipeline_correct`, in five named parts:
 
-| Part | What it says |
-|---|---|
-| **Well-formedness** | The emitted signature is legal OCaml: no repeated module name, value name, or record field. |
-| **Canonicity** | The schema depends on the corpus *as a set of documents*, not on arrival order. Shuffle the input and the output is **equal**, not merely equivalent - which is why two runs agree byte for byte. |
+| Part                       | What it says                                                                                                                                                                                                                                                    |
+|----------------------------|-----------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------|
+| **Well-formedness**        | The emitted signature is legal OCaml: no repeated module name, value name, or record field.                                                                                                                                                                     |
+| **Canonicity**             | The schema depends on the corpus *as a set of documents*, not on arrival order. Shuffle the input and the output is **equal**, not merely equivalent - which is why two runs agree byte for byte.                                                               |
 | **Structure preservation** | The tree the documents induce and the graph in the generated signatures are the *same graph*: no edge lost, none invented, distinct tables get distinct modules, and the graph is rooted - so no table is declared that the loader would create and never fill. |
-| **Principality** | Every field gets the least type admitting all values seen. Adequacy alone is nearly free (`float` describes integers; so does `int option`); minimality is what rules the loose answers out. |
-| **Nullability** | `values + nulls + absent = visits`, and `optional` is set precisely when `values < visits`. The `option` is neither missing nor gratuitous. |
+| **Principality**           | Every field gets the least type admitting all values seen. Adequacy alone is nearly free (`float` describes integers; so does `int option`); minimality is what rules the loose answers out.                                                                    |
+| **Nullability**            | `values + nulls + absent = visits`, and `optional` is set precisely when `values < visits`. The `option` is neither missing nor gratuitous.                                                                                                                     |
 
-It is equally worth saying what the proof does **not** claim. Every part is
-conditional on inference and generation both succeeding - both refuse inputs,
-and the guarantee is about what is *emitted*, not what is accepted. And it says
-nothing about rows: Lean describes the tables, the OCaml loader fills them, and
-that shredder is outside what Lean sees.
 
 ---
 
@@ -215,13 +155,13 @@ return identical answers** - the harness counts disagreements and prints
 
 Columnar vs. the row-major record store (higher = columnar faster):
 
-| Query | What it does | Speedup |
-|---|---|---|
-| `scan` | count steps longer than *n* - one column of ten | **2.9× – 3.3×** |
-| `computed` | `sum(ms × rate)` over those steps - two columns, arithmetic | **3.2× – 3.5×** |
-| `by_status` | longest step per status - five groups over the table | 1.24× – 1.28× |
-| `three_hop` | step → job → run → repo, for one org | 0.38× – 1.20× |
-| `document` | everything under one repo | 0.46× – 0.81× |
+| Query       | What it does                                                | Speedup         |
+|-------------|-------------------------------------------------------------|-----------------|
+| `scan`      | count steps longer than *n* - one column of ten             | **2.9× – 3.3×** |
+| `computed`  | `sum(ms × rate)` over those steps - two columns, arithmetic | **3.2× – 3.5×** |
+| `by_status` | longest step per status - five groups over the table        | 1.24× – 1.28×   |
+| `three_hop` | step → job → run → repo, for one org                        | 0.38× – 1.20×   |
+| `document`  | everything under one repo                                   | 0.46× – 0.81×   |
 
 **We are not claiming the columnar store is faster.** Two of the five queries
 go the other way, by design - `document` is the case a row store exists for,
@@ -233,21 +173,19 @@ which ones from the schema alone.
 Against raw Yojson document traversal, both typed stores are **50× – 500×**
 faster on scans, and effectively unbounded on keyed lookup.
 
-Memory: the columnar store is consistently smaller - 264 MB vs 297 MB on the
-200 MB corpus - because total columns carry no validity mask.
 
 ### Selectivity is where it gets interesting
 
 Sweeping the threshold of `scan` across a 50 MB corpus:
 
-| Rows kept | Speedup |
-|---|---|
-| 0.02% | **14.1×** |
-| 3.8% | 9.0× |
-| 19% | 4.9× |
-| 54% | 3.4× |
-| 98% | 13.4× |
-| 100% | **15.3×** |
+| Rows kept | Speedup   |
+|-----------|-----------|
+| 0.02%     | **14.1×** |
+| 3.8%      | 9.0×      |
+| 19%       | 4.9×      |
+| 54%       | 3.4×      |
+| 98%       | 13.4×     |
+| 100%      | **15.3×** |
 
 A U-curve. Highly selective predicates and full scans both do very well; the
 middle is where per-row branching costs most. This is exactly the shape a
@@ -258,30 +196,6 @@ read.
 ---
 
 ## Two things that make this unusual
-
-**1. The proof is spent, not displayed.** Be precise about what is and is not
-new here. Machine-checked *type* inference is well-trodden - Algorithm W has
-been mechanised in Coq, Isabelle and HOL4, and completeness of Algorithm W
-already *is* principality. JSON schema inference has formal proofs too:
-Baazizi, Colazzo, Ghelli and Sartiani give pen-and-paper proofs for parametric
-schema inference, occurrence-counting for mandatory versus optional fields
-included. And the nearest Lean neighbour, `lean4-json-schema`, proves
-*validation* - that a document satisfies a **given** schema - not inference
-from data.
-
-What we have not found elsewhere is the link between the theorem and the
-bytes. The nullability result is not a certificate to display; it is the
-licence to **delete the validity mask from the physical layout**, and the
-saving is measured (264 MB against 297 MB). Proof → storage-layout decision →
-benchmark is the chain we believe is new, and it is the one worth arguing
-about.
-
-**2. OCaml has no columnar story, and we built one.** There is no Arrow
-binding, no Parquet reader, no columnar engine for OCaml. `pgx` - which we use,
-and which is good - is a Postgres wire-protocol client: it gives you rows. If
-you want dense typed columns in OCaml today, you write them. So we did, driven
-entirely by generated types, and measured the result. The absence is the
-opportunity: the numbers above are an argument that this gap is worth closing.
 
 The whole pipeline is functional end to end - Lean 4 for inference and proof,
 OCaml for loading, storage, querying and measurement. No imperative escape
