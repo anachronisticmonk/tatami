@@ -144,5 +144,6 @@ Proofs.lean  Proofs/               what is proved about it
 lib/  bin/                         the OCaml stores, servers and benchmarks
 schema/                            the .mli files phase 1 emits
 web/  dev/serve.py                 the pages, and the playground server
+examples/                          inputs worth reading whole, and their .mli
 db/  schemacheck/  test/  bench/   postgres, schema checking, tests, timings
 ```
