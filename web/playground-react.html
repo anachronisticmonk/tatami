@@ -85,6 +85,10 @@
     color: var(--ink); border: 1px solid var(--line); padding: 4px 10px; cursor: pointer;
   }
   button.chip:hover { border-color: var(--accent); color: var(--accent); }
+  button.chip.on {
+    border-color: var(--accent); color: var(--accent); background: var(--accent-bg);
+    font-weight: 500;
+  }
   button.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
 
   /* workbench */
@@ -919,6 +923,86 @@ const {useState, useEffect, useMemo, useRef, useCallback} = React;
    dev/serve.py, and drop to the in-browser engine when no server answers.
    Both implement the same rules, so opening the page with and without the
    server is a cheap differential test. */
+/* One repo from the CI corpus, whole: two runs, four jobs, thirteen steps,
+   with a null trigger, a missing `error` on some steps and a quoted string
+   inside another. Enough shape that the schema it produces is the interesting
+   one rather than a toy. */
+const FULL_EXAMPLE = `{
+  "id": "9ac9d5ae-2851-4e0a-a319-340bc52ed89a",
+  "name": "sync-core",
+  "org": "hooli",
+  "private": true,
+  "runs": [
+    {
+      "id": 1,
+      "branch": "release",
+      "status": "timeout",
+      "ms": 1604132,
+      "trigger": null,
+      "jobs": [
+        {
+          "id": 2,
+          "os": "windows",
+          "status": "timeout",
+          "ms": 115004,
+          "exit": 72,
+          "steps": [
+            { "id": 3, "name": "lint", "ms": 4516, "rate": 0.000724, "error": null },
+            { "id": 4, "name": "checkout", "ms": 2083, "rate": 0.000308, "error": "\\"sync-web\\" not found" },
+            { "id": 5, "name": "deploy", "ms": 98950, "rate": 0.000936 }
+          ]
+        },
+        {
+          "id": 6,
+          "os": "linux",
+          "status": "failed",
+          "ms": 101535,
+          "exit": 28,
+          "steps": [
+            { "id": 7, "name": "lint", "ms": 25728, "rate": 0.000428, "error": null },
+            { "id": 8, "name": "package", "ms": 45880, "rate": 0.000992, "error": null },
+            { "id": 9, "name": "lint", "ms": 11229, "rate": 0.000568, "error": null }
+          ]
+        }
+      ]
+    },
+    {
+      "id": 10,
+      "branch": "develop",
+      "status": "ok",
+      "ms": 2001128,
+      "trigger": "schedule",
+      "jobs": [
+        {
+          "id": 11,
+          "os": "macos",
+          "status": "timeout",
+          "ms": 462645,
+          "exit": 13,
+          "steps": [
+            { "id": 12, "name": "package", "ms": 23746, "rate": 0.000241, "error": null },
+            { "id": 13, "name": "package", "ms": 19891, "rate": 0.00034, "error": null },
+            { "id": 14, "name": "deploy", "ms": 69561, "rate": 0.000498 },
+            { "id": 15, "name": "checkout", "ms": 1694, "rate": 0.00062 },
+            { "id": 16, "name": "deploy", "ms": 54946, "rate": 0.00023 }
+          ]
+        },
+        {
+          "id": 17,
+          "os": "windows",
+          "status": "timeout",
+          "ms": 751652,
+          "exit": 108,
+          "steps": [
+            { "id": 18, "name": "build", "ms": 257219, "rate": 0.000453, "error": null },
+            { "id": 19, "name": "lint", "ms": 16728, "rate": 0.000152 }
+          ]
+        }
+      ]
+    }
+  ]
+}`;
+
 let serverUp = null;
 
 /* Lifted from web/playground.html with esc(). The textarea in .stack is
@@ -999,7 +1083,8 @@ const isCollection = p => /\[\]$|\{\}$/.test(p);
 
 /* ---- panes ---- */
 
-function Modules({report, file, setFile, edits, setEdits}) {
+function Modules({report, file, setFile, edits, setEdits, blank}) {
+  if (blank) return h('p', {className: 'lead'}, 'Nothing pasted yet \u2014 paste some JSON, or pick Full example.');
   if (!report) return h('p', {className: 'lead'}, 'reading the JSON\u2026');
   if (!report.ok)
     return h('div', {id: 'errbox'}, h('div', {className: 'err'}, report.error));
@@ -1176,6 +1261,7 @@ function App() {
   const [file, setFile] = useState(0);
   const [edits, setEdits] = useState({});
   const [theme, setTheme] = useTheme();
+  const [tray, setTray] = useState(false);
   const seq = useRef(0);
 
   useEffect(() => {
@@ -1220,13 +1306,26 @@ function App() {
         'schema and writes the OCaml signature for it — one module per table, with the keys ' +
         'and accessors that record how the tables relate. You write the implementation.'),
       h('div', {className: 'examples'},
-        h('span', {className: 'label'}, 'Try'),
-        [['note', 'Nested object'], ['arrayObjs', 'Array of objects'], ['corpus', 'A corpus'],
-         ['map', 'Keys that are data'], ['tree', 'A comment thread'], ['names', 'Awkward names'],
-         ['nulls', 'Nulls and absence'], ['conflict', 'A type conflict']].map(([k, label]) =>
-          h('button', {key: k, className: 'chip', onClick: () => {
-            setSrc(Engine.EXAMPLES[k]); setEdits({}); setFile(0);
-          }}, label)))),
+        h('button', {
+          className: 'chip' + (src.trim() === '' ? ' on' : ''),
+          onClick: () => { setSrc(''); setEdits({}); setFile(0); },
+        }, 'Blank'),
+        h('button', {
+          className: 'chip' + (src === FULL_EXAMPLE ? ' on' : ''),
+          onClick: () => { setSrc(FULL_EXAMPLE); setEdits({}); setFile(0); },
+        }, 'Full example'),
+        h('button', {
+          className: 'chip' + (tray ? ' on' : ''),
+          onClick: () => setTray(!tray),
+        }, (tray ? '\u25be ' : '\u25b8 ') + 'Try'),
+        tray
+          ? [['note', 'Nested object'], ['arrayObjs', 'Array of objects'], ['corpus', 'A corpus'],
+             ['map', 'Keys that are data'], ['tree', 'A comment thread'], ['names', 'Awkward names'],
+             ['nulls', 'Nulls and absence'], ['conflict', 'A type conflict']].map(([k, label]) =>
+              h('button', {key: k, className: 'chip', onClick: () => {
+                setSrc(Engine.EXAMPLES[k]); setEdits({}); setFile(0);
+              }}, label))
+          : null)),
 
     h('div', {className: 'bench'},
       h('div', {className: 'panel'},
@@ -1263,7 +1362,7 @@ function App() {
             h('button', {className: 'act', onClick: download}, 'Download'))),
 
         h('div', {className: 'pane on'},
-          tab === 'modules' ? h(Modules, {report, file, setFile, edits, setEdits}) : null,
+          tab === 'modules' ? h(Modules, {report, file, setFile, edits, setEdits, blank: src.trim() === ''}) : null,
           tab === 'shape'
             ? h('div', {},
                 h('p', {className: 'lead'},
