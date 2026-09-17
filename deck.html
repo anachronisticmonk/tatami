@@ -128,6 +128,20 @@
      letter-spacing:.09em; color:var(--muted); font-weight:500; border-bottom-color:var(--rule-strong)}
   td:first-child{font-weight:600; white-space:nowrap; padding-right:20px}
   .tscroll{overflow-x:auto}
+  .parts td:nth-child(2){
+    font-family:"JetBrains Mono",monospace; font-size:.78em; line-height:1.5;
+    color:var(--indigo); white-space:nowrap; padding-right:22px;
+  }
+  .parts td:nth-child(3){color:var(--ink-2)}
+  .parts th:nth-child(2),.parts th:nth-child(3){white-space:nowrap}
+
+  /* the memory diagram */
+  .diagram{margin-top:22px; background:var(--surface); border:1px solid var(--rule);
+           border-radius:4px; padding:18px; box-shadow:var(--shadow)}
+  .diagram svg{display:block; width:100%; height:auto; overflow:visible}
+  .dl{font-family:"Source Sans 3",sans-serif; font-size:13px; fill:var(--ink)}
+  .dm{font-family:"JetBrains Mono",monospace; font-size:12px; fill:var(--muted); letter-spacing:.03em}
+  .dc{font-family:"JetBrains Mono",monospace; font-size:13px; font-weight:500; fill:var(--ink)}
 
   /* ---- pipeline diagram -------------------------------------------------- */
   .flow{display:flex; flex-wrap:wrap; align-items:stretch; gap:8px; margin-top:26px}
@@ -297,18 +311,38 @@
       <h2><code>pipeline_correct</code>, in five parts</h2>
       <p class="lede">221 theorems and lemmas, zero <code>sorry</code>s, composing into one top-level statement.</p>
       <div class="tscroll">
-      <table>
-        <thead><tr><th>Part</th><th>What it says</th></tr></thead>
+      <table class="parts">
+        <thead><tr><th>Part</th><th>What it says</th><th>In plain words</th></tr></thead>
         <tbody>
-          <tr><td>Well-formedness</td><td>The emitted signature is legal OCaml — no repeated module, value or field name.</td></tr>
-          <tr><td>Canonicity</td><td>The schema depends on the corpus <em>as a set of documents</em>, not arrival order. Shuffle the input and the output is <strong>equal</strong>, not merely equivalent — which is why two runs agree byte for byte.</td></tr>
-          <tr><td>Structure preservation</td><td>The tree the documents induce and the graph in the signatures are the <em>same graph</em>: no edge lost, none invented, distinct tables get distinct modules, and it is rooted — so no table is declared that the loader would create and never fill.</td></tr>
-          <tr><td>Principality</td><td>Every field gets the least type admitting all values seen. Adequacy alone is nearly free — <code>float</code> describes integers, so does <code>int option</code>. Minimality rules the loose answers out.</td></tr>
-          <tr><td>Nullability</td><td>A column is optional <em>exactly</em> when some document lacked a value there.</td></tr>
+          <tr>
+            <td>Well-formedness</td>
+            <td><code>f.WellFormed</code></td>
+            <td>The output is legal OCaml — nothing is declared twice.</td>
+          </tr>
+          <tr>
+            <td>Canonicity</td>
+            <td><code>ds.Perm es → ts = ts'</code></td>
+            <td>Shuffle the corpus, get the <em>same</em> schema. Two runs agree byte for byte.</td>
+          </tr>
+          <tr>
+            <td>Structure preservation</td>
+            <td><code>CollEdge ↔ FileCollEdge</code><br><code>∧ Rooted s</code></td>
+            <td>The tables mirror the document tree exactly — no link lost, none invented, none unreachable.</td>
+          </tr>
+          <tr>
+            <td>Principality</td>
+            <td><code>(∀ ty ∈ seen, ty ⊑ τ)</code><br><code>∧ (∀ σ …, τ ⊑ σ)</code></td>
+            <td>The least type that fits. Not <code>float</code> for integers, not <code>int option</code> for a column that is never empty.</td>
+          </tr>
+          <tr>
+            <td>Nullability</td>
+            <td><code>values + nulls + absent</code><br><code>= visits</code></td>
+            <td>Optional exactly when something was missing. The <code>option</code> is neither absent nor gratuitous.</td>
+          </tr>
         </tbody>
       </table>
       </div>
-      <p>It is worth saying what it does <strong>not</strong> claim: every part is conditional on inference and generation both succeeding, and it says nothing about rows — Lean describes the tables, OCaml fills them.</p>
+      <p>What it does <strong>not</strong> claim: every part is conditional on inference and generation both succeeding, and it says nothing about rows — Lean describes the tables, OCaml fills them.</p>
     </section>
 
     <!-- 7 ------------------------------------------------------------------ -->
@@ -336,31 +370,82 @@
     <section class="slide" id="s8" hidden>
       <div class="eyebrow">The payoff</div>
       <h2>The proof is what lets us delete the mask</h2>
-      <div class="cols">
-        <figure style="margin:0">
-<pre><span class="c">(* lib/columnar/columnar.ml *)</span>
+      <div class="diagram">
+        <svg viewBox="0 0 660 244" role="img" aria-label="Two memory layouts. When the signature says string option the store keeps a dense value array plus a parallel validity mask, sixteen bytes per row and a check on every row. When the signature says int the mask does not exist: eight bytes per row, no check, and one sixty-four byte cache line holds eight values.">
 
-<span class="c">The array type is chosen by the layout</span>
-<span class="c">the schema reader parsed, and a validity</span>
-<span class="c">mask is allocated only where that layout</span>
-<span class="c">says </span><span class="o">option</span><span class="c"> — so a column the signature</span>
-<span class="c">calls total has </span><span class="h">no mask, no branch, and</span>
-<span class="h">no memory holding either</span><span class="c">.</span>
+          <!-- ── panel A: optional ─────────────────────────────────────── -->
+          <text class="dl" x="0" y="12">the signature says <tspan class="dc" fill="var(--vermilion)">string option</tspan></text>
 
-<span class="c">Nothing here special-cases a column</span>
-<span class="c">by name.</span></pre>
-          <figcaption>lib/columnar/columnar.ml</figcaption>
-        </figure>
-        <div>
-          <p style="margin-top:0">What each column <em>is</em> comes from the <code>.mli</code> and from nowhere else.</p>
-          <ul>
-            <li><span>A wrong <code>option</code> costs a mask, a branch and the memory to hold them — on every row, forever.</span></li>
-            <li><span>A <em>missing</em> <code>option</code> costs a crash on the first absent value.</span></li>
-            <li><span>Exactness is therefore not a nicety. It is the precondition for the layout being sound at all.</span></li>
-          </ul>
-          <p>Measured: <strong class="num">264 MB</strong> columnar vs <strong class="num">297 MB</strong> row-major on the 200 MB corpus.</p>
-        </div>
+          <g>
+            <rect x="0"   y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="82"  y="22" width="74" height="30" rx="3" fill="var(--paper)"     stroke="var(--rule-strong)" stroke-dasharray="3 3"></rect>
+            <rect x="164" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="246" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="328" y="22" width="74" height="30" rx="3" fill="var(--paper)"     stroke="var(--rule-strong)" stroke-dasharray="3 3"></rect>
+            <rect x="410" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="492" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <rect x="574" y="22" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+            <g class="dc" text-anchor="middle">
+              <text x="37"  y="42">"ok"</text>
+              <text x="119" y="42" fill="var(--muted)">""</text>
+              <text x="201" y="42">"E14"</text>
+              <text x="283" y="42">"ok"</text>
+              <text x="365" y="42" fill="var(--muted)">""</text>
+              <text x="447" y="42">"ok"</text>
+              <text x="529" y="42">"E2"</text>
+              <text x="611" y="42">"ok"</text>
+            </g>
+          </g>
+
+          <g>
+            <rect x="0"   y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
+            <rect x="82"  y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
+            <rect x="164" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
+            <rect x="246" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
+            <rect x="328" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
+            <rect x="410" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
+            <rect x="492" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
+            <rect x="574" y="58" width="74" height="20" rx="3" fill="none" stroke="var(--vermilion)"></rect>
+            <g class="dc" text-anchor="middle" fill="var(--vermilion)">
+              <text x="37"  y="73">✓</text><text x="119" y="73">✗</text>
+              <text x="201" y="73">✓</text><text x="283" y="73">✓</text>
+              <text x="365" y="73">✗</text><text x="447" y="73">✓</text>
+              <text x="529" y="73">✓</text><text x="611" y="73">✓</text>
+            </g>
+          </g>
+
+          <text class="dm" x="0" y="98" fill="var(--vermilion)">the validity mask — only this knows the dashed slots hold an initialiser, not a value</text>
+          <text class="dm" x="0" y="116">16 bytes per row · one check before every value</text>
+
+          <!-- ── panel B: total ────────────────────────────────────────── -->
+          <text class="dl" x="0" y="158">the signature says <tspan class="dc" fill="var(--blue)">int</tspan></text>
+
+          <g>
+            <rect x="0"   y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
+            <rect x="82"  y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
+            <rect x="164" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
+            <rect x="246" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
+            <rect x="328" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
+            <rect x="410" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
+            <rect x="492" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
+            <rect x="574" y="168" width="74" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)"></rect>
+            <g class="dc" text-anchor="middle">
+              <text x="37"  y="188">11414</text><text x="119" y="188">28320</text>
+              <text x="201" y="188">3674</text> <text x="283" y="188">9051</text>
+              <text x="365" y="188">44120</text><text x="447" y="188">812</text>
+              <text x="529" y="188">6607</text> <text x="611" y="188">15903</text>
+            </g>
+          </g>
+
+          <!-- cache-line bracket -->
+          <g stroke="var(--ink-2)" stroke-width="1" fill="none">
+            <path d="M0 206 L0 212 L648 212 L648 206"></path>
+          </g>
+          <text class="dm" x="324" y="228" text-anchor="middle" fill="var(--ink-2)">one 64-byte cache line = 8 values = 8 comparisons · 8 bytes per row · no check at all</text>
+        </svg>
       </div>
+      <p>The mask is not shrunk when a column is total — it is <strong>never allocated</strong>, and the per-row check is never generated. That is what the nullability theorem buys, and it is why <code class="em">option</code> in a signature is a memory-layout decision rather than a documentation choice.</p>
+      <p style="font-size:.9em;color:var(--muted)">Measured: <strong class="num" style="color:var(--ink)">264 MB</strong> columnar against <strong class="num" style="color:var(--ink)">297 MB</strong> row-major on the 200 MB corpus — and a <code>bool</code> costs a full word in OCaml, so a mask is not a bitset but a third of the column.</p>
     </section>
 
     <!-- 9 ------------------------------------------------------------------ -->

@@ -116,6 +116,50 @@ real and the first layout applies — no mask array, and the per-row check is
 not merely skipped at runtime, it is never generated. Nothing is special-cased
 by column name; the layout reads the signature.
 
+### Why dense wins: it is about cache lines, not instructions
+
+Measured on this machine with `Obj.reachable_words`:
+
+| Representation | bytes per element |
+|---|---|
+| `int array` | **8** |
+| `int option array`, all `Some` | **24** |
+| `bool array` (a mask) | 8 |
+
+An OCaml `int` is *immediate* — the value lives directly in the array word. So
+an `int array` **is** the numbers, laid end to end. `Some x` is a heap block —
+a header word plus the value — and the array holds a *pointer* to it: 8 bytes
+in the array plus 16 in the block.
+
+The consequence is not really about instruction count. Memory moves in 64-byte
+cache lines:
+
+- **Unboxed `int array`.** One line = 8 integers = 8 values you can compare
+  immediately. One fetch, eight answers. The stride is linear, so the hardware
+  prefetcher runs ahead of the loop and the data is waiting before it is asked
+  for.
+
+- **Boxed `int option array`.** One line of the array = 8 *pointers* = zero
+  values so far. Now dereference. Each block is 16 bytes, so even where blocks
+  sit adjacent, a line holds four of them and half of what you fetched is
+  headers. A second trip bought four values where the first layout gave eight.
+
+And the part that costs most is subtler: the address you need next is not known
+until the pointer arrives. That is a **dependent load** — a serialised chain.
+The CPU cannot issue it early or reorder around it, and the prefetcher, happy
+to run ahead of a linear stride, cannot follow a pointer it has not read yet.
+
+To be fair to the boxed case: straight after construction those blocks are
+often laid out consecutively, so locality starts out reasonable. It degrades
+once the collector promotes and compacts them in some other order. The header
+overhead and the dependent load are paid from the first iteration onward.
+
+This is why the row-major store loses `scan` by 3.21×. Reading `ms` from a
+record means following a pointer, and the line that arrives also carries `id`,
+`job_id`, `idx`, `error`, `name` and `rate` — six fields nobody asked for.
+Roughly one useful value per line instead of eight. Same loop; different
+memory.
+
 **6. Measure it (OCaml).** Five queries, answered by three stores - raw
 Yojson, a row-major record store, and the columnar store. Every answer is
 compared before any timing is believed.
