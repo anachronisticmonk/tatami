@@ -1,12 +1,3 @@
-# LaTeX build products
-*.aux
-*.fdb_latexmk
-*.fls
-*.log
-*.out
-*.synctex.gz
-*.toc
-
 # OCaml / dune
 _build/
 _opam/
@@ -25,10 +16,4 @@ scratch/
 # exception: it is checked in so the corpus can be read without generating one.
 corpus/*
 !corpus/small.json
-!corpus/README.md
 *.json.gz
-
-# Built by latexmk from lowering.tex -- generated, and it conflicted on every
-# merge because two machines never produce byte-identical PDFs.
-# (docs/design-note/tatami.pdf stays tracked: it has no source in the repo.)
-docs/phase_1/lowering.pdf

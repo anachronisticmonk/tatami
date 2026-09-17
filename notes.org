@@ -1,4 +1,0 @@
-#+title: Notes
-
-- pgx does not return int it returns character. we will be using the same corpus so lets understand the corpus description first
-  we have repo each repo has a run each run has a job and each job has a step and they are ll kept in different

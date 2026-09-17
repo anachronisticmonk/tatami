@@ -6,7 +6,6 @@ corpus/*
 _build
 .git
 .lake
-docs
 *.pdf
 *.tsv
 
