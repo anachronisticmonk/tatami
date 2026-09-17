@@ -28,7 +28,24 @@ inductive Ty where
   | bool
   | ref : Path → Ty      -- a nested object: a key into its table
   | coll : Path → Ty     -- an array: no column here, the elements point back
-  deriving Repr, DecidableEq, BEq, Inhabited
+  deriving Repr, DecidableEq, Inhabited
+
+/-- `==` from the decision procedure rather than a derived one, as for `Seg`:
+    the two agree on every input, and this one comes with `LawfulBEq`, which a
+    proof needs to turn `s == t` into `s = t`. -/
+instance : BEq Ty := instBEqOfDecidableEq
+
+/-- A total order on types, so that the set of types seen at a member can be
+    kept in a canonical order and unioned commutatively. -/
+def Ty.rank : Ty → Nat
+  | .bot => 0 | .int => 1 | .float => 2 | .uuid => 3
+  | .str => 4 | .bool => 5 | .ref _ => 6 | .coll _ => 7
+
+def Ty.lt (a b : Ty) : Bool :=
+  match a, b with
+  | .ref p, .ref q => Path.lt p q
+  | .coll p, .coll q => Path.lt p q
+  | _, _ => a.rank < b.rank
 
 def Ty.toString : Ty → String
   | .bot => "unknown"

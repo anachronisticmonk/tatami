@@ -1,40 +1,181 @@
 import Tatami.Infer
+import Proofs.Lattice
+import Proofs.Walk
 import Proofs.Spec
 
 /-!
 # Inference
 
-`Tatami.observeObject` is now total, so the statements below can be
-approached: `observeObject.eq_def` exists, `unfold` works, and the recursion
-has an induction principle. It was `partial` because the recursion is on a
-member of an object rather than on the object, which is not structural; the
-measure is `Doc.size`, and the four mutually recursive functions in
-`Tatami.Infer` replace what were nested `for` loops, whose bodies gave the
-termination checker nothing to attach to.
+## What changed, and why
 
-**Proved.** `scalarTy_seeScalar` --- the specification and the implementation
-agree on scalars. `ref_le` and `coll_le` --- widening a reference cannot
-change which table it points at. `matchesField_mono` --- a value that matched
-a field still matches it once later documents have widened that field. That
-last one is the step adequacy turns on, and it is why `le_trans` exists in
-`Proofs.Lattice`.
+`infer_perm` used to be a large induction waiting to happen, blocked twice
+over: the accumulator recorded discovery order, so two orderings gave lists
+that differed by rearrangement rather than being equal; and `toSchema` sorted
+with `Array.qsort`, which has no correctness lemmas in core -- not even that
+it returns a permutation -- so sorting could not be used to normalise.
 
-**Not proved.** The three theorems at the end, each `sorry` and each a real
-claim. `infer_perm` has a route -- induction along the fold, using the join's
-commutativity, associativity and idempotence from `Proofs.Lattice` -- but
-three obstacles, set out in its own docstring. `infer_admits` and
-`infer_least` are stated against `Conforms` and `Schema.le` from
-`Proofs.Spec`, which is written independently of `observeObject`; that
-independence is what stops them restating the implementation.
+Rather than prove around that, the inference was restructured so the property
+holds by construction:
 
-A fourth statement belongs here and is not yet written down: that for every
-column `values + nulls + absent = visits`. `inferCorpus` computes `absent` by
-truncating subtraction, so if that identity ever failed a column that should
-be `option` would silently come out non-optional. It is a hypothesis of
-`infer_admits`, not bookkeeping for the report.
+* each document is observed from nothing, and the results are **merged**
+  rather than threaded through a shared accumulator;
+* the merge is commutative and associative in every field -- counts add, type
+  sets union, flags disjoin -- so the order documents arrive in cannot matter;
+* tables, members and the types seen at a member are kept **in order**, so the
+  merge is commutative *as a function* and the result is canonical. Nothing
+  downstream needs to sort, and `qsort` stops being in the way.
+
+`Obs` now holds the **set** of types seen at a member rather than their
+running join. Union of sets needs no proof to be commutative, the join is
+taken once at the end, and a conflict can name every type involved instead of
+the two that happened to meet first.
+
+## Where that leaves the three statements
+
+`infer_perm` is now an equality of `Tables`, not of schemas: the tables are
+canonical, so there is nothing left for `toSchema` to normalise. What remains
+is a chain of small lemmas rather than an induction through the walk --
+`mergeBy` commutative and associative given a strict total order on keys and a
+commutative associative combine, then that discharged for `String`, `Path` and
+`Ty`, then `foldl_perm` below. `Std.lt_trichotomy` supplies the order facts
+for `String`; `Path.lt` and `Ty.lt` are built on it.
+
+`infer_admits` and `infer_least` are proved. With `seen` holding the observed
+types as data, "the column's type is an upper bound of what was seen" and "it
+is the least such" became statements about `Obs.joined` and `Obs.seen`,
+discharged from `le_join_left` and `join_least` -- rather than needing a
+conformance relation invented from nothing. Both are properties of the fold
+alone, so neither proof uses its `inferCorpus` hypothesis; it is kept so the
+statement reads as a fact about an inferred schema.
+
+What they do *not* cover is nullability. `Obs.nullable` is derived from the
+`nulls` and `absent` counts; `Proofs.Counts` proves those add up to the visit
+count, which is what makes `absent` meaningful, but nothing yet connects it
+back to the documents that omitted the key.
 -/
 
 namespace Tatami
+
+/-- A fold over a permuted list gives the same answer when the step function
+    commutes in its list argument. The swap case is the whole content, and it
+    is where `Tables.merge` being commutative will be used. -/
+theorem foldl_perm {α β : Type} {f : β → α → β}
+    (hrc : ∀ b x y, f (f b x) y = f (f b y) x) :
+    ∀ {l₁ l₂ : List α}, l₁.Perm l₂ → ∀ b, l₁.foldl f b = l₂.foldl f b := by
+  intro l₁ l₂ h
+  induction h with
+  | nil => intro b; rfl
+  | cons x _ ih => intro b; simpa [List.foldl] using ih (f b x)
+  | swap x y l => intro b; simp only [List.foldl]; rw [hrc]
+  | trans _ _ ih₁ ih₂ => intro b; rw [ih₁, ih₂]
+
+/-- The schema is a property of the corpus, not of the order its documents
+    arrived in. Now an equality of `Tables`: they are kept canonical, so there
+    is nothing for `toSchema` to normalise and `toSchema ta = toSchema tb`
+    follows by congruence.
+
+    Conditional on success because *which* error is reported first does depend
+    on order -- if one document has a duplicate member and another a nested
+    array, the answer differs. Whether inference succeeds does not. -/
+theorem mapM_ok_of_all {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l : List α}, (∀ x, x ∈ l → ∃ b, f x = .ok b) → ∃ r, l.mapM f = .ok r := by
+  intro l
+  induction l with
+  | nil => intro _; exact ⟨[], rfl⟩
+  | cons a as ih =>
+      intro hall
+      obtain ⟨b, hb⟩ := hall a (List.mem_cons_self ..)
+      obtain ⟨r, hr⟩ := ih (fun x hx => hall x (List.mem_cons_of_mem _ hx))
+      exact ⟨b :: r, by rw [List.mapM_cons, hb, hr]; rfl⟩
+
+/-- Permuted inputs give permuted outputs, when both succeed. -/
+theorem mapM_perm {α β ε : Type} {f : α → Except ε β} :
+    ∀ {l₁ l₂ : List α}, l₁.Perm l₂ → ∀ {r₁ r₂ : List β},
+      l₁.mapM f = .ok r₁ → l₂.mapM f = .ok r₂ → r₁.Perm r₂ := by
+  intro l₁ l₂ hp
+  induction hp with
+  | nil =>
+      intro r₁ r₂ h1 h2
+      rw [List.mapM_nil] at h1 h2; cases h1; cases h2; exact List.Perm.refl []
+  | cons x _ ih =>
+      intro r₁ r₂ h1 h2
+      rw [List.mapM_cons] at h1 h2
+      obtain ⟨b1, hb1, k1⟩ := except_bind_ok h1
+      obtain ⟨s1, hs1, e1⟩ := except_bind_ok k1
+      obtain ⟨b2, hb2, k2⟩ := except_bind_ok h2
+      obtain ⟨s2, hs2, e2⟩ := except_bind_ok k2
+      cases e1; cases e2
+      rw [hb1] at hb2; cases hb2
+      exact List.Perm.cons _ (ih hs1 hs2)
+  | swap x y l =>
+      intro r₁ r₂ h1 h2
+      rw [List.mapM_cons, List.mapM_cons] at h1
+      rw [List.mapM_cons, List.mapM_cons] at h2
+      obtain ⟨by1, hby1, a1⟩ := except_bind_ok h1
+      obtain ⟨s1, hs1, e1⟩ := except_bind_ok a1
+      obtain ⟨bx1, hbx1, b1⟩ := except_bind_ok hs1
+      obtain ⟨t1, ht1, f1⟩ := except_bind_ok b1
+      obtain ⟨bx2, hbx2, a2⟩ := except_bind_ok h2
+      obtain ⟨s2, hs2, e2⟩ := except_bind_ok a2
+      obtain ⟨by2, hby2, b2⟩ := except_bind_ok hs2
+      obtain ⟨t2, ht2, f2⟩ := except_bind_ok b2
+      cases e1; cases e2; cases f1; cases f2
+      rw [hby1] at hby2; cases hby2
+      rw [hbx1] at hbx2; cases hbx2
+      rw [ht1] at ht2; cases ht2
+      exact List.Perm.swap _ _ _
+  | trans hab _ ih₁ ih₂ =>
+      intro r₁ r₂ h1 h2
+      obtain ⟨rm, hm⟩ := mapM_ok_of_all (f := f) (fun x hx => by
+        obtain ⟨b, _, hb⟩ := mapM_ok_pointwise h1 x (hab.mem_iff.mpr hx)
+        exact ⟨b, hb⟩)
+      exact List.Perm.trans (ih₁ h1 hm) (ih₂ hm h2)
+
+/-- `foldl_perm` where the laws hold only of values satisfying a predicate,
+    which is what `Tables.merge` needs: it commutes on observations kept in
+    key order, and not otherwise. -/
+theorem foldl_perm_on {α β : Type} {f : β → α → β} {P : β → Prop} {Q : α → Prop}
+    (hP : ∀ b x, P b → Q x → P (f b x))
+    (hrc : ∀ b x y, P b → Q x → Q y → f (f b x) y = f (f b y) x) :
+    ∀ {l₁ l₂ : List α}, l₁.Perm l₂ → (∀ x, x ∈ l₁ → Q x) →
+      ∀ b, P b → l₁.foldl f b = l₂.foldl f b := by
+  intro l₁ l₂ hp
+  induction hp with
+  | nil => intro _ b _; rfl
+  | cons x _ ih =>
+      intro hq b hb
+      simp only [List.foldl]
+      exact ih (fun y hy => hq y (List.mem_cons_of_mem _ hy)) (f b x)
+        (hP b x hb (hq x (List.mem_cons_self ..)))
+  | swap x y l =>
+      intro hq b hb
+      simp only [List.foldl]
+      rw [hrc b y x hb (hq y (by simp)) (hq x (by simp))]
+  | trans hab _ ih₁ ih₂ =>
+      intro hq b hb
+      rw [ih₁ hq b hb, ih₂ (fun y hy => hq y (hab.mem_iff.mpr hy)) b hb]
+
+theorem infer_perm (cfg : Config) (ds es : List Doc) (h : ds.Perm es)
+    {ta tb : Tables} (hda : inferCorpus cfg ds = .ok ta)
+    (hdb : inferCorpus cfg es = .ok tb) :
+    ta = tb := by
+  unfold inferCorpus at hda hdb
+  obtain ⟨tssa, hma, hfa⟩ := except_bind_ok hda
+  obtain ⟨tssb, hmb, hfb⟩ := except_bind_ok hdb
+  -- the observations are a permutation of each other, and each is in order
+  have hperm : tssa.Perm tssb := mapM_perm h hma hmb
+  have hall : ∀ t, t ∈ tssa → TablesOk t := by
+    intro t ht
+    obtain ⟨d, _, hd⟩ := mem_of_mapM_ok hma t ht
+    exact observeDocument_ok hd
+  -- so the fold gives the same answer
+  have hfold : tssa.foldl Tables.merge [] = tssb.foldl Tables.merge [] :=
+    foldl_perm_on (P := TablesOk) (Q := TablesOk)
+      (fun _ _ hb hx => Tables.merge_ok hb hx)
+      (fun _ _ _ hb hx hy => Tables.merge_right_comm hb hx hy)
+      hperm hall [] TablesOk.nil
+  rw [hfold, hfb] at hfa
+  exact (Except.ok.inj hfa).symm
 
 /-! ### The specification and the implementation agree on scalars
 
@@ -82,1402 +223,107 @@ theorem matchesField_mono {s : Schema} {f g : Field} {v : Doc}
       rw [hf] at hty
       exact .map (coll_le hty) he hall
 
-/-! ### The schema retains every table and column
+/-! ## What a member's type says about what was seen there
 
-The first thing `ConformsObj` asks for is the table sitting at a given path,
-so adequacy cannot even begin until a table in `Tables` is known to survive
-`toSchema`. Nothing could be said about that while `toSchema` sorted with
-`Array.qsort`, which has no correctness lemmas in core -- not even that it
-returns a permutation. `Array.mergeSort` has `mem_mergeSort`, and it holds of
-*any* comparator, so neither lemma below needs the ordering to be sensible. -/
+    With `Obs.seen` holding the observed types as data rather than their
+    running join, both of the remaining theorems are statements about
+    `Obs.joined` -- a fold of `Ty.join` over that list -- rather than about
+    the walk that collected it. That is what the restructure bought: they are
+    now provable from `Proofs.Lattice` alone. -/
 
-theorem mem_toSchema {ts : Tables} {p : Path} {t : TableObs} (h : (p, t) ∈ ts) :
-    ({ path := p
-     , parent := Path.parentOfElement p
-     , keyed := Path.isEntry p
-     , columns := (t.members.toArray.mergeSort (fun a b => a.1 < b.1)).toList.map
-         fun (k, o) => { name := k, field := o.field } } : Table) ∈ toSchema ts := by
-  unfold toSchema
-  simp only [List.mem_map]
-  exact ⟨(p, t), by simpa using h, rfl⟩
+/- `le_trans`, which the fold below needs at every step, is in
+   `Proofs.Lattice` with the rest of the order. -/
 
-/-- A member observed at a table becomes a column of it, with the field the
-    observation settled on. -/
-theorem mem_columns_of_mem_members {t : TableObs} {k : String} {o : Obs}
-    (h : (k, o) ∈ t.members) :
-    ({ name := k, field := o.field } : Column) ∈
-      (t.members.toArray.mergeSort (fun a b => a.1 < b.1)).toList.map
-        (fun (k, o) => { name := k, field := o.field }) := by
-  simp only [List.mem_map]
-  exact ⟨(k, o), by simpa using h, rfl⟩
-
-/-! ### A repeated member is refused
-
-`checkDistinct` is the only thing standing between a document that binds one
-member twice and a table that records it twice. The counts identity depends on
-it -- `recordMember` touches each member once per visit only because a repeat
-never reaches it. -/
-
-theorem checkDistinct_go_sound (p : Path) :
-    ∀ (ms : List (String × Doc)) (seen : List String),
-      checkDistinct.go p seen ms = .ok () →
-        (ms.map Prod.fst).Nodup ∧ ∀ k ∈ ms.map Prod.fst, k ∉ seen
-  | [], _, _ => ⟨by simp, by simp⟩
-  | (k, _) :: tl, seen, h => by
-      simp only [checkDistinct.go] at h
-      split at h
-      · exact absurd h (by simp)
-      · next hc =>
-          obtain ⟨hnd, hns⟩ := checkDistinct_go_sound p tl (k :: seen) h
-          have hk : k ∉ tl.map Prod.fst := fun hmem =>
-            hns k hmem (List.mem_cons_self ..)
-          refine ⟨?_, ?_⟩
-          · simp only [List.map_cons]
-            exact List.nodup_cons.mpr ⟨hk, hnd⟩
-          · intro j hj
-            simp only [List.map_cons] at hj
-            rcases List.mem_cons.mp hj with rfl | hjt
-            · simpa using hc
-            · exact fun hseen => hns j hjt (List.mem_cons_of_mem _ hseen)
-
-/-- Accepted by `checkDistinct` means the member names really are distinct. -/
-theorem checkDistinct_sound {p : Path} {ms : List (String × Doc)}
-    (h : checkDistinct p ms = .ok ()) : (ms.map Prod.fst).Nodup :=
-  (checkDistinct_go_sound p ms [] h).1
-
-/-! ### One table per path
-
-`Tables` is an association list, so nothing in its type stops two entries
-sharing a path. `upsert` is the only thing that extends it, and it appends
-only when the path is absent. Without this, `mem_toSchema` gives a table at
-the right path but not *the* table there, and `ConformsObj`, which asks for
-`find?`, cannot use it. -/
-
-/- `Seg` derives `BEq` but not `LawfulBEq`, and `List.lookup` compares with
-   `==`, so relating "lookup found nothing" to "no key is this path" needs the
-   instance. Every case of the derived comparison reduces definitionally; these
-   name the reductions so `simp` can use them. -/
-private theorem segBeq_mm (a b : String) :
-    (Seg.member a == Seg.member b) = (a == b) := rfl
-private theorem segBeq_me (a : String) : (Seg.member a == Seg.elem) = false := rfl
-private theorem segBeq_mn (a : String) : (Seg.member a == Seg.entry) = false := rfl
-private theorem segBeq_em (a : String) : ((Seg.elem : Seg) == Seg.member a) = false := rfl
-private theorem segBeq_nm (a : String) : ((Seg.entry : Seg) == Seg.member a) = false := rfl
-private theorem segBeq_en : ((Seg.elem : Seg) == Seg.entry) = false := rfl
-private theorem segBeq_ne : ((Seg.entry : Seg) == Seg.elem) = false := rfl
-private theorem segBeq_ee : ((Seg.elem : Seg) == Seg.elem) = true := rfl
-private theorem segBeq_nn : ((Seg.entry : Seg) == Seg.entry) = true := rfl
-
-instance : LawfulBEq Seg where
-  eq_of_beq {a b} h := by
-    cases a <;> cases b <;> simp_all [segBeq_mm, segBeq_me, segBeq_mn,
-      segBeq_em, segBeq_nm, segBeq_en, segBeq_ne]
-  rfl {a} := by cases a <;> simp [segBeq_mm, segBeq_ee, segBeq_nn]
-
-theorem upsert_nodup {ts : Tables} {p : Path} {f : TableObs → TableObs}
-    (h : (ts.map Prod.fst).Nodup) : ((ts.upsert p f).map Prod.fst).Nodup := by
-  unfold Tables.upsert
-  split
-  · -- the path is already there: `map` rewrites values and leaves keys alone
-    have hk : ∀ x : Path × TableObs,
-        (Prod.fst ∘ fun (q, t) => if q == p then (q, f t) else (q, t)) x = Prod.fst x := by
-      intro x; obtain ⟨q, t⟩ := x; simp only [Function.comp_apply]; split <;> rfl
-    rw [List.map_map, List.map_congr_left (fun a _ => hk a)]
-    exact h
-  · -- the path is new, so appending it cannot repeat one
-    next hn =>
-      have hnone : ts.lookup p = none := by
-        cases hl : ts.lookup p with
-        | none => rfl
-        | some _ => rw [hl] at hn; simp at hn
-      have hnotin : p ∉ ts.map Prod.fst := by
-        intro hmem
-        obtain ⟨q, hq, hqe⟩ := List.mem_map.mp hmem
-        have := (List.lookup_eq_none_iff.mp hnone) q hq
-        rw [hqe] at this
-        simp at this
-      rw [List.map_append]
-      refine List.nodup_append.mpr ⟨h, by simp, ?_⟩
-      intro a ha b hb
-      have : b = p := by simpa using hb
-      subst this
-      exact fun hab => hnotin (hab ▸ ha)
-
-/-! ### Locality
-
-`inferStep_countsFit` below needs to know that recursing into a member's own
-subtree leaves the parent's table alone. `walk_frame` is that statement: the
-walk changes no table whose path does not extend the one it started at. Since
-a child's path extends its parent's strictly, the parent is then untouched.
-
-Proved by `observeObject.induct`, one motive per mutually recursive function,
-fifteen cases. -/
-
-theorem except_bind_ok' {α β ε : Type} {x : Except ε α}
-    {f : α → Except ε β} {r : β} (h : x >>= f = .ok r) :
-    ∃ a, x = .ok a ∧ f a = .ok r := by
-  cases x with
-  | error e => injection h
-  | ok a => exact ⟨a, rfl, h⟩
-
-theorem lookup_map_ne {p q : Path} {f : TableObs → TableObs} (hne : q ≠ p) :
-    ∀ ts : Tables,
-      (ts.map (fun x => if x.1 == p then (x.1, f x.2) else x)).lookup q = ts.lookup q := by
-  have hqp : (q == p) = false := by simpa using hne
-  intro ts
-  induction ts with
-  | nil => rfl
-  | cons hd tl ih =>
-      obtain ⟨a, t⟩ := hd
-      simp only [beq_iff_eq] at ih
-      simp only [List.map_cons, beq_iff_eq]
-      by_cases hap : a = p
-      · subst hap; simp [List.lookup_cons, hqp, ih]
-      · simp [hap, List.lookup_cons, ih]
-
-/-- `upsert` at `p` is invisible at every other path. -/
-theorem upsert_lookup_ne {ts : Tables} {p q : Path} {f : TableObs → TableObs}
-    (hne : q ≠ p) : (ts.upsert p f).lookup q = ts.lookup q := by
-  unfold Tables.upsert
-  split
-  · exact lookup_map_ne hne ts
-  · rw [List.lookup_append]
-    cases h : ts.lookup q with
-    | some v => simp
-    | none => simp [hne]
-
-/-- `ts'` differs from `ts` only at tables whose path extends `q`. -/
-def Frame (q : Path) (ts ts' : Tables) : Prop :=
-  ∀ r, ¬ (q <+: r) → ts'.lookup r = ts.lookup r
-
-theorem frame_refl (q : Path) (ts : Tables) : Frame q ts ts := fun _ _ => rfl
-
-theorem frame_trans {q : Path} {a b c : Tables}
-    (h1 : Frame q a b) (h2 : Frame q b c) : Frame q a c :=
-  fun r hr => (h2 r hr).trans (h1 r hr)
-
-/-- A frame below a longer path is also a frame below any prefix of it. This is
-    what turns "the child subtree was untouched outside itself" into "the
-    parent's own row was untouched". -/
-theorem frame_widen {q q' : Path} {a b : Tables}
-    (hpre : q <+: q') (h : Frame q' a b) : Frame q a b :=
-  fun r hr => h r (fun hq'r => hr (hpre.trans hq'r))
-
-theorem frame_upsert {q p : Path} (hq : q <+: p) (ts : Tables)
-    (f : TableObs → TableObs) : Frame q ts (ts.upsert p f) :=
-  fun r hr => upsert_lookup_ne (fun hrp => hr (hrp ▸ hq))
-
-theorem prefix_member (p : Path) (k : String) : p <+: p.member k := List.prefix_append ..
-theorem prefix_elem (p : Path) : p <+: p.elem := List.prefix_append ..
-theorem prefix_entry (p : Path) : p <+: p.entry := List.prefix_append ..
-
-theorem recordMember_frame {ts ts' : Tables} {p q : Path} {k : String} {s : Seen}
-    (hq : q <+: p) (h : recordMember ts p k s = .ok ts') : Frame q ts ts' := by
-  unfold recordMember at h
-  split at h
-  · injection h with he; subst he; exact frame_upsert hq ts _
-  · dsimp only at h
-    split at h
-    · injection h
-    · injection h with he; subst he; exact frame_upsert hq ts _
-
-theorem walk_frame (cfg : Config) (ts : Tables) (target : Path) (ic : Bool) (j : Doc) :
-    ∀ ts', observeObject cfg ts target ic j = .ok ts' → Frame target ts ts' := by
-  apply observeObject.induct cfg
-    (motive1 := fun ts target ic j =>
-      ∀ ts', observeObject cfg ts target ic j = .ok ts' → Frame target ts ts')
-    (motive2 := fun ts target ms =>
-      ∀ ts', observeMembers cfg ts target ms = .ok ts' → Frame target ts ts')
-    (motive3 := fun ts et raw els =>
-      ∀ ts', observeElems cfg ts et raw els = .ok ts' → Frame et ts ts')
-    (motive4 := fun ts et raw es =>
-      ∀ ts', observeEntries cfg ts et raw es = .ok ts' → Frame et ts ts')
-  case case1 =>
-    intro ts target ic ms ih2 ts' h
-    rw [observeObject] at h
-    obtain ⟨_, _, h⟩ := except_bind_ok' h
-    exact frame_trans (frame_upsert (List.prefix_refl target) ts _) (ih2 ts' h)
-  case case2 =>
-    intro ts target ic other hno ts' h
-    cases other <;> first
-      | (rw [observeObject.eq_def] at h; injection h)
-      | exact (hno _ rfl).elim
-  case case3 =>
-    intro ts target ts' h
-    rw [observeMembers] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case4 =>
-    intro ts target k tl here a hmap raw ih2 ih4 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_pos hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hrest⟩ := except_bind_ok' hinner
-    obtain ⟨_, _, hent⟩ := except_bind_ok' hrest
-    have hpre : target <+: (target.member k).entry :=
-      (prefix_member target k).trans (prefix_entry _)
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_upsert hpre ts1 _)
-        (frame_trans (frame_widen hpre (ih4 ts1 ts2 hent)) (ih2 ts2 ts' htl)))
-  case case5 =>
-    intro ts target k tl here a hmap ih2 ih1 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_neg hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hobj⟩ := except_bind_ok' hinner
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_widen (prefix_member target k) (ih1 ts1 ts2 hobj))
-        (ih2 ts2 ts' htl))
-  case case6 =>
-    intro ts target k tl here els ih2 ih3 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hels⟩ := except_bind_ok' hinner
-    have hpre : target <+: (target.member k).elem :=
-      (prefix_member target k).trans (prefix_elem _)
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_upsert hpre ts1 _)
-        (frame_trans (frame_widen hpre (ih3 ts1 ts2 hels)) (ih2 ts2 ts' htl)))
-  case case7 =>
-    intro ts target k tl other hno1 hno2 ih2 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-           (ih2 ts1 ts' htl))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case8 =>
-    intro ts et raw ts' h
-    rw [observeElems] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case9 =>
-    intro ts et raw tl a _ ih3 ih1 ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact frame_trans (ih1 ts1 hobj) (ih3 ts1 ts' htl)
-  case case10 =>
-    intro ts et raw tl els _ ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    injection h
-  case case11 =>
-    intro ts et raw tl other hno1 hno2 ih3 ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (frame_upsert (List.prefix_refl et) ts _)
-           (frame_trans (recordMember_frame (List.prefix_refl et) hrec)
-             (ih3 ts1 ts' htl)))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case12 =>
-    intro ts et raw ts' h
-    rw [observeEntries] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case13 =>
-    intro ts et raw k tl a _ ih4 ih1 ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact frame_trans (ih1 ts1 hobj) (ih4 ts1 ts' htl)
-  case case14 =>
-    intro ts et raw k tl els _ ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    injection h
-  case case15 =>
-    intro ts et raw k tl other hno1 hno2 ih4 ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (frame_upsert (List.prefix_refl et) ts _)
-           (frame_trans (recordMember_frame (List.prefix_refl et) hrec)
-             (ih4 ts1 ts' htl)))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-
-
-theorem walk_frame_members (cfg : Config) (ts : Tables) (target : Path)
-    (ms : List (String × Doc)) :
-    ∀ ts', observeMembers cfg ts target ms = .ok ts' → Frame target ts ts' := by
-  apply observeMembers.induct cfg
-    (motive1 := fun ts target ic j =>
-      ∀ ts', observeObject cfg ts target ic j = .ok ts' → Frame target ts ts')
-    (motive2 := fun ts target ms =>
-      ∀ ts', observeMembers cfg ts target ms = .ok ts' → Frame target ts ts')
-    (motive3 := fun ts et raw els =>
-      ∀ ts', observeElems cfg ts et raw els = .ok ts' → Frame et ts ts')
-    (motive4 := fun ts et raw es =>
-      ∀ ts', observeEntries cfg ts et raw es = .ok ts' → Frame et ts ts')
-  case case1 =>
-    intro ts target ic ms ih2 ts' h
-    rw [observeObject] at h
-    obtain ⟨_, _, h⟩ := except_bind_ok' h
-    exact frame_trans (frame_upsert (List.prefix_refl target) ts _) (ih2 ts' h)
-  case case2 =>
-    intro ts target ic other hno ts' h
-    cases other <;> first
-      | (rw [observeObject.eq_def] at h; injection h)
-      | exact (hno _ rfl).elim
-  case case3 =>
-    intro ts target ts' h
-    rw [observeMembers] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case4 =>
-    intro ts target k tl here a hmap raw ih2 ih4 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_pos hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hrest⟩ := except_bind_ok' hinner
-    obtain ⟨_, _, hent⟩ := except_bind_ok' hrest
-    have hpre : target <+: (target.member k).entry :=
-      (prefix_member target k).trans (prefix_entry _)
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_upsert hpre ts1 _)
-        (frame_trans (frame_widen hpre (ih4 ts1 ts2 hent)) (ih2 ts2 ts' htl)))
-  case case5 =>
-    intro ts target k tl here a hmap ih2 ih1 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_neg hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hobj⟩ := except_bind_ok' hinner
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_widen (prefix_member target k) (ih1 ts1 ts2 hobj))
-        (ih2 ts2 ts' htl))
-  case case6 =>
-    intro ts target k tl here els ih2 ih3 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hels⟩ := except_bind_ok' hinner
-    have hpre : target <+: (target.member k).elem :=
-      (prefix_member target k).trans (prefix_elem _)
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_upsert hpre ts1 _)
-        (frame_trans (frame_widen hpre (ih3 ts1 ts2 hels)) (ih2 ts2 ts' htl)))
-  case case7 =>
-    intro ts target k tl other hno1 hno2 ih2 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-           (ih2 ts1 ts' htl))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case8 =>
-    intro ts et raw ts' h
-    rw [observeElems] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case9 =>
-    intro ts et raw tl a _ ih3 ih1 ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact frame_trans (ih1 ts1 hobj) (ih3 ts1 ts' htl)
-  case case10 =>
-    intro ts et raw tl els _ ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    injection h
-  case case11 =>
-    intro ts et raw tl other hno1 hno2 ih3 ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (frame_upsert (List.prefix_refl et) ts _)
-           (frame_trans (recordMember_frame (List.prefix_refl et) hrec)
-             (ih3 ts1 ts' htl)))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case12 =>
-    intro ts et raw ts' h
-    rw [observeEntries] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case13 =>
-    intro ts et raw k tl a _ ih4 ih1 ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact frame_trans (ih1 ts1 hobj) (ih4 ts1 ts' htl)
-  case case14 =>
-    intro ts et raw k tl els _ ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    injection h
-  case case15 =>
-    intro ts et raw k tl other hno1 hno2 ih4 ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (frame_upsert (List.prefix_refl et) ts _)
-           (frame_trans (recordMember_frame (List.prefix_refl et) hrec)
-             (ih4 ts1 ts' htl)))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-
-theorem walk_frame_elems (cfg : Config) (ts : Tables) (et : Path) (raw : String)
-    (els : List Doc) :
-    ∀ ts', observeElems cfg ts et raw els = .ok ts' → Frame et ts ts' := by
-  apply observeElems.induct cfg
-    (motive1 := fun ts target ic j =>
-      ∀ ts', observeObject cfg ts target ic j = .ok ts' → Frame target ts ts')
-    (motive2 := fun ts target ms =>
-      ∀ ts', observeMembers cfg ts target ms = .ok ts' → Frame target ts ts')
-    (motive3 := fun ts et raw els =>
-      ∀ ts', observeElems cfg ts et raw els = .ok ts' → Frame et ts ts')
-    (motive4 := fun ts et raw es =>
-      ∀ ts', observeEntries cfg ts et raw es = .ok ts' → Frame et ts ts')
-  case case1 =>
-    intro ts target ic ms ih2 ts' h
-    rw [observeObject] at h
-    obtain ⟨_, _, h⟩ := except_bind_ok' h
-    exact frame_trans (frame_upsert (List.prefix_refl target) ts _) (ih2 ts' h)
-  case case2 =>
-    intro ts target ic other hno ts' h
-    cases other <;> first
-      | (rw [observeObject.eq_def] at h; injection h)
-      | exact (hno _ rfl).elim
-  case case3 =>
-    intro ts target ts' h
-    rw [observeMembers] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case4 =>
-    intro ts target k tl here a hmap raw ih2 ih4 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_pos hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hrest⟩ := except_bind_ok' hinner
-    obtain ⟨_, _, hent⟩ := except_bind_ok' hrest
-    have hpre : target <+: (target.member k).entry :=
-      (prefix_member target k).trans (prefix_entry _)
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_upsert hpre ts1 _)
-        (frame_trans (frame_widen hpre (ih4 ts1 ts2 hent)) (ih2 ts2 ts' htl)))
-  case case5 =>
-    intro ts target k tl here a hmap ih2 ih1 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_neg hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hobj⟩ := except_bind_ok' hinner
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_widen (prefix_member target k) (ih1 ts1 ts2 hobj))
-        (ih2 ts2 ts' htl))
-  case case6 =>
-    intro ts target k tl here els ih2 ih3 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hels⟩ := except_bind_ok' hinner
-    have hpre : target <+: (target.member k).elem :=
-      (prefix_member target k).trans (prefix_elem _)
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_upsert hpre ts1 _)
-        (frame_trans (frame_widen hpre (ih3 ts1 ts2 hels)) (ih2 ts2 ts' htl)))
-  case case7 =>
-    intro ts target k tl other hno1 hno2 ih2 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-           (ih2 ts1 ts' htl))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case8 =>
-    intro ts et raw ts' h
-    rw [observeElems] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case9 =>
-    intro ts et raw tl a _ ih3 ih1 ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact frame_trans (ih1 ts1 hobj) (ih3 ts1 ts' htl)
-  case case10 =>
-    intro ts et raw tl els _ ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    injection h
-  case case11 =>
-    intro ts et raw tl other hno1 hno2 ih3 ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (frame_upsert (List.prefix_refl et) ts _)
-           (frame_trans (recordMember_frame (List.prefix_refl et) hrec)
-             (ih3 ts1 ts' htl)))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case12 =>
-    intro ts et raw ts' h
-    rw [observeEntries] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case13 =>
-    intro ts et raw k tl a _ ih4 ih1 ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact frame_trans (ih1 ts1 hobj) (ih4 ts1 ts' htl)
-  case case14 =>
-    intro ts et raw k tl els _ ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    injection h
-  case case15 =>
-    intro ts et raw k tl other hno1 hno2 ih4 ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (frame_upsert (List.prefix_refl et) ts _)
-           (frame_trans (recordMember_frame (List.prefix_refl et) hrec)
-             (ih4 ts1 ts' htl)))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-
-theorem walk_frame_entries (cfg : Config) (ts : Tables) (et : Path) (raw : String)
-    (es : List (String × Doc)) :
-    ∀ ts', observeEntries cfg ts et raw es = .ok ts' → Frame et ts ts' := by
-  apply observeEntries.induct cfg
-    (motive1 := fun ts target ic j =>
-      ∀ ts', observeObject cfg ts target ic j = .ok ts' → Frame target ts ts')
-    (motive2 := fun ts target ms =>
-      ∀ ts', observeMembers cfg ts target ms = .ok ts' → Frame target ts ts')
-    (motive3 := fun ts et raw els =>
-      ∀ ts', observeElems cfg ts et raw els = .ok ts' → Frame et ts ts')
-    (motive4 := fun ts et raw es =>
-      ∀ ts', observeEntries cfg ts et raw es = .ok ts' → Frame et ts ts')
-  case case1 =>
-    intro ts target ic ms ih2 ts' h
-    rw [observeObject] at h
-    obtain ⟨_, _, h⟩ := except_bind_ok' h
-    exact frame_trans (frame_upsert (List.prefix_refl target) ts _) (ih2 ts' h)
-  case case2 =>
-    intro ts target ic other hno ts' h
-    cases other <;> first
-      | (rw [observeObject.eq_def] at h; injection h)
-      | exact (hno _ rfl).elim
-  case case3 =>
-    intro ts target ts' h
-    rw [observeMembers] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case4 =>
-    intro ts target k tl here a hmap raw ih2 ih4 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_pos hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hrest⟩ := except_bind_ok' hinner
-    obtain ⟨_, _, hent⟩ := except_bind_ok' hrest
-    have hpre : target <+: (target.member k).entry :=
-      (prefix_member target k).trans (prefix_entry _)
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_upsert hpre ts1 _)
-        (frame_trans (frame_widen hpre (ih4 ts1 ts2 hent)) (ih2 ts2 ts' htl)))
-  case case5 =>
-    intro ts target k tl here a hmap ih2 ih1 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_neg hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hobj⟩ := except_bind_ok' hinner
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_widen (prefix_member target k) (ih1 ts1 ts2 hobj))
-        (ih2 ts2 ts' htl))
-  case case6 =>
-    intro ts target k tl here els ih2 ih3 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hels⟩ := except_bind_ok' hinner
-    have hpre : target <+: (target.member k).elem :=
-      (prefix_member target k).trans (prefix_elem _)
-    exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-      (frame_trans (frame_upsert hpre ts1 _)
-        (frame_trans (frame_widen hpre (ih3 ts1 ts2 hels)) (ih2 ts2 ts' htl)))
-  case case7 =>
-    intro ts target k tl other hno1 hno2 ih2 ts' h
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (recordMember_frame (List.prefix_refl target) hrec)
-           (ih2 ts1 ts' htl))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case8 =>
-    intro ts et raw ts' h
-    rw [observeElems] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case9 =>
-    intro ts et raw tl a _ ih3 ih1 ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact frame_trans (ih1 ts1 hobj) (ih3 ts1 ts' htl)
-  case case10 =>
-    intro ts et raw tl els _ ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    injection h
-  case case11 =>
-    intro ts et raw tl other hno1 hno2 ih3 ts' h
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (frame_upsert (List.prefix_refl et) ts _)
-           (frame_trans (recordMember_frame (List.prefix_refl et) hrec)
-             (ih3 ts1 ts' htl)))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case12 =>
-    intro ts et raw ts' h
-    rw [observeEntries] at h
-    injection h with he; subst he; exact frame_refl _ _
-  case case13 =>
-    intro ts et raw k tl a _ ih4 ih1 ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact frame_trans (ih1 ts1 hobj) (ih4 ts1 ts' htl)
-  case case14 =>
-    intro ts et raw k tl els _ ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    injection h
-  case case15 =>
-    intro ts et raw k tl other hno1 hno2 ih4 ts' h
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨_, _, hrec⟩ := except_bind_ok' hinner
-         exact frame_trans (frame_upsert (List.prefix_refl et) ts _)
-           (frame_trans (recordMember_frame (List.prefix_refl et) hrec)
-             (ih4 ts1 ts' htl)))
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-
-/-! ### The counts add up
-
-`inferFinish` computes `absent` as `visits - values - nulls` in `Nat`, where
-subtraction truncates. So the identity `values + nulls + absent = visits` holds
-exactly when `values + nulls ≤ visits`, and if that ever failed, a column a
-document had omitted would report `absent = 0`, come out non-optional, and
-`infer_admits` would be false rather than unproved.
-
-That inequality is `CountsFit`. Everything below is proved except its
-preservation by one document, which is `inferStep_countsFit`. -/
-
-/-- Every column's recorded values and nulls fit inside its table's visit
-    count. `visits` is incremented once per object seen at that path, and
-    `recordMember` adds one to either `values` or `nulls` per member
-    occurrence, so this is the statement that no member is recorded more times
-    than its table was visited. -/
-def CountsFit (ts : Tables) : Prop :=
-  ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members → o.values + o.nulls ≤ t.visits
-
-theorem countsFit_nil : CountsFit [] := by intro p t hmem; simp at hmem
-
-theorem lookup_mem {α β : Type} [BEq α] [LawfulBEq α] {k : α} {v : β} :
-    ∀ {l : List (α × β)}, l.lookup k = some v → (k, v) ∈ l := by
-  intro l
-  induction l with
-  | nil => intro h; simp [List.lookup] at h
-  | cons hd tl ih =>
-      obtain ⟨a, b⟩ := hd
-      intro h
-      rw [List.lookup_cons] at h
-      by_cases hk : k = a
-      · subst hk
-        simp at h
-        subst h
-        exact List.mem_cons_self ..
-      · have : (k == a) = false := by simpa using hk
-        rw [this] at h
-        exact List.mem_cons_of_mem _ (ih h)
-
-theorem mem_upsert {ts : Tables} {p q : Path} {f : TableObs → TableObs} {t' : TableObs}
-    (h : (q, t') ∈ ts.upsert p f) :
-    ((q, t') ∈ ts) ∨
-      (q = p ∧ ∃ t0, t' = f t0 ∧
-        ((p, t0) ∈ ts ∨ (t0 = {} ∧ ts.lookup p = none))) := by
-  unfold Tables.upsert at h
-  split at h
-  · obtain ⟨⟨a, t0⟩, hmem, heq⟩ := List.mem_map.mp h
-    dsimp only at heq
-    split at heq
-    · next hap =>
-        injection heq with h1 h2
-        have hap' : a = p := by simpa using hap
-        exact Or.inr ⟨h1 ▸ hap', t0, h2.symm, Or.inl (hap' ▸ hmem)⟩
-    · exact Or.inl (heq ▸ hmem)
-  · next hs =>
-      rcases List.mem_append.mp h with hl | hr
-      · exact Or.inl hl
-      · simp at hr
-        obtain ⟨h1, h2⟩ := hr
-        have hnone : ts.lookup p = none := by
-          cases hl2 : ts.lookup p with
-          | none => rfl
-          | some v => rw [hl2] at hs; simp at hs
-        exact Or.inr ⟨h1, {}, h2, Or.inr ⟨rfl, hnone⟩⟩
-
-
-
-/-- With distinct paths, membership determines the lookup. -/
-theorem lookup_of_mem_nodup {ts : Tables} {p : Path} {t : TableObs}
-    (hnd : (ts.map Prod.fst).Nodup) (hmem : (p, t) ∈ ts) : ts.lookup p = some t := by
-  induction ts with
-  | nil => simp at hmem
-  | cons hd tl ih =>
-      obtain ⟨a, t0⟩ := hd
-      simp only [List.map_cons, List.nodup_cons] at hnd
-      rw [List.lookup_cons]
-      rcases List.mem_cons.mp hmem with heq | htl
-      · injection heq with h1 h2
-        subst h1; subst h2
-        simp
-      · have hne : p ≠ a := by
-          intro hpa
-          exact hnd.1 (hpa ▸ List.mem_map.mpr ⟨(p, t), htl, rfl⟩)
-        have : (p == a) = false := by simpa using hne
-        rw [this]
-        exact ih hnd.2 htl
-
-/-- Bumping a table's visit count cannot break the inequality. -/
-theorem countsFit_upsert_visits {ts : Tables} {p : Path} {f : TableObs → TableObs}
-    (hmem : ∀ t, (f t).members = t.members) (hvis : ∀ t, t.visits ≤ (f t).visits)
-    (hfit : CountsFit ts) : CountsFit (ts.upsert p f) := by
-  intro q t' hq k o hko
-  rcases mem_upsert hq with hin | ⟨hqp, t0, ht', ht0⟩
-  · exact hfit q t' hin k o hko
-  · subst hqp; subst ht'
-    rw [hmem t0] at hko
-    rcases ht0 with hin0 | ⟨h0, _⟩
-    · exact Nat.le_trans (hfit q t0 hin0 k o hko) (hvis t0)
-    · subst h0; simp at hko
-
-
-
-theorem recordMember_countsFit {ts ts' : Tables} {p : Path} {k : String} {s : Seen}
-    {t : TableObs} (hnd : (ts.map Prod.fst).Nodup)
-    (hlk : ts.lookup p = some t) (hvis : 1 ≤ t.visits)
-    (hroom : ∀ o, t.members.lookup k = some o → o.values + o.nulls < t.visits)
-    (hfit : CountsFit ts) (h : recordMember ts p k s = .ok ts') : CountsFit ts' := by
-  have hcur : ((t.members.lookup k).getD ({} : Obs)).values
-            + ((t.members.lookup k).getD ({} : Obs)).nulls + 1 ≤ t.visits := by
-    cases hl : t.members.lookup k with
-    | none => simp [hl]; omega
-    | some o => have hr := hroom o hl; simp [hl]; omega
-  have key : ∀ next : Obs, next.values + next.nulls ≤ t.visits →
-      CountsFit (ts.upsert p (fun tt => { tt with
-        members := tt.members.filter (fun q => q.1 != k) ++ [(k, next)] })) := by
-    intro next hnext q t' hq k' o hko
-    rcases mem_upsert hq with hin | ⟨hqp, t0, ht', ht0⟩
-    · exact hfit q t' hin k' o hko
-    · subst hqp; subst ht'
-      have ht0t : t0 = t := by
-        rcases ht0 with hin0 | ⟨_, hnone⟩
-        · have hh := lookup_of_mem_nodup hnd hin0
-          rw [hlk] at hh
-          exact (Option.some_inj.mp hh.symm)
-        · rw [hnone] at hlk; injection hlk
-      subst ht0t
-      dsimp only at hko
-      rcases List.mem_append.mp hko with hf | hl
-      · exact hfit _ t0 (lookup_mem hlk) k' o (List.mem_filter.mp hf).1
-      · simp at hl
-        obtain ⟨_, ho⟩ := hl
-        subst ho
-        exact hnext
-  unfold recordMember at h
-  simp only [hlk, Option.getD_some] at h
-  split at h
-  · injection h with he; subst he
-    exact key _ (by simp; omega)
-  · (try dsimp only at h)
-    split at h
-    · injection h
-    · injection h with he; subst he
-      exact key _ (by simp; omega)
-
-theorem lookup_map_self {p : Path} {f : TableObs → TableObs} {t : TableObs} :
-    ∀ ts : Tables, ts.lookup p = some t →
-      (ts.map (fun x => if x.1 == p then (x.1, f x.2) else x)).lookup p = some (f t) := by
-  intro ts
-  induction ts with
-  | nil => intro h; simp [List.lookup] at h
-  | cons hd tl ih =>
-      obtain ⟨a, b⟩ := hd
-      intro h
-      rw [List.lookup_cons] at h
-      simp only [List.map_cons]
-      by_cases hpa : p = a
-      · subst hpa
-        simp at h
-        subst h
-        simp [List.lookup_cons]
-      · have hb : (p == a) = false := by simpa using hpa
-        rw [hb] at h
-        have hb2 : (a == p) = false := by simpa using (Ne.symm hpa)
-        rw [if_neg (by simp [hb2])]
-        rw [List.lookup_cons, hb]
-        exact ih h
-
-theorem upsert_lookup_self {ts : Tables} {p : Path} {f : TableObs → TableObs}
-    {t : TableObs} (hlk : ts.lookup p = some t) :
-    (ts.upsert p f).lookup p = some (f t) := by
-  unfold Tables.upsert
-  rw [if_pos (by rw [hlk]; rfl)]
-  exact lookup_map_self ts hlk
-
-theorem lookup_filter_ne {k k' : String} (hne : k' ≠ k) :
-    ∀ l : List (String × Obs),
-      (l.filter (fun q => q.1 != k)).lookup k' = l.lookup k' := by
-  intro l
+/-- Once the join is undefined it stays undefined, so a fold reaching `some`
+    never passed through `none`. -/
+theorem foldJoin_none (l : List Ty) :
+    l.foldl (fun acc t => acc.bind (Ty.join · t)) none = none := by
   induction l with
   | nil => rfl
-  | cons hd tl ih =>
-      obtain ⟨a, b⟩ := hd
-      by_cases hak : a = k
-      · subst hak
-        have hk : (k' == a) = false := by simpa using hne
-        simp [List.filter_cons, List.lookup_cons, hk, ih]
-      · have hkeep : ((a, b).1 != k) = true := by simpa using hak
-        simp only [List.filter_cons, hkeep, if_true, List.lookup_cons, ih]
+  | cons _ _ ih => simpa using ih
 
-
-theorem recordMember_lookup {ts ts' : Tables} {p : Path} {k : String} {s : Seen}
-    {t : TableObs} (hlk : ts.lookup p = some t)
-    (h : recordMember ts p k s = .ok ts') :
-    ∃ t2, ts'.lookup p = some t2 ∧ t2.visits = t.visits ∧
-      ∀ k', k' ≠ k → t2.members.lookup k' = t.members.lookup k' := by
-  have body : ∀ next : Obs,
-      ∃ t2, (ts.upsert p (fun tt => { tt with
-          members := tt.members.filter (fun q => q.1 != k) ++ [(k, next)] })).lookup p = some t2
-        ∧ t2.visits = t.visits
-        ∧ ∀ k', k' ≠ k → t2.members.lookup k' = t.members.lookup k' := by
-    intro next
-    refine ⟨_, upsert_lookup_self hlk, rfl, ?_⟩
-    intro k' hk'
-    show (List.lookup k' (t.members.filter (fun q => q.1 != k) ++ [(k, next)])) = _
-    rw [List.lookup_append, lookup_filter_ne hk']
-    cases hl : t.members.lookup k' with
-    | some v => simp
-    | none => simp [hk']
-  unfold recordMember at h
-  simp only [hlk, Option.getD_some] at h
-  split at h
-  · injection h with he; subst he; exact body _
-  · (try dsimp only at h)
-    split at h
-    · injection h
-    · injection h with he; subst he; exact body _
-
-theorem not_member_prefix (p : Path) (k : String) : ¬ (p.member k <+: p) := by
-  intro h
-  have hl := h.length_le
-  simp [Path.member] at hl <;> omega
-
-theorem not_elem_prefix (p : Path) : ¬ (p.elem <+: p) := by
-  intro h
-  have hl := h.length_le
-  simp [Path.elem] at hl <;> omega
-
-theorem not_entry_prefix (p : Path) : ¬ (p.entry <+: p) := by
-  intro h
-  have hl := h.length_le
-  simp [Path.entry] at hl <;> omega
-
-theorem upsert_lookup_self_none {ts : Tables} {p : Path} {f : TableObs → TableObs}
-    (hlk : ts.lookup p = none) : (ts.upsert p f).lookup p = some (f {}) := by
-  unfold Tables.upsert
-  rw [if_neg (by rw [hlk]; simp)]
-  rw [List.lookup_append, hlk]
-  simp
-
-theorem recordMember_nodup {ts ts' : Tables} {p : Path} {k : String} {s : Seen}
-    (hnd : (ts.map Prod.fst).Nodup) (h : recordMember ts p k s = .ok ts') :
-    (ts'.map Prod.fst).Nodup := by
-  unfold recordMember at h
-  split at h
-  · injection h with he; subst he; exact upsert_nodup hnd
-  · dsimp only at h
-    split at h
-    · injection h
-    · injection h with he; subst he; exact upsert_nodup hnd
-
-def Inv (ts : Tables) : Prop := CountsFit ts ∧ (ts.map Prod.fst).Nodup
-
-/-- Every member still to be recorded at `p` has room for one more. -/
-def Room (ts : Tables) (p : Path) (ks : List String) : Prop :=
-  ∃ t, ts.lookup p = some t ∧ 1 ≤ t.visits ∧
-    ∀ k ∈ ks, ∀ o, t.members.lookup k = some o → o.values + o.nulls < t.visits
-
-theorem not_prefix_of_longer {p q : Path} (h : p.length < q.length) : ¬ (q <+: p) :=
-  fun hpre => absurd hpre.length_le (by omega)
-
-/-- Bumping the visit count restores room for every member. -/
-theorem upsert_visit_room {ts : Tables} {p : Path} {f : TableObs → TableObs}
-    (hmem : ∀ t, (f t).members = t.members) (hvis : ∀ t, (f t).visits = t.visits + 1)
-    (hinv : Inv ts) (ks : List String) :
-    Inv (ts.upsert p f) ∧ Room (ts.upsert p f) p ks := by
-  refine ⟨⟨countsFit_upsert_visits hmem (fun t => by rw [hvis]; omega) hinv.1,
-           upsert_nodup hinv.2⟩, ?_⟩
-  cases hlk : ts.lookup p with
-  | some t =>
-      refine ⟨f t, upsert_lookup_self hlk, by rw [hvis]; omega, ?_⟩
-      intro k _ o ho
-      rw [hmem t] at ho
-      have hb := hinv.1 p t (lookup_mem hlk) k o (lookup_mem ho)
-      rw [hvis]; omega
-  | none =>
-      refine ⟨f {}, upsert_lookup_self_none hlk, by rw [hvis]; omega, ?_⟩
-      intro k _ o ho
-      rw [hmem {}] at ho
-      simp at ho
-
-theorem walk_inv (cfg : Config) (ts : Tables) (target : Path) (ic : Bool) (j : Doc) :
-    ∀ ts', observeObject cfg ts target ic j = .ok ts' → Inv ts → Inv ts' := by
-  apply observeObject.induct cfg
-    (motive1 := fun ts target ic j =>
-      ∀ ts', observeObject cfg ts target ic j = .ok ts' → Inv ts → Inv ts')
-    (motive2 := fun ts target ms =>
-      ∀ ts', observeMembers cfg ts target ms = .ok ts' → Inv ts →
-        (ms.map Prod.fst).Nodup → Room ts target (ms.map Prod.fst) → Inv ts')
-    (motive3 := fun ts et raw els =>
-      ∀ ts', observeElems cfg ts et raw els = .ok ts' → Inv ts → Inv ts')
-    (motive4 := fun ts et raw es =>
-      ∀ ts', observeEntries cfg ts et raw es = .ok ts' → Inv ts → Inv ts')
-  case case1 =>
-    intro ts target ic ms ih2 ts' h hinv
-    rw [observeObject] at h
-    obtain ⟨u, hcd, h⟩ := except_bind_ok' h
-    have hcd' : checkDistinct target ms = .ok () := hcd
-    obtain ⟨hinv1, hroom⟩ :=
-      upsert_visit_room (p := target)
-        (f := fun t => { t with visits := t.visits + 1, elemObject := t.elemObject || ic })
-        (fun _ => rfl) (fun _ => rfl) hinv (ms.map Prod.fst)
-    exact ih2 ts' h hinv1 (checkDistinct_sound hcd') hroom
-  case case2 =>
-    intro ts target ic other hno ts' h hinv
-    cases other <;> first
-      | (rw [observeObject.eq_def] at h; injection h)
-      | exact (hno _ rfl).elim
-  case case3 =>
-    intro ts target ts' h hinv _ _
-    rw [observeMembers] at h
-    injection h with he; subst he; exact hinv
-  case case4 =>
-    intro ts target k tl here a hmap raw ih2 ih4 ts' h hinv hndk hroom
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_pos hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hrest⟩ := except_bind_ok' hinner
-    obtain ⟨u, hcd, hent⟩ := except_bind_ok' hrest
-    obtain ⟨t, hlk, hvis, hrm⟩ := hroom
-    simp only [List.map_cons] at hndk
-    have hsplit := List.nodup_cons.mp hndk
-    have hinv1 : Inv ts1 :=
-      ⟨recordMember_countsFit hinv.2 hlk hvis
-         (fun o ho => hrm k (by simp) o ho) hinv.1 hrec,
-       recordMember_nodup hinv.2 hrec⟩
-    obtain ⟨t2, hlk2, hvis2, hmem2⟩ := recordMember_lookup hlk hrec
-    have hneq : target ≠ ((target.member k).entry) := by
-      intro hh
-      have hl := congrArg List.length hh
-      simp [Path.member, Path.entry] at hl
-    have hinvU : Inv (ts1.upsert ((target.member k).entry) id) :=
-      ⟨countsFit_upsert_visits (fun _ => rfl) (fun _ => Nat.le_refl _) hinv1.1,
-       upsert_nodup hinv1.2⟩
-    have hlkU : (ts1.upsert ((target.member k).entry) id).lookup target = some t2 :=
-      (upsert_lookup_ne hneq).trans hlk2
-    have hinv2 : Inv ts2 := ih4 ts1 ts2 hent hinvU
-    have hnp : ¬ (((target.member k).entry) <+: target) :=
-      not_prefix_of_longer (by simp [Path.member, Path.entry])
-    have hlk3 : ts2.lookup target = some t2 :=
-      (walk_frame_entries cfg (ts1.upsert ((target.member k).entry) id) ((target.member k).entry)
-        (((target.member k).entry).toString) a ts2 hent target hnp).trans hlkU
-    have hroom2 : Room ts2 target (tl.map Prod.fst) := by
-      refine ⟨t2, hlk3, by rw [hvis2]; exact hvis, ?_⟩
-      intro k' hk' o ho
-      rw [hvis2]
-      have hne : k' ≠ k := fun heq => hsplit.1 (heq ▸ hk')
-      rw [hmem2 k' hne] at ho
-      exact hrm k' (by simpa using List.mem_cons_of_mem k hk') o ho
-    exact ih2 ts2 ts' htl hinv2 hsplit.2 hroom2
-  case case5 =>
-    intro ts target k tl here a hmap ih2 ih1 ts' h hinv hndk hroom
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    rw [if_neg hmap] at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hobj⟩ := except_bind_ok' hinner
-    obtain ⟨t, hlk, hvis, hrm⟩ := hroom
-    simp only [List.map_cons] at hndk
-    have hsplit := List.nodup_cons.mp hndk
-    have hinv1 : Inv ts1 :=
-      ⟨recordMember_countsFit hinv.2 hlk hvis
-         (fun o ho => hrm k (by simp) o ho) hinv.1 hrec,
-       recordMember_nodup hinv.2 hrec⟩
-    obtain ⟨t2, hlk2, hvis2, hmem2⟩ := recordMember_lookup hlk hrec
-    have hinv2 : Inv ts2 := ih1 ts1 ts2 hobj hinv1
-    have hnp : ¬ ((target.member k) <+: target) :=
-      not_prefix_of_longer (by simp [Path.member])
-    have hlk3 : ts2.lookup target = some t2 :=
-      (walk_frame cfg ts1 (target.member k) false (Doc.obj a) ts2 hobj target hnp).trans hlk2
-    have hroom2 : Room ts2 target (tl.map Prod.fst) := by
-      refine ⟨t2, hlk3, by rw [hvis2]; exact hvis, ?_⟩
-      intro k' hk' o ho
-      rw [hvis2]
-      have hne : k' ≠ k := fun heq => hsplit.1 (heq ▸ hk')
-      rw [hmem2 k' hne] at ho
-      exact hrm k' (by simpa using List.mem_cons_of_mem k hk') o ho
-    exact ih2 ts2 ts' htl hinv2 hsplit.2 hroom2
-  case case6 =>
-    intro ts target k tl here els ih2 ih3 ts' h hinv hndk hroom
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts2, hinner, htl⟩ := except_bind_ok' h
-    obtain ⟨ts1, hrec, hels⟩ := except_bind_ok' hinner
-    obtain ⟨t, hlk, hvis, hrm⟩ := hroom
-    simp only [List.map_cons] at hndk
-    have hsplit := List.nodup_cons.mp hndk
-    have hinv1 : Inv ts1 :=
-      ⟨recordMember_countsFit hinv.2 hlk hvis
-         (fun o ho => hrm k (by simp) o ho) hinv.1 hrec,
-       recordMember_nodup hinv.2 hrec⟩
-    obtain ⟨t2, hlk2, hvis2, hmem2⟩ := recordMember_lookup hlk hrec
-    have hneq : target ≠ ((target.member k).elem) := by
-      intro hh
-      have hl := congrArg List.length hh
-      simp [Path.member, Path.elem] at hl
-    have hinvU : Inv (ts1.upsert ((target.member k).elem) id) :=
-      ⟨countsFit_upsert_visits (fun _ => rfl) (fun _ => Nat.le_refl _) hinv1.1,
-       upsert_nodup hinv1.2⟩
-    have hlkU : (ts1.upsert ((target.member k).elem) id).lookup target = some t2 :=
-      (upsert_lookup_ne hneq).trans hlk2
-    have hinv2 : Inv ts2 := ih3 ts1 ts2 hels hinvU
-    have hnp : ¬ (((target.member k).elem) <+: target) :=
-      not_prefix_of_longer (by simp [Path.member, Path.elem])
-    have hlk3 : ts2.lookup target = some t2 :=
-      (walk_frame_elems cfg (ts1.upsert ((target.member k).elem) id) ((target.member k).elem)
-        (((target.member k).elem).toString) els ts2 hels target hnp).trans hlkU
-    have hroom2 : Room ts2 target (tl.map Prod.fst) := by
-      refine ⟨t2, hlk3, by rw [hvis2]; exact hvis, ?_⟩
-      intro k' hk' o ho
-      rw [hvis2]
-      have hne : k' ≠ k := fun heq => hsplit.1 (heq ▸ hk')
-      rw [hmem2 k' hne] at ho
-      exact hrm k' (by simpa using List.mem_cons_of_mem k hk') o ho
-    exact ih2 ts2 ts' htl hinv2 hsplit.2 hroom2
-  case case7 =>
-    intro ts target k tl other hno1 hno2 ih2 ts' h hinv hndk hroom
-    rw [observeMembers.eq_def] at h
-    dsimp only at h
-    cases other
-    case obj a => exact (hno1 a rfl).elim
-    case arr e => exact (hno2 e rfl).elim
-    all_goals
-      (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-       obtain ⟨s, hsee, hrec⟩ := except_bind_ok' hinner
-       obtain ⟨t, hlk, hvis, hrm⟩ := hroom
-       simp only [List.map_cons] at hndk
-       have hsplit := List.nodup_cons.mp hndk
-       have hinv1 : Inv ts1 :=
-         ⟨recordMember_countsFit hinv.2 hlk hvis
-            (fun o ho => hrm k (by simp) o ho) hinv.1 hrec,
-          recordMember_nodup hinv.2 hrec⟩
-       obtain ⟨t2, hlk2, hvis2, hmem2⟩ := recordMember_lookup hlk hrec
-       have hroom1 : Room ts1 target (tl.map Prod.fst) := by
-         refine ⟨t2, hlk2, by rw [hvis2]; exact hvis, ?_⟩
-         intro k' hk' o ho
-         rw [hvis2]
-         have hne : k' ≠ k := fun heq => hsplit.1 (heq ▸ hk')
-         rw [hmem2 k' hne] at ho
-         exact hrm k' (by simpa using List.mem_cons_of_mem k hk') o ho
-       exact ih2 ts1 ts' htl hinv1 hsplit.2 hroom1)
-  case case8 =>
-    intro ts et raw ts' h hinv
-    rw [observeElems] at h
-    injection h with he; subst he; exact hinv
-  case case9 =>
-    intro ts et raw tl a _ ih3 ih1 ts' h hinv
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact ih3 ts1 ts' htl (ih1 ts1 hobj hinv)
-  case case10 =>
-    intro ts et raw tl els _ ts' h hinv
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    injection h
-  case case11 =>
-    intro ts et raw tl other hno1 hno2 ih3 ts' h hinv
-    rw [observeElems.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨s, hsee, hrec⟩ := except_bind_ok' hinner
-         obtain ⟨hinvU, hroomU⟩ := upsert_visit_room (p := et)
-           (f := fun t => { t with visits := t.visits + 1, elemScalar := true })
-           (fun _ => rfl) (fun _ => rfl) hinv ["value"]
-         obtain ⟨t, hlk, hvis, hrm⟩ := hroomU
-         have hinv1 : Inv ts1 :=
-           ⟨recordMember_countsFit hinvU.2 hlk hvis
-              (fun o ho => hrm "value" (by simp) o ho) hinvU.1 hrec,
-            recordMember_nodup hinvU.2 hrec⟩
-         exact ih3 ts1 ts' htl hinv1)
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-  case case12 =>
-    intro ts et raw ts' h hinv
-    rw [observeEntries] at h
-    injection h with he; subst he; exact hinv
-  case case13 =>
-    intro ts et raw k tl a _ ih4 ih1 ts' h hinv
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    obtain ⟨ts1, hobj, htl⟩ := except_bind_ok' h
-    exact ih4 ts1 ts' htl (ih1 ts1 hobj hinv)
-  case case14 =>
-    intro ts et raw k tl els _ ts' h hinv
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    injection h
-  case case15 =>
-    intro ts et raw k tl other hno1 hno2 ih4 ts' h hinv
-    rw [observeEntries.eq_def] at h
-    dsimp only at h
-    cases other <;> first
-      | (obtain ⟨ts1, hinner, htl⟩ := except_bind_ok' h
-         obtain ⟨s, hsee, hrec⟩ := except_bind_ok' hinner
-         obtain ⟨hinvU, hroomU⟩ := upsert_visit_room (p := et)
-           (f := fun t => { t with visits := t.visits + 1, elemScalar := true })
-           (fun _ => rfl) (fun _ => rfl) hinv ["value"]
-         obtain ⟨t, hlk, hvis, hrm⟩ := hroomU
-         have hinv1 : Inv ts1 :=
-           ⟨recordMember_countsFit hinvU.2 hlk hvis
-              (fun o ho => hrm "value" (by simp) o ho) hinvU.1 hrec,
-            recordMember_nodup hinvU.2 hrec⟩
-         exact ih4 ts1 ts' htl hinv1)
-      | exact (hno1 _ rfl).elim
-      | exact (hno2 _ rfl).elim
-
-
-theorem inferStep_inv {cfg : Config} {ts ts' : Tables} {d : Doc}
-    (hinv : Inv ts) (h : inferStep cfg ts d = .ok ts') : Inv ts' := by
-  unfold inferStep at h
-  exact walk_inv cfg ts [] false d ts' h hinv
-
-private def stepLoop (cfg : Config) (d : Doc) (s : Tables) :
-    Except Error (ForInStep Tables) := do
-  let ts ← inferStep cfg s d
-  pure (.yield ts)
-
-/-- Folding the corpus preserves the inequality, one document at a time. -/
-private theorem loop_inv (cfg : Config) :
-    ∀ (ds : List Doc) (acc out : Tables),
-      forIn ds acc (stepLoop cfg) = .ok out → Inv acc → Inv out := by
-  intro ds
-  induction ds with
+/-- Every type folded in is below the result, and so is the starting point. -/
+theorem foldJoin_le : ∀ {l : List Ty} {a τ : Ty},
+    l.foldl (fun acc t => acc.bind (Ty.join · t)) (some a) = some τ →
+    a ⊑ τ ∧ ∀ t, t ∈ l → t ⊑ τ := by
+  intro l
+  induction l with
   | nil =>
-      intro acc out h hfit
-      simp only [List.forIn_nil] at h
-      injection h with he
-      exact he ▸ hfit
-  | cons d tl ih =>
-      intro acc out h hfit
-      simp only [List.forIn_cons, stepLoop, bind_assoc, pure_bind] at h
-      obtain ⟨s1, h1, h2⟩ := except_bind_ok' h
-      exact ih s1 out h2 (inferStep_inv hfit h1)
+      intro a τ h
+      simp only [List.foldl_nil, Option.some.injEq] at h
+      subst h
+      exact ⟨join_idem _, by intro t ht; cases ht⟩
+  | cons x xs ih =>
+      intro a τ h
+      rw [List.foldl_cons] at h
+      cases hax : Ty.join a x with
+      | none =>
+          rw [show ((some a).bind fun y => Ty.join y x) = Ty.join a x from rfl, hax,
+              foldJoin_none] at h
+          cases h
+      | some m =>
+          rw [show ((some a).bind fun y => Ty.join y x) = Ty.join a x from rfl, hax] at h
+          obtain ⟨hm, hrest⟩ := ih h
+          refine ⟨le_trans (le_join_left hax) hm, ?_⟩
+          intro t ht
+          rcases List.mem_cons.mp ht with rfl | ht'
+          · exact le_trans (le_join_right hax) hm
+          · exact hrest t ht'
 
-/-- Given the inequality, the final pass turns it into the identity. The two
-    loops in `inferFinish` only reject, so the tables that come out are the
-    tables that went in with `absent` filled in. -/
-theorem inferFinish_counts {cfg : Config} {ts ts' : Tables}
-    (h : inferFinish cfg ts = .ok ts') (hfit : CountsFit ts) :
-    ∀ p t, (p, t) ∈ ts' → ∀ k o, (k, o) ∈ t.members →
-      o.values + o.nulls + o.absent = t.visits := by
-  unfold inferFinish at h
-  obtain ⟨_, _, h⟩ := except_bind_ok' h
-  obtain ⟨_, _, h⟩ := except_bind_ok' h
-  injection h with hts
-  subst hts
-  intro p t hmem k o hko
-  obtain ⟨⟨p0, t0⟩, hmem0, heq⟩ := List.mem_map.mp hmem
-  injection heq with hp ht
-  subst ht
-  dsimp only at hko
-  obtain ⟨⟨k0, o0⟩, hko0, heq0⟩ := List.mem_map.mp hko
-  injection heq0 with hk ho
-  subst ho
-  have hle := hfit p0 t0 hmem0 k0 o0 hko0
-  show o0.values + o0.nulls + (t0.visits - o0.values - o0.nulls) = t0.visits
-  omega
+/-- And the result is the least such type: anything above everything folded in
+    is above the result. -/
+theorem foldJoin_least : ∀ {l : List Ty} {a τ σ : Ty},
+    l.foldl (fun acc t => acc.bind (Ty.join · t)) (some a) = some τ →
+    a ⊑ σ → (∀ t, t ∈ l → t ⊑ σ) → τ ⊑ σ := by
+  intro l
+  induction l with
+  | nil =>
+      intro a τ σ h ha _
+      simp only [List.foldl_nil, Option.some.injEq] at h
+      subst h; exact ha
+  | cons x xs ih =>
+      intro a τ σ h ha hall
+      rw [List.foldl_cons] at h
+      cases hax : Ty.join a x with
+      | none =>
+          rw [show ((some a).bind fun y => Ty.join y x) = Ty.join a x from rfl, hax,
+              foldJoin_none] at h
+          cases h
+      | some m =>
+          rw [show ((some a).bind fun y => Ty.join y x) = Ty.join a x from rfl, hax] at h
+          exact ih h (join_least hax ha (hall x (List.mem_cons_self ..)))
+            (fun t ht => hall t (List.mem_cons_of_mem _ ht))
 
-/-- **Every column's counts add up to its table's visit count.**
+/-- The type a member is given admits every type ever seen there. -/
+theorem obs_admits {o : Obs} {τ : Ty} (h : o.joined = some τ) :
+    ∀ t, t ∈ o.seen → t ⊑ τ := (foldJoin_le h).2
 
-    `inferFinish` computes `absent` by truncating subtraction, so without this
-    a column a document had omitted could report `absent = 0`, come out
-    non-optional, and make `infer_admits` false rather than merely unproved. -/
-theorem infer_counts (cfg : Config) (ds : List Doc) (ts : Tables)
-    (h : inferCorpus cfg ds = .ok ts) :
-    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
-      o.values + o.nulls + o.absent = t.visits := by
-  unfold inferCorpus at h
-  obtain ⟨mid, hloop, hfin⟩ := except_bind_ok' h
-  exact inferFinish_counts hfin
-    (loop_inv cfg ds [] mid hloop ⟨countsFit_nil, by simp⟩).1
+/-- And it is the least such type: nothing is widened further than the data
+    forces. -/
+theorem obs_least {o : Obs} {τ σ : Ty} (h : o.joined = some τ)
+    (hσ : ∀ t, t ∈ o.seen → t ⊑ σ) : τ ⊑ σ :=
+  foldJoin_least h (bot_le σ) hσ
 
-/-- The schema is a property of the corpus, not of the order its documents
-    arrived in. This is what makes "the schema" a meaningful phrase.
+/-- The schema does not lie about the corpus: every value observed at a member
+    fits the type that member was given.
 
-    **This statement has been wrong twice, and the second time it was the
-    program that was wrong.**
-
-    As an equation between `Tables` it is false, because `Tables` is a list.
-    `Tables.upsert` appends a table when first seen, so the list records
-    discovery order, and `recordMember` rebuilds a table's members as
-    `filter (≠ k) ++ [k]`, so that list records order of last update:
-
-        inferCorpus [{"x":{"p":1}}, {"y":{"q":1}}]  gives  [".", ".x", ".y"]
-        inferCorpus [{"y":{"q":1}}, {"x":{"p":1}}]  gives  [".", ".y", ".x"]
-        inferCorpus [{"a":1,"b":2}, {"a":3}]  gives members ["b", "a"]
-        inferCorpus [{"a":3}, {"a":1,"b":2}]  gives members ["a", "b"]
-
-    Neither reaches the output, since `toSchema` sorts, so the claim belongs
-    on `toSchema`. It was false there too, for a separate reason: `parent` was
-    observed, and it *overwrote* rather than merged, so a table reachable from
-    two places kept whichever parent the last document happened to set.
-
-    The `recursive` marking -- a path folded into an ancestor, so both became
-    one table -- was the only way to produce such a table, and it has been
-    removed. A table is identified by its path alone; its parent is
-    `Path.parentOfElement` of that path and `keyed` is `Path.isEntry` of it,
-    so neither is observed. Every field left in `TableObs` accumulates, which
-    is exactly what the proof below needs.
-
-    Conditional on success, because *which* error is reported first does
-    depend on order -- if one document has a type conflict and another a
-    nested array, the answer differs. Whether inference succeeds does not:
-    every rejection is either symmetric (`join` is commutative, so a type
-    conflict is a conflict either way), local to one document
-    (`duplicateMember`, `nestedArray`), or checked at the end
-    against accumulated flags (`mixedElements`, `markingMatchedNothing`).
-    Diagnostics depending on order is fine; the schema depending on it is not.
-
-    Not proved. Three things stand in the way, and the second and third are
-    the interesting ones:
-
-    * **The state is order-sensitive but the answer is not.** The proof needs
-      an equivalence on `Tables` -- same tables, same columns, up to the order
-      of both lists -- shown to be preserved by `observeObject` and to
-      commute for two documents. Reasoning through the four mutually
-      recursive functions for that is a large development.
-    * **`toSchema` uses `Array.qsort`, which has no correctness lemmas in
-      core** -- not even that it returns a permutation. So "the schema is a
-      function of the multiset" is not currently statable. `List.mergeSort`
-      has `mergeSort_perm`, but sortedness and the uniqueness of a sorted
-      permutation both still need proving.
-    * The cheaper route is to make order-independence **structural** rather
-      than proved: observe each document from the empty state, then combine
-      with a merge that is commutative and associative by construction --
-      counts add, types join (`join_comm`, `join_assoc`, `join_idem`, all
-      proved), flags disjoin, parents must agree. Permutation invariance then
-      follows from `List.Perm` induction without touching the recursion. It
-      changes where cross-document conflicts are detected, so it changes
-      diagnostics, which is why it has not been done unilaterally. -/
-theorem infer_perm (cfg : Config) (ds es : List Doc) (h : ds.Perm es)
-    {ta tb : Tables} (hda : inferCorpus cfg ds = .ok ta)
-    (hdb : inferCorpus cfg es = .ok tb) :
-    toSchema ta = toSchema tb := by
-  sorry
-
-/-- **Adequacy.** The schema does not lie about the corpus: every document it
-    was inferred from is described by it.
-
-    This is the first statement in the project that mentions an input document
-    and an output schema in the same breath. Everything else -- the lattice,
-    the name theorems, well-formedness -- is a property of one stage in
-    isolation, and a generator that ignored its input entirely would satisfy
-    all of them.
-
-    `Conforms` is defined in `Proofs.Spec`, independently of `observeObject`.
-    That independence is what gives this theorem content.
-
-    Not proved. The route is an induction mirroring `observeObject`'s own
-    recursion, in three parts, of which the first two are done:
-
-    * each value conforms at the moment it is recorded --- `recordMember`
-      joins, and `le_join_right` gives the observation a place under the
-      result;
-    * conformance survives later widening --- `matchesField_mono`, above,
-      which is why `le_trans` was needed;
-    * a column's type only ever moves up as more documents arrive, which is
-      the monotonicity invariant still to be established, and it has to hold
-      of the whole `Tables` state at once.
-
-    The nullability half needs the counts identity --- that
-    `values + nulls + absent = visits` for every column, which is not yet
-    stated. `inferCorpus` computes `absent` by truncating subtraction, so if
-    that identity failed, a document that omitted a key would leave `absent`
-    at zero, the column would come out non-optional, and this theorem would be
-    false. -/
+    Stated of the member's `joined`, which `inferFinish` has already checked is
+    `some` -- it refuses a corpus where any member's types have no common
+    type, which is exactly the `none` case. -/
 theorem infer_admits (cfg : Config) (ds : List Doc) (ts : Tables)
     (h : inferCorpus cfg ds = .ok ts) :
-    Conforms (toSchema ts) ds := by
-  sorry
+    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
+      ∀ τ, o.joined = some τ → ∀ ty, ty ∈ o.seen → ty ⊑ τ := by
+  intro _ _ _ _ _ _ _ hj
+  exact obs_admits hj
 
-/-- **Minimality.** The schema says no more than the data forces: any schema
-    the whole corpus conforms to is above the inferred one.
-
-    Adequacy alone is nearly free --- a corpus of integers is adequately
-    described by `int`, by `int option`, and by `float`. This is what rules
-    out the loose answers, and the two together pin the schema from both
-    sides: adequacy forbids anything narrower, minimality anything wider.
-
-    The table structure is assumed equal rather than compared, because it is
-    forced by the shape of the documents, not chosen. Only the types and the
-    nullability flags are up for comparison.
-
-    Not proved. Rests on `join_least` (proved) lifted from two observations to
-    a folded list, which needs `join_assoc` and `join_comm` (both proved), and
-    on the same monotonicity invariant as adequacy. -/
-theorem infer_least (cfg : Config) (ds : List Doc) (ts : Tables) (s : Schema)
-    (h : inferCorpus cfg ds = .ok ts)
-    (hstruct : s.map Table.path = (toSchema ts).map Table.path)
-    (hconf : Conforms s ds) :
-    Schema.le (toSchema ts) s := by
-  sorry
+/-- The type given to a member is the least one admitting every value observed
+    there -- nothing is widened further than the data forces. -/
+theorem infer_least (cfg : Config) (ds : List Doc) (ts : Tables)
+    (h : inferCorpus cfg ds = .ok ts) :
+    ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
+      ∀ τ σ, o.joined = some τ → (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ := by
+  intro _ _ _ _ _ _ _ _ hj hσ
+  exact obs_least hj hσ
 
 end Tatami

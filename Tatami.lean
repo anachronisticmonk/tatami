@@ -1,4 +1,5 @@
 import Tatami.Path
+import Tatami.Sorted
 import Tatami.Doc
 import Tatami.Stream
 import Tatami.Config

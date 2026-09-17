@@ -1,4 +1,5 @@
 import Tatami.Config
+import Tatami.Sorted
 import Tatami.Doc
 import Tatami.Error
 import Tatami.Path
@@ -58,21 +59,43 @@ def seeScalar (path : String) (j : Doc) : Except Error Seen :=
 
 /-- What has been observed at one member. The counts separate an explicit
     `null` from an absent key -- a distinction the generated `option` cannot
-    carry, so it is kept here instead. -/
+    carry, so it is kept here instead.
+
+    `seen` is the *set* of types the values there had, kept in order, rather
+    than their running join. Union of sets is commutative and associative with
+    nothing to prove, which is what makes the corpus fold independent of the
+    order documents arrive in; the join is taken once, at the end. It also
+    lets a conflict name every type involved rather than the two that happened
+    to meet first. -/
 structure Obs where
-  ty : Ty := .bot
+  seen : List Ty := []
   values : Nat := 0
   nulls : Nat := 0
   absent : Nat := 0
-  sawInt : Bool := false
-  sawFloat : Bool := false
   big : Bool := false
   deriving Repr, Inhabited
 
 def Obs.nullable (o : Obs) : Bool := o.nulls > 0 || o.absent > 0
-def Obs.field (o : Obs) : Field := { ty := o.ty, nullable := o.nullable }
+
+/-- The one type admitting everything seen here, if there is one. `none` is
+    the case the corpus is refused for. -/
+def Obs.joined (o : Obs) : Option Ty :=
+  o.seen.foldl (fun acc t => acc.bind (Ty.join · t)) (some .bot)
+
+/-- `joined` is `some` for every member of a schema that was accepted, which
+    `inferFinish` checks before anything gets here. -/
+def Obs.field (o : Obs) : Field :=
+  { ty := o.joined.getD .bot, nullable := o.nullable }
+
 /-- Both an integer and a float were seen here, so the column widened. -/
-def Obs.widened (o : Obs) : Bool := o.sawInt && o.sawFloat
+def Obs.widened (o : Obs) : Bool := o.seen.contains .int && o.seen.contains .float
+
+def Obs.merge (a b : Obs) : Obs :=
+  { seen := unionBy Ty.lt (· == ·) a.seen b.seen
+    values := a.values + b.values
+    nulls := a.nulls + b.nulls
+    absent := a.absent + b.absent
+    big := a.big || b.big }
 
 /-- What has been observed at one table: how many times an object appeared at
     that path, and what each of its members held. The visit count is the
@@ -92,13 +115,24 @@ structure TableObs where
   elemScalar : Bool := false
   deriving Inhabited
 
+def TableObs.merge (a b : TableObs) : TableObs :=
+  { visits := a.visits + b.visits
+    members := mergeBy (· < ·) (· == ·) Obs.merge a.members b.members
+    elemObject := a.elemObject || b.elemObject
+    elemScalar := a.elemScalar || b.elemScalar }
+
+/-- Kept in path order, so that two corpora differing only in the order their
+    documents arrived produce the same list and not merely the same set. -/
 abbrev Tables := List (Path × TableObs)
+
+def Tables.merge (a b : Tables) : Tables :=
+  mergeBy Path.lt (· == ·) TableObs.merge a b
 
 def Tables.upsert (ts : Tables) (p : Path) (f : TableObs → TableObs) : Tables :=
   if (ts.lookup p).isSome then
     ts.map fun (q, t) => if q == p then (q, f t) else (q, t)
   else
-    ts ++ [(p, f {})]
+    insertBy Path.lt (· == ·) (fun _ new => new) p (f {}) ts
 
 /-- No longer used by the walk, which matches on `j` itself so that the
     termination argument can see the members are smaller. Kept because it is
@@ -132,26 +166,16 @@ def documents (j : Doc) : Except Error (List Doc) :=
       go 0 [] elements
   | other => .error (.notObjectOrArray (Doc.describe other))
 
-def recordMember (ts : Tables) (p : Path) (k : String) (s : Seen)
-    : Except Error Tables := do
-  let tbl := (ts.lookup p).getD {}
-  let cur := (tbl.members.lookup k).getD {}
-  let next : Obs ←
+/-- One observation at one member. Nothing is refused here any more: a type
+    conflict is a property of the set of types seen, and that set is only
+    complete once the whole corpus has been read. -/
+def recordMember (ts : Tables) (p : Path) (k : String) (s : Seen) : Tables :=
+  let one : Obs :=
     match s with
-    | .null => pure { cur with nulls := cur.nulls + 1 }
-    | .value t big =>
-        match cur.ty.join t with
-        | none =>
-            throw (.typeConflict (Path.toString (Path.member p k)) cur.ty.toString t.toString)
-        | some j =>
-            pure { cur with
-              ty := j
-              values := cur.values + 1
-              big := cur.big || big
-              sawInt := cur.sawInt || (t == .int)
-              sawFloat := cur.sawFloat || (t == .float) }
-  return ts.upsert p fun t =>
-    { t with members := t.members.filter (fun q => q.1 != k) ++ [(k, next)] }
+    | .null => { nulls := 1 }
+    | .value t big => { seen := [t], values := 1, big := big }
+  ts.upsert p fun t =>
+    { t with members := insertBy (· < ·) (· == ·) Obs.merge k one t.members }
 
 mutual
 
@@ -197,7 +221,7 @@ def observeMembers (cfg : Config) (ts : Tables) (target : Path)
               -- the members are data: each becomes a row keyed by its name
               let raw := Path.entry here
               (do
-                let ts ← recordMember ts target k (.value (.coll raw) false)
+                let ts := recordMember ts target k (.value (.coll raw) false)
                 let ts := ts.upsert raw id
                 checkDistinct here entries
                 have : Doc.sizeVals entries < Doc.sizeVals ((k, Doc.obj entries) :: tl) :=
@@ -205,7 +229,7 @@ def observeMembers (cfg : Config) (ts : Tables) (target : Path)
                 observeEntries cfg ts raw (Path.toString raw) entries)
             else
               (do
-                let ts ← recordMember ts target k (.value (.ref here) false)
+                let ts := recordMember ts target k (.value (.ref here) false)
                 -- `Doc.obj entries` rather than `v`: the match refines the list
                 -- element but not the occurrence of `v`, and the two forms have
                 -- to agree for the decrease to be stated
@@ -216,7 +240,7 @@ def observeMembers (cfg : Config) (ts : Tables) (target : Path)
         | .arr els =>
             (do
               let raw := Path.elem here
-              let ts ← recordMember ts target k (.value (.coll raw) false)
+              let ts := recordMember ts target k (.value (.coll raw) false)
               let ts := ts.upsert raw id
               have : Doc.sizeList els < Doc.sizeVals ((k, Doc.arr els) :: tl) :=
                 Doc.sizeList_lt_arr k els tl
@@ -224,7 +248,7 @@ def observeMembers (cfg : Config) (ts : Tables) (target : Path)
         | _ =>
             (do
               let s ← seeScalar (Path.toString here) v
-              recordMember ts target k s)
+              .ok (recordMember ts target k s))
       have : Doc.sizeVals tl < Doc.sizeVals ((k, v) :: tl) := Doc.sizeVals_lt (k, v) tl
       observeMembers cfg ts target tl
 termination_by (1 + Doc.sizeVals ms, 0)
@@ -248,7 +272,7 @@ def observeElems (cfg : Config) (ts : Tables) (elemTable : Path)
               let ts := ts.upsert elemTable fun t =>
                 { t with visits := t.visits + 1, elemScalar := true }
               let s ← seeScalar raw e
-              recordMember ts elemTable "value" s)
+              .ok (recordMember ts elemTable "value" s))
       have : Doc.sizeList tl < Doc.sizeList (e :: tl) := Doc.sizeList_lt e tl
       observeElems cfg ts elemTable raw tl
 termination_by (1 + Doc.sizeList els, 0)
@@ -272,23 +296,42 @@ def observeEntries (cfg : Config) (ts : Tables) (entryTable : Path)
               let ts := ts.upsert entryTable fun t =>
                 { t with visits := t.visits + 1, elemScalar := true }
               let s ← seeScalar raw ev
-              recordMember ts entryTable "value" s)
+              .ok (recordMember ts entryTable "value" s))
       have : Doc.sizeVals tl < Doc.sizeVals ((k, ev) :: tl) := Doc.sizeVals_lt (k, ev) tl
       observeEntries cfg ts entryTable raw tl
 termination_by (1 + Doc.sizeVals entries, 0)
 
 end
 
+/-- One document on its own, observed from nothing.
+
+    Each document is observed independently and the results are merged, rather
+    than threaded through a shared accumulator. The merge is commutative and
+    associative because every field of it is -- counts add, type sets union,
+    flags disjoin -- so the corpus's schema does not depend on the order the
+    documents arrived in. That is `infer_perm`, and this is what makes it hold
+    by construction rather than by proof about the walk. -/
+def observeDocument (cfg : Config) (d : Doc) : Except Error Tables :=
+  observeObject cfg [] [] false d
+
 /-- One document folded in. The accumulator is bounded by the *schema*, not by
     the corpus, which is what lets a reader hand documents over one at a time
     and drop each one after. -/
-def inferStep (cfg : Config) (ts : Tables) (d : Doc) : Except Error Tables :=
-  observeObject cfg ts [] false d
+def inferStep (cfg : Config) (ts : Tables) (d : Doc) : Except Error Tables := do
+  return ts.merge (← observeDocument cfg d)
 
 /-- What can only be settled once every document has been seen: a collection
     holding both objects and scalars, a marking that matched nothing, and the
     absent counts, which are against each table's own visit total. -/
 def inferFinish (cfg : Config) (ts : Tables) : Except Error Tables := do
+  -- a member holding values with no common type. Checked here rather than
+  -- during the walk because the set of types seen is only complete once the
+  -- whole corpus has been read, which is what lets the walk merge in any order
+  for (p, t) in ts do
+    for (k, o) in t.members do
+      if o.joined.isNone then
+        throw (.typeConflict (Path.toString (Path.member p k))
+                 (String.intercalate ", " (o.seen.map Ty.toString)))
   for (p, t) in ts do
     if t.elemObject && t.elemScalar then throw (.mixedElements (Path.toString p))
   -- a marking that matched nothing is a typo, not a no-op
@@ -307,35 +350,26 @@ def inferFinish (cfg : Config) (ts : Tables) : Except Error Tables := do
     rather than per document as we go: a member first seen late would
     otherwise never record the visits that lacked it. -/
 def inferCorpus (cfg : Config) (docs : List Doc) : Except Error Tables := do
-  let mut ts : Tables := []
-  for d in docs do
-    ts ← inferStep cfg ts d
-  inferFinish cfg ts
+  let tss ← docs.mapM (observeDocument cfg)
+  inferFinish cfg (tss.foldl Tables.merge [])
 
 /-- Tables in the order OCaml needs them: a module must be declared before it
     is referred to, and a child's path is always longer than its parent's, so
     deepest first puts every child ahead of its parent. Ties are broken
-    lexicographically to keep the output stable.
-
-    `mergeSort` rather than `qsort`, because `Array.qsort` has no correctness
-    lemmas in core -- not even that it returns a permutation of its input --
-    so nothing could be proved about the schema this produces. `mergeSort_perm`
-    and `mem_mergeSort` hold of any comparator whatsoever, which is what
-    `Proofs.Inference` needs to find a table in the result. Both comparators
-    are strict and both keys are unique -- paths identify tables, and
-    `checkDistinct` rejects a repeated member -- so there are no ties and the
-    output is unchanged. -/
+    lexicographically to keep the output stable. -/
 def toSchema (ts : Tables) : Schema :=
-  let ordered := ts.toArray.mergeSort fun a b =>
+  let ordered := sortBy (fun a b =>
     if a.1.length == b.1.length then
       Path.toString a.1 < Path.toString b.1
     else
-      a.1.length > b.1.length
-  ordered.toList.map fun (p, t) =>
+      a.1.length > b.1.length) ts
+  ordered.map fun (p, t) =>
     { path := p
     , parent := Path.parentOfElement p
     , keyed := Path.isEntry p
-    , columns := (t.members.toArray.mergeSort (fun a b => a.1 < b.1)).toList.map
-        fun (k, o) => { name := k, field := o.field } }
+    -- no sort: `TableObs.merge` and `recordMember` both keep the members in
+    -- name order, so they arrive sorted. `Proofs.Merge` states that as
+    -- `TableObsOk` and `Proofs.Walk` proves the walk maintains it.
+    , columns := t.members.map fun (k, o) => { name := k, field := o.field } }
 
 end Tatami
