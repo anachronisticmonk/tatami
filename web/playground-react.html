@@ -1,0 +1,1206 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Tatami Playground</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+<style>
+  :root {
+    --bg: #F1F2EC; --surface: #FBFBF7; --sunk: #E9EBE1; --rail: #EDEEE6;
+    --ink: #1B1E19; --muted: #5D6357; --faint: #9AA08F; --line: #D8DACE;
+    --accent: #5F7440; --accent-bg: #E6ECD8;
+    --gold: #8A6C1F; --gold-bg: #F0E7CC;
+    --alarm: #9E3A22; --alarm-bg: #F5DFD8;
+    --heri: #2B3A4A; --sel: #CBD9AE;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+    --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
+    --serif: "Newsreader", Georgia, serif;
+    --code-size: 13.5px; --code-line: 1.62; --code-pad: 14px;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --bg: #13160F; --surface: #1A1E16; --sunk: #10130D; --rail: #171B13;
+      --ink: #E7EADD; --muted: #949B87; --faint: #6B7360; --line: #2B3124;
+      --accent: #A6BE6E; --accent-bg: #23291A;
+      --gold: #CDAB5C; --gold-bg: #2A2416;
+      --alarm: #E4836A; --alarm-bg: #2E1B15;
+      --heri: #8FA8C4; --sel: #35402A;
+    }
+  }
+  :root[data-theme="dark"] {
+    --bg: #13160F; --surface: #1A1E16; --sunk: #10130D; --rail: #171B13;
+    --ink: #E7EADD; --muted: #949B87; --faint: #6B7360; --line: #2B3124;
+    --accent: #A6BE6E; --accent-bg: #23291A;
+    --gold: #CDAB5C; --gold-bg: #2A2416;
+    --alarm: #E4836A; --alarm-bg: #2E1B15;
+    --heri: #8FA8C4; --sel: #35402A;
+  }
+
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 15px; line-height: 1.5;
+    -webkit-font-smoothing: antialiased;
+  }
+  .wrap { max-width: 1360px; margin: 0 auto; padding: 26px 22px 56px; }
+
+  /* header */
+  header { border-bottom: 2px solid var(--heri); padding-bottom: 16px; margin-bottom: 18px; }
+  h1 {
+    font-family: var(--serif); font-weight: 500;
+    font-size: clamp(26px, 3.2vw, 34px); letter-spacing: -0.015em;
+    margin: 0 0 5px; text-wrap: balance;
+  }
+  .lede { color: var(--muted); margin: 0; max-width: 74ch; font-size: 14.5px; }
+  .stage {
+    display: inline-block; font-family: var(--mono); font-size: 10.5px;
+    letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent);
+    background: var(--accent-bg); border: 1px solid var(--line);
+    padding: 2px 7px; margin-bottom: 9px;
+  }
+  .examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; align-items: baseline; }
+  .examples .label {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.08em;
+    text-transform: uppercase; color: var(--faint); margin-right: 3px;
+  }
+  button.chip {
+    font-family: var(--sans); font-size: 12.5px; background: var(--surface);
+    color: var(--ink); border: 1px solid var(--line); padding: 4px 10px; cursor: pointer;
+  }
+  button.chip:hover { border-color: var(--accent); color: var(--accent); }
+  button.chip:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  /* workbench */
+  .bench {
+    display: grid; grid-template-columns: minmax(300px, 4fr) 7fr;
+    gap: 2px; background: var(--line); border: 1px solid var(--line);
+  }
+  @media (max-width: 1040px) { .bench { grid-template-columns: 1fr; } }
+  .panel { background: var(--surface); display: flex; flex-direction: column; min-width: 0; }
+
+  .bar {
+    display: flex; align-items: stretch; gap: 0; background: var(--sunk);
+    border-bottom: 1px solid var(--line); min-height: 40px;
+  }
+  .bar .title {
+    display: flex; align-items: center; padding: 0 12px;
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.09em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .bar .right { margin-left: auto; display: flex; align-items: center; gap: 7px; padding: 0 10px; }
+
+  button.tab {
+    font-family: var(--sans); font-size: 13px; background: none; color: var(--muted);
+    border: 0; border-bottom: 2px solid transparent; padding: 0 13px; cursor: pointer;
+  }
+  button.tab:hover { color: var(--ink); }
+  button.tab[aria-selected="true"] { color: var(--accent); border-bottom-color: var(--accent); }
+  button.tab:focus-visible { outline: 2px solid var(--accent); outline-offset: -3px; }
+  button.tab .count {
+    font-family: var(--mono); font-size: 10.5px; color: var(--faint); margin-left: 5px;
+  }
+  button.tab[aria-selected="true"] .count { color: var(--accent); }
+  button.tab.warn { color: var(--alarm); }
+
+  .engine {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    text-transform: uppercase; color: var(--muted);
+    border: 1px solid var(--line); padding: 2px 6px; white-space: nowrap;
+  }
+  .engine.live { color: var(--accent); background: var(--accent-bg); border-color: var(--accent); }
+
+  button.act {
+    font-family: var(--mono); font-size: 10px; letter-spacing: 0.06em;
+    text-transform: uppercase; background: transparent; color: var(--muted);
+    border: 1px solid var(--line); padding: 3px 8px; cursor: pointer; white-space: nowrap;
+  }
+  button.act:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
+  button.act:disabled { opacity: 0.4; cursor: default; }
+  button.act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+  textarea.plain {
+    font-family: var(--mono); font-size: var(--code-size); line-height: var(--code-line);
+    margin: 0; padding: var(--code-pad); border: 0; width: 100%; flex: 1;
+    background: var(--surface); color: var(--ink); outline: none; tab-size: 2; resize: none;
+  }
+  textarea.plain:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
+  #in { min-height: 520px; resize: vertical; }
+
+  .pane { display: none; flex-direction: column; flex: 1; min-height: 520px; min-width: 0; }
+  .pane.on { display: flex; }
+
+  /* modules */
+  .editor { display: grid; grid-template-columns: 186px 1fr; flex: 1; min-height: 0; }
+  @media (max-width: 640px) { .editor { grid-template-columns: 1fr; } }
+  aside.files {
+    background: var(--rail); border-right: 1px solid var(--line);
+    padding: 9px 0; overflow-y: auto; min-width: 0;
+  }
+  .files h4 {
+    font-family: var(--mono); font-size: 9.5px; letter-spacing: 0.1em;
+    text-transform: uppercase; color: var(--faint); font-weight: 500;
+    margin: 0 0 4px; padding: 0 12px;
+  }
+  .files h4:not(:first-child) { margin-top: 14px; }
+  .files button {
+    display: block; width: 100%; text-align: left; background: none; border: 0;
+    border-left: 2px solid transparent; cursor: pointer; font-family: var(--mono);
+    font-size: 12.5px; color: var(--muted); padding: 4px 12px;
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+  }
+  .files button:hover { color: var(--ink); background: var(--sunk); }
+  .files button.on { color: var(--accent); border-left-color: var(--accent); background: var(--accent-bg); }
+  .files .dot { color: var(--gold); }
+  .files .indent { padding-left: 24px; }
+
+  .code { display: flex; flex-direction: column; min-width: 0; }
+  .notice {
+    display: none; align-items: center; justify-content: space-between; gap: 10px;
+    padding: 6px 12px; background: var(--gold-bg); border-bottom: 1px solid var(--line);
+    font-size: 12.5px; color: var(--gold);
+  }
+  .notice.on { display: flex; }
+  .surface { position: relative; flex: 1; display: flex; min-height: 0; overflow: hidden; }
+  .gutter {
+    font-family: var(--mono); font-size: var(--code-size); line-height: var(--code-line);
+    padding: var(--code-pad) 8px var(--code-pad) 12px; margin: 0;
+    color: var(--faint); background: var(--sunk); border-right: 1px solid var(--line);
+    text-align: right; user-select: none; overflow: hidden; white-space: pre;
+    font-variant-numeric: tabular-nums; min-width: 3.2em;
+  }
+  .stack { position: relative; flex: 1; min-width: 0; }
+  .stack pre, .stack textarea {
+    font-family: var(--mono); font-size: var(--code-size); line-height: var(--code-line);
+    padding: var(--code-pad); margin: 0; border: 0; position: absolute; inset: 0;
+    width: 100%; height: 100%; white-space: pre; overflow: auto; tab-size: 2;
+  }
+  .stack pre { color: var(--ink); background: var(--surface); pointer-events: none; }
+  .stack textarea {
+    color: transparent; background: transparent; caret-color: var(--accent);
+    resize: none; outline: none;
+  }
+  .stack textarea::selection { background: var(--sel); }
+  .kw { color: var(--accent); }
+  .cm { color: var(--muted); font-style: italic; }
+  .ty { color: var(--heri); }
+
+  .error {
+    font-family: var(--mono); font-size: 13px; line-height: 1.6; color: var(--alarm);
+    background: var(--alarm-bg); padding: 16px; border-left: 3px solid var(--alarm);
+    margin: 0; white-space: pre-wrap;
+  }
+  .error-aside {
+    font-family: var(--sans); font-size: 13px; color: var(--muted);
+    padding: 12px 16px; border-top: 1px solid var(--line);
+  }
+  .error-aside code { font-family: var(--mono); font-size: 0.92em; color: var(--ink); }
+
+  /* shape */
+  .scroll { overflow-y: auto; flex: 1; padding: 4px 0; }
+  .lead {
+    font-size: 13.5px; color: var(--muted); margin: 0;
+    padding: 13px 16px; border-bottom: 1px solid var(--line); background: var(--sunk);
+  }
+  .lead strong { color: var(--ink); font-weight: 600; }
+
+  .field { padding: 13px 16px; border-bottom: 1px solid var(--line); }
+  .field-top { display: flex; align-items: baseline; gap: 12px; flex-wrap: wrap; }
+  .field code.path {
+    font-family: var(--mono); font-size: 13.5px; font-weight: 500; color: var(--ink);
+  }
+  .field .kind {
+    font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.05em;
+    text-transform: uppercase; color: var(--faint);
+  }
+  .field select {
+    margin-left: auto; font-family: var(--sans); font-size: 13px;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line); padding: 4px 8px; max-width: 100%;
+  }
+  .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field input[type="text"] {
+    margin-left: auto; font-family: var(--mono); font-size: 13px;
+    background: var(--surface); color: var(--ink);
+    border: 1px solid var(--line); padding: 4px 8px; max-width: 14ch;
+  }
+  .field input[type="text"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .field select.set { border-color: var(--accent); color: var(--accent); }
+  .field .fixed {
+    margin-left: auto; font-family: var(--sans); font-size: 13px; color: var(--faint);
+  }
+  .field .says { font-size: 13px; color: var(--muted); margin: 7px 0 0; max-width: 80ch; }
+  .field .says b { color: var(--ink); font-weight: 500; }
+  .field .yields {
+    font-family: var(--mono); font-size: 12px; color: var(--faint); margin-top: 5px;
+  }
+
+  /* config */
+  .cfg-head {
+    display: flex; align-items: center; gap: 10px; padding: 10px 16px;
+    border-bottom: 1px solid var(--line); background: var(--sunk); flex-wrap: wrap;
+  }
+  .cfg-head p { margin: 0; font-size: 13px; color: var(--muted); flex: 1; min-width: 20ch; }
+  .cfg-bad {
+    display: none; font-family: var(--mono); font-size: 12.5px; color: var(--alarm);
+    background: var(--alarm-bg); padding: 9px 16px; border-bottom: 1px solid var(--line);
+  }
+  .cfg-bad.on { display: block; }
+
+  /* observations */
+  table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
+  th {
+    text-align: left; font-family: var(--mono); font-weight: 500; font-size: 10.5px;
+    letter-spacing: 0.07em; text-transform: uppercase; color: var(--faint);
+    padding: 7px 12px 7px 0; border-bottom: 1px solid var(--line); white-space: nowrap;
+  }
+  td { padding: 8px 12px 8px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+  td.mono { font-family: var(--mono); font-size: 12.5px; white-space: nowrap; }
+  td.counts {
+    font-family: var(--mono); font-size: 12px; font-variant-numeric: tabular-nums;
+    color: var(--muted); white-space: nowrap;
+  }
+  .tag {
+    display: inline-block; font-family: var(--mono); font-size: 10px;
+    letter-spacing: 0.05em; padding: 1px 5px; margin: 0 3px 3px 0;
+    border: 1px solid var(--line); color: var(--gold); background: var(--gold-bg);
+  }
+  .tbl { padding: 14px 16px 4px; }
+  .tbl h3 {
+    font-family: var(--mono); font-size: 12px; font-weight: 600; color: var(--ink);
+    margin: 0 0 7px; display: flex; flex-wrap: wrap; align-items: baseline; gap: 9px;
+  }
+  .tbl h3 span {
+    font-size: 10.5px; letter-spacing: 0.05em; text-transform: uppercase;
+    color: var(--faint); font-weight: 400;
+  }
+  .note { color: var(--muted); font-size: 12.5px; }
+  .empty { color: var(--muted); font-size: 13.5px; padding: 18px 16px; }
+  .table-scroll { overflow-x: auto; }
+
+  footer {
+    margin-top: 30px; padding-top: 14px; border-top: 1px solid var(--line);
+    color: var(--muted); font-size: 12.5px; max-width: 90ch;
+  }
+  footer code { font-family: var(--mono); font-size: 0.92em; }
+</style>
+</head>
+<body>
+<div id="root"></div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react/18.3.1/umd/react.production.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/react-dom/18.3.1/umd/react-dom.production.min.js"></script>
+
+<!-- The engine, lifted verbatim from web/playground.html: the same reader,
+     the same mangling, the same inference and the same emitter. Only the page
+     around it is new, so what this renders is what that page rendered. -->
+<script>
+var Engine = (function () {
+
+  "use strict";
+
+  /* ------------------------------------------------------------------
+     A small JSON reader.
+
+     Deliberately not JSON.parse: we need the raw text of each number to
+     tell `1` from `1.0` (the lexical split), and we need duplicate keys
+     to survive so they can be rejected rather than silently overwritten.
+     ------------------------------------------------------------------ */
+
+  function readJson(src) {
+    var i = 0;
+
+    function fail(msg) { throw { tag: "parse", msg: msg + " at position " + i }; }
+    function ws() { while (i < src.length && /\s/.test(src[i])) i++; }
+
+    function str() {
+      if (src[i] !== '"') fail("expected a string");
+      i++;
+      var out = "";
+      while (i < src.length && src[i] !== '"') {
+        if (src[i] === "\\") {
+          i++;
+          var c = src[i++];
+          if (c === "n") out += "\n";
+          else if (c === "t") out += "\t";
+          else if (c === "r") out += "\r";
+          else if (c === "b") out += "\b";
+          else if (c === "f") out += "\f";
+          else if (c === "u") { out += String.fromCharCode(parseInt(src.substr(i, 4), 16)); i += 4; }
+          else out += c;
+        } else out += src[i++];
+      }
+      if (src[i] !== '"') fail("unterminated string");
+      i++;
+      return out;
+    }
+
+    function num() {
+      var start = i;
+      if (src[i] === "-") i++;
+      while (i < src.length && /[0-9]/.test(src[i])) i++;
+      if (src[i] === ".") { i++; while (i < src.length && /[0-9]/.test(src[i])) i++; }
+      if (src[i] === "e" || src[i] === "E") {
+        i++;
+        if (src[i] === "+" || src[i] === "-") i++;
+        while (i < src.length && /[0-9]/.test(src[i])) i++;
+      }
+      var raw = src.slice(start, i);
+      if (!/^-?[0-9]/.test(raw)) fail("malformed number");
+      return { k: "num", raw: raw };
+    }
+
+    function arr() {
+      i++; ws();
+      var items = [];
+      if (src[i] === "]") { i++; return { k: "arr", items: items }; }
+      for (;;) {
+        items.push(value()); ws();
+        if (src[i] === ",") { i++; ws(); continue; }
+        if (src[i] === "]") { i++; return { k: "arr", items: items }; }
+        fail("expected , or ]");
+      }
+    }
+
+    function obj() {
+      i++; ws();
+      var members = [];
+      if (src[i] === "}") { i++; return { k: "obj", members: members }; }
+      for (;;) {
+        ws();
+        var key = str(); ws();
+        if (src[i] !== ":") fail("expected :");
+        i++;
+        members.push([key, value()]); ws();
+        if (src[i] === ",") { i++; continue; }
+        if (src[i] === "}") { i++; return { k: "obj", members: members }; }
+        fail("expected , or }");
+      }
+    }
+
+    function value() {
+      ws();
+      var c = src[i];
+      if (c === "{") return obj();
+      if (c === "[") return arr();
+      if (c === '"') { return { k: "str", s: str() }; }   /* kept: uuid is a shape */
+      if (c === "-" || (c >= "0" && c <= "9")) return num();
+      if (src.startsWith("true", i)) { i += 4; return { k: "bool" }; }
+      if (src.startsWith("false", i)) { i += 5; return { k: "bool" }; }
+      if (src.startsWith("null", i)) { i += 4; return { k: "null" }; }
+      fail(c === undefined ? "unexpected end of input" : "unexpected character " + JSON.stringify(c));
+    }
+
+    var v = value();
+    ws();
+    if (i < src.length) fail("trailing content");
+    return v;
+  }
+
+  /* ------------------------------------------------------------------
+     Names: every byte outside [A-Za-z0-9'] escapes to _hh, including _
+     itself, so _ is an unambiguous escape introducer and two distinct
+     member names can never collide.
+     ------------------------------------------------------------------ */
+
+  var KEYWORDS = ("and as assert asr begin class constraint do done downto else end exception " +
+    "external false for fun function functor if in include inherit initializer land lazy let " +
+    "lor lsl lsr lxor match method mod module mutable new nonrec object of open or private rec " +
+    "sig struct then to true try type val virtual when while with").split(" ");
+
+  var encoder = new TextEncoder();
+
+  function mangle(name) {
+    var bytes = encoder.encode(name);
+    var core = "";
+    for (var n = 0; n < bytes.length; n++) {
+      var b = bytes[n];
+      var ok = (b >= 97 && b <= 122) || (b >= 65 && b <= 90) || (b >= 48 && b <= 57) || b === 39;
+      core += ok ? String.fromCharCode(b) : "_" + b.toString(16).padStart(2, "0");
+    }
+    /* Tatami/Mangle.lean:69 -- 'f' :: '_' :: '_' :: core. The page shipped a
+       single underscore, which disagreed with the binary on every name that
+       does not start lower-case. */
+    var out = /^[a-z]/.test(core) ? core : "f__" + core;
+    return KEYWORDS.indexOf(out) >= 0 ? out + "_" : out;
+  }
+
+  /* ------------------------------------------------------------------
+     Paths and module names.
+
+     A path is a list of steps from the root: {m:"name"} into a member,
+     {e:1} into the elements of an array, {y:1} into the entries of an object
+     marked as a map. It identifies a table, and the member names along it are
+     what the module is called.
+     ------------------------------------------------------------------ */
+
+  function seg(k) { return { m: k }; }
+  var ELEM = { e: 1 }, ENTRY = { y: 1 };
+
+  function segString(s) { return s.m !== undefined ? "." + s.m : s.e ? "[]" : "{}"; }
+  function pathString(p) { return p.length ? p.map(segString).join("") : "."; }
+  function pathNames(p) {
+    return p.filter(function (s) { return s.m !== undefined; }).map(function (s) { return s.m; });
+  }
+  function inCollection(p) {
+    return p.length > 0 && (p[p.length - 1].e === 1 || p[p.length - 1].y === 1);
+  }
+  function isEntry(p) { return p.length > 0 && p[p.length - 1].y === 1; }
+  /* The table holding the collection these rows sit in: drop the collection
+     marker and the member it belongs to. Mirrors Path.parentOfElement. */
+  function parentOfElement(p) {
+    var n = p.length;
+    if (n >= 2 && (p[n - 1].e === 1 || p[n - 1].y === 1) && p[n - 2].m !== undefined)
+      return p.slice(0, n - 2);
+    return null;
+  }
+
+  function parsePath(str) {
+    if (str === ".") return [];
+    var out = [], i = 0;
+    while (i < str.length) {
+      if (str[i] === "[" && str[i + 1] === "]") { out.push(ELEM); i += 2; }
+      else if (str[i] === "{" && str[i + 1] === "}") { out.push(ENTRY); i += 2; }
+      else if (str[i] === ".") {
+        var j = i + 1;
+        while (j < str.length && ".[{".indexOf(str[j]) < 0) j++;
+        out.push(seg(str.slice(i + 1, j)));
+        i = j;
+      } else throw { msg: "unexpected '" + str[i] + "' in path " + str };
+    }
+    return out;
+  }
+
+  function capitalize(s) { return s ? s[0].toUpperCase() + s.slice(1) : s; }
+
+  /* Every table is named for the members along its path. The root path has
+     none, so its name is invented and "Root" is only a fallback; the markings
+     are where a better one comes from. Set once per run, from the config. */
+  var ROOT_NAME = "Root";
+  function rootModuleName(n) { return n ? capitalize(mangle(n)) : "Root"; }
+
+  function moduleName(p) {
+    var names = pathNames(p);
+    return names.length === 0 ? ROOT_NAME : capitalize(names.map(mangle).join("_"));
+  }
+
+  /* ------------------------------------------------------------------
+     Markings the user supplies. An object whose keys are data cannot be told
+     from a record by looking, so it is marked. Nothing else is.
+     ------------------------------------------------------------------ */
+
+  function markings(cfg) {
+    cfg = cfg || {};
+    ROOT_NAME = rootModuleName(cfg.root);
+    if (cfg.recursive !== undefined)
+      throw { msg: "recursive markings are no longer supported: a table is identified by " +
+                   "its path, so nothing folds into an ancestor" };
+    var maps = cfg.maps || [];
+    return {
+      isMap: function (p) { return maps.indexOf(pathString(p)) >= 0; },
+      maps: maps
+    };
+  }
+
+  /* ------------------------------------------------------------------
+     Types.
+     ------------------------------------------------------------------ */
+
+  var MAX_NATIVE_INT = 4611686018427387903n;
+
+  function samePath(a, b) { return a && b && pathString(a) === pathString(b); }
+
+  function joinTy(a, b) {
+    if (a.ty === "bot") return b;
+    if (b.ty === "bot") return a;
+    if (a.ty === "ref" || b.ty === "ref" || a.ty === "coll" || b.ty === "coll")
+      return (a.ty === b.ty && samePath(a.ref, b.ref)) ? a : null;
+    if (a.ty === b.ty) return a;
+    if ((a.ty === "int" && b.ty === "float") || (a.ty === "float" && b.ty === "int"))
+      return { ty: "float" };
+    /* uuid is a refinement of str: one ordinary string widens it back */
+    if ((a.ty === "uuid" && b.ty === "str") || (a.ty === "str" && b.ty === "uuid"))
+      return { ty: "str" };
+    return null;
+  }
+
+  function tyName(t) {
+    if (t.ty === "ref") return "the object at " + pathString(t.ref);
+    if (t.ty === "coll") return "the collection at " + pathString(t.ref);
+    return t.ty === "bot" ? "unknown" : t.ty === "str" ? "string" : t.ty;
+  }
+
+  function describe(v) {
+    return { obj: "an object", arr: "an array", num: "a number",
+             str: "a string", bool: "a boolean", "null": "null" }[v.k];
+  }
+
+  /* The canonical uuid form: 8-4-4-4-12 hex digits with hyphens. A member is
+     typed uuid only when every value seen there had this shape. */
+  function isUuid(s) {
+    return /^[0-9a-fA-F]{8}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{4}-[0-9a-fA-F]{12}$/.test(s);
+  }
+
+  function scalarSeen(v) {
+    if (v.k === "null") return null;
+    if (v.k === "str") return { ty: isUuid(v.s) ? "uuid" : "str" };
+    if (v.k === "bool") return { ty: "bool" };
+    if (/[.eE]/.test(v.raw)) return { ty: "float" };
+    var big = false;
+    try { var n = BigInt(v.raw); big = n > MAX_NATIVE_INT || n < -MAX_NATIVE_INT - 1n; }
+    catch (e) { big = false; }
+    return big ? { ty: "float", big: true } : { ty: "int" };
+  }
+
+  /* ------------------------------------------------------------------
+     The pipeline.
+     ------------------------------------------------------------------ */
+
+  function documents(v) {
+    if (v.k === "obj") return [v];
+    if (v.k === "arr") {
+      v.items.forEach(function (d, n) {
+        if (d.k !== "obj")
+          throw { msg: "element " + n + " of the top-level array is " + describe(d) +
+                       "; every element must be an object." };
+      });
+      return v.items;
+    }
+    throw { msg: "the top-level value is " + describe(v) +
+                 "; expected an object, or an array of objects." };
+  }
+
+  function infer(docs, cfg) {
+    var C = markings(cfg);
+    var tables = [];
+
+    function tableAt(path) {
+      var key = pathString(path);
+      for (var i = 0; i < tables.length; i++) if (tables[i].key === key) return tables[i];
+      var t = { key: key, path: path, visits: 0, members: [],
+                elemObject: false, elemScalar: false };
+      tables.push(t);
+      return t;
+    }
+
+    function memberOf(t, k) {
+      for (var i = 0; i < t.members.length; i++) if (t.members[i].key === k) return t.members[i];
+      var m = { key: k, ty: "bot", ref: null, nullable: false,
+                values: 0, nulls: 0, absent: 0, big: false, sawInt: false, sawFloat: false };
+      t.members.push(m);
+      return m;
+    }
+
+    function record(t, k, seen, where) {
+      var m = memberOf(t, k);
+      if (seen === null) { m.nulls++; return; }
+      var joined = joinTy({ ty: m.ty, ref: m.ref }, seen);
+      if (joined === null)
+        throw { msg: "the member " + pathString(where) + " holds both " +
+                     tyName({ ty: m.ty, ref: m.ref }) + " and " + tyName(seen) +
+                     ", which have no common type." };
+      m.ty = joined.ty; m.ref = joined.ref || null; m.values++;
+      if (seen.big) m.big = true;
+      if (seen.ty === "int") m.sawInt = true;
+      if (seen.ty === "float") m.sawFloat = true;
+    }
+
+    function distinct(ms, at) {
+      var seen = Object.create(null);
+      ms.forEach(function (pair) {
+        if (seen[pair[0]])
+          throw { msg: "the object at " + pathString(at) + " carries the member " +
+                       pair[0] + " more than once." };
+        seen[pair[0]] = true;
+      });
+    }
+
+    function scalarRow(table, value, at) {
+      var e = tableAt(table);
+      e.visits++;
+      e.elemScalar = true;
+      record(e, "value", scalarSeen(value), at);
+    }
+
+    function observe(target, inColl, obj) {
+      var t = tableAt(target);
+      t.visits++;
+      if (inColl) t.elemObject = true;
+      distinct(obj.members, target);
+
+      obj.members.forEach(function (pair) {
+        var k = pair[0], v = pair[1], here = target.concat([seg(k)]);
+
+        if (v.k === "obj") {
+          if (C.isMap(here)) {
+            var raw = here.concat([ENTRY]), et = raw;
+            record(t, k, { ty: "coll", ref: et }, here);
+            tableAt(et);
+            distinct(v.members, here);
+            v.members.forEach(function (ep) {
+              var ev = ep[1];
+              if (ev.k === "obj") observe(et, true, ev);
+              else if (ev.k === "arr")
+                throw { msg: "the member at " + pathString(raw) + " is an array. " +
+                             "Map entries may be objects or scalars." };
+              else scalarRow(et, ev, raw);
+            });
+          } else {
+            record(t, k, { ty: "ref", ref: here }, here);
+            observe(here, false, v);
+          }
+        } else if (v.k === "arr") {
+          var rawE = here.concat([ELEM]), lt = rawE;
+          record(t, k, { ty: "coll", ref: lt }, here);
+          tableAt(lt);
+          v.items.forEach(function (e) {
+            if (e.k === "obj") observe(lt, true, e);
+            else if (e.k === "arr")
+              throw { msg: "the array at " + pathString(rawE) + " has an element that is " +
+                           "itself an array. Wrap the inner array in an object to give it a name." };
+            else scalarRow(lt, e, rawE);
+          });
+        } else record(t, k, scalarSeen(v), here);
+      });
+    }
+
+    docs.forEach(function (d) { observe([], false, d); });
+
+    tables.forEach(function (t) {
+      if (t.elemObject && t.elemScalar)
+        throw { msg: "the array at " + t.key + " has both objects and scalars among its elements." };
+      t.members.forEach(function (m) {
+        m.absent = t.visits - m.values - m.nulls;
+        m.nullable = m.nulls > 0 || m.absent > 0;
+      });
+      t.members.sort(function (a, b) { return a.key < b.key ? -1 : a.key > b.key ? 1 : 0; });
+      // provenance is a function of the path, not of what was observed
+      t.parent = parentOfElement(t.path);
+      t.keyed = isEntry(t.path);
+    });
+
+    C.maps.forEach(function (m) {
+      var want = pathString(parsePath(m).concat([ENTRY]));
+      if (!tables.some(function (t) { return t.key === want; }))
+        throw { msg: "the configuration marks " + m + " as a map, but no object was found there." };
+    });
+
+    tables.sort(function (a, b) {
+      if (a.path.length !== b.path.length) return b.path.length - a.path.length;
+      return a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
+    });
+    return tables;
+  }
+
+  function ocamlType(col, self) {
+    function ref(p, n) {
+      return moduleName(p) === self ? (n === "id" ? "id" : n) : moduleName(p) + "." + n;
+    }
+    var base = col.ty === "ref" ? ref(col.ref, "id")
+             : col.ty === "coll" ? ref(col.ref, "t") + " list"
+             : col.ty === "bot" ? "unit"
+             : col.ty === "str" ? "string" : col.ty;   /* uuid passes through */
+    return col.ty === "coll" ? base : base + (col.nullable ? " option" : "");
+  }
+
+  function lowerFirst(n) { return n.charAt(0).toLowerCase() + n.slice(1); }
+  function fileNameOf(n) { return lowerFirst(n) + ".mli"; }
+  function idTypeName(p) { return lowerFirst(moduleName(p)); }
+  /* the key column is named after its table, so a child's foreign key and the
+     parent's primary key spell the same thing */
+  /* The name a *child* gives its parent's key. A table's own key is
+     [idColumn], not this -- see Tatami/Gen.lean:105 and the note on
+     keyColumnName there. The page used this for both, which named a root's
+     own key `root_id` where the binary calls it `id`. */
+  function keyColumnName(p) { return idTypeName(p) + "_id"; }
+  var idColumn = "id";
+  function childLookup(parent) { return "of_" + idTypeName(parent); }
+
+  /* A unit must follow every unit it names: its parent, for the foreign key,
+     and the target of every ref column -- so the edges run both up and down
+     the document tree and a length sort is not enough. */
+  function orderTables(tables) {
+    var done = [], pending = tables.slice(), out = [];
+    function deps(t) {
+      var d = t.parent ? [pathString(t.parent)] : [];
+      t.members.forEach(function (m) { if (m.ty === "ref") d.push(pathString(m.ref)); });
+      return d;
+    }
+    while (pending.length) {
+      var ready = pending.filter(function (t) {
+        return deps(t).every(function (x) { return done.indexOf(x) >= 0; });
+      });
+      if (!ready.length) { out = out.concat(pending); break; }
+      ready.forEach(function (t) { out.push(t); done.push(t.key); });
+      pending = pending.filter(function (t) { return ready.indexOf(t) < 0; });
+    }
+    return out;
+  }
+
+  /* The columns a table emits, in order: its key, then the back reference and
+     position if its rows sit in a collection, then the document's own members
+     with collections dropped. Both the modules and the SQL come from this one
+     list, which is what makes their column order agree by construction. */
+  function layoutOf(t) {
+    var keyName = idColumn;
+    var posName = t.keyed ? "key" : "idx";
+    var docKey = null;
+    t.members.forEach(function (m) { if (m.key === "id") docKey = m; });
+    var keyTy;
+    if (!docKey) keyTy = "uuid";
+    else if (docKey.nullable || docKey.ty === "ref" || docKey.ty === "coll" || docKey.ty === "bot")
+      throw { msg: "the member id at " + pathString(t.path) + " cannot be the table's key: it is " +
+                   (docKey.nullable ? "sometimes absent or null"
+                    : docKey.ty === "bot" ? "never given a value"
+                    : docKey.ty === "ref" ? "an object" : "an array") +
+                   ". Rename it, or remove it and one will be generated." };
+    else keyTy = docKey.ty;
+
+    var cols = [{ name: keyName, ty: keyTy, ref: null, nullable: false, isKey: true }];
+    var taken = [keyName, "get", "make", "t", "id"];
+    if (t.parent) {
+      var pk = keyColumnName(t.parent);
+      cols.push({ name: pk, ty: "ref", ref: t.parent, nullable: false, isKey: false });
+      cols.push({ name: posName, ty: t.keyed ? "str" : "int", ref: null, nullable: false, isKey: false });
+      taken = taken.concat([pk, posName, childLookup(t.parent)]);
+    }
+    t.members.forEach(function (m) {
+      if (m.key === "id") return;
+      var name = mangle(m.key);
+      if (taken.indexOf(name) >= 0)
+        throw { msg: "the member " + m.key + " collides with the generated " + name + " column." };
+      if (m.ty === "coll") return;       // the elements carry the key back
+      cols.push({ name: name, ty: m.ty, ref: m.ref, nullable: m.nullable, isKey: false });
+    });
+    return cols;
+  }
+
+  function renderUnits(tables) {
+    var names = tables.map(function (t) { return moduleName(t.path); });
+    names.forEach(function (n, i) {
+      if (names.indexOf(n) !== i) throw { msg: "two tables would both be called " + n + "." };
+    });
+
+    var units = [];
+    orderTables(tables).forEach(function (t) {
+      var self = moduleName(t.path);
+      function hole(what) { return 'failwith "' + self + "." + what + ': no row source"'; }
+      var cols = layoutOf(t);
+
+      /* a reference is the key itself, not the row: P.get is where the lookup
+         happens, and it is what lets the schema reader see it is a key */
+      function tyOf(c) {
+        var base = c.ty === "ref" ? moduleName(c.ref) + ".id"
+                 : c.ty === "bot" ? "unit"
+                 : c.ty === "str" ? "string" : c.ty;
+        return c.nullable ? base + " option" : base;
+      }
+
+      var fields = cols.map(function (c) { return c.name + " : " + tyOf(c); });
+      var decls  = cols.map(function (c) { return "val " + c.name + " : t -> " + tyOf(c); });
+      var bodies = cols.map(function (c) { return "let " + c.name + " r = r." + c.name; });
+
+      /* a row is built once and changed by copy: t is abstract, so make is the
+         only way to have one, and a setter hands back a new row */
+      var maker = "val make : " +
+        cols.map(function (c) { return c.name + ":" + tyOf(c); }).join(" -> ") + " -> t";
+      var makerImpl = "let make " +
+        cols.map(function (c) { return "~" + c.name; }).join(" ") + " = { " +
+        cols.map(function (c) { return c.name; }).join("; ") + " }";
+      var setters = cols.map(function (c) {
+        return "val set_" + c.name + " : t -> " + tyOf(c) + " -> t"; });
+      var setterImpls = cols.map(function (c) {
+        return "let set_" + c.name + " r v = { r with " + c.name + " = v }"; });
+
+      var lookup = [], lookupImpl = [];
+      if (t.parent) {
+        var look = childLookup(t.parent), pkTy = moduleName(t.parent) + ".id";
+        lookup = ["val " + look + " : " + pkTy + " -> t list"];
+        lookupImpl = ["let " + look + " _ = " + hole(look)];
+      }
+
+      /* uuid is not an OCaml type; it is a name for string that says what the
+         column holds, and the schema reader and the DDL both read it */
+      var alias = cols.some(function (c) { return c.ty === "uuid"; }) ? "type uuid = string\n" : "";
+      var mli = fileNameOf(self), ml = lowerFirst(self) + ".ml";
+      units.push({ name: mli,
+        text: "(* " + mli + " *)\n\n" + alias +
+              "type t\ntype id = " + tyOf(cols[0]) + "\n" + maker + "\nval get : id -> t\n" +
+              (lookup.length ? lookup.join("\n") + "\n" : "") +
+              decls.join("\n") + "\n" + setters.join("\n") + "\n" });
+      units.push({ name: ml,
+        text: "(* " + ml + " *)\n\n" + alias + "type id = " + tyOf(cols[0]) + "\n" +
+              "type t = { " + fields.join("; ") + " }\n" + makerImpl + "\n" +
+              "let get _ = " + hole("get") + "\n" +
+              (lookupImpl.length ? lookupImpl.join("\n") + "\n" : "") +
+              bodies.join("\n") + "\n" + setterImpls.join("\n") + "\n" });
+    });
+
+    return units;
+  }
+
+  /* Every unit in one text, for anything that wants a single string. */
+  function render(tables) {
+    return renderUnits(tables).map(function (u) { return u.text; }).join("\n");
+  }
+
+
+  var EXAMPLES = {
+    note: '{ "a": 1, "b": { "c": 1, "d": 2 } }',
+    arrayObjs: '{ "id_no": 1,\n  "items": [ { "sku": "a", "qty": 2 },\n             { "sku": "b", "qty": 1 } ] }',
+    corpus: '[ { "sku": "a", "price": 1,   "qty": 2 },\n  { "sku": "b", "price": 2.5 },\n  { "sku": "c", "price": 3,   "qty": 1, "clearance": true } ]',
+    map: '{ "users": { "u_1001": { "name": "ada",   "age": 36 },\n              "u_1002": { "name": "grace", "age": 45 } } }',
+    tree: '{ "text": "top",\n  "replies": [ { "text": "a reply", "replies": [] },\n               { "text": "another",  "replies": [ { "text": "deeper", "replies": [] } ] } ] }',
+    names: '{ "my-field": 1,\n  "type": 2,\n  "1abc": 3,\n  "Name": "ada",\n  "caf\\u00e9": true }',
+    nulls: '[ { "x": 1, "y": 2,    "z": null },\n  { "x": 2, "y": null, "z": null },\n  { "x": 3 } ]',
+    conflict: '[ { "b": { "c": 1 } },\n  { "b": 5 } ]'
+  };
+  return {
+    readJson: readJson, documents: documents, infer: infer,
+    renderUnits: renderUnits, render: render, mangle: mangle,
+    moduleName: moduleName, parsePath: parsePath, pathString: pathString,
+    ocamlType: ocamlType, EXAMPLES: EXAMPLES
+  };
+})();
+</script>
+
+<script>
+const h = React.createElement;
+const {useState, useEffect, useMemo, useRef, useCallback} = React;
+
+/* Same fallback the original page used: try the Lean binary through
+   dev/serve.py, and drop to the in-browser engine when no server answers.
+   Both implement the same rules, so opening the page with and without the
+   server is a cheap differential test. */
+let serverUp = null;
+
+function localReport(src, config) {
+  try {
+    const docs = Engine.documents(Engine.readJson(src));
+    const tables = Engine.infer(docs, config);
+    const units = Engine.renderUnits(tables);
+    return {
+      ok: true,
+      ocaml: units.map(u => u.text).join('\n'),
+      files: units.map(u => ({name: u.name, ocaml: u.text})),
+      documents: docs.length,
+      tables: tables.map(t => ({
+        path: Engine.pathString(t.path),
+        module: Engine.moduleName(t.path),
+        visits: t.visits,
+        columns: t.members.map(m => ({
+          key: m.key, name: Engine.mangle(m.key),
+          type: Engine.ocamlType(m, Engine.moduleName(t.path)),
+          values: m.values, nulls: m.nulls, absent: m.absent,
+          widened: m.sawInt && m.sawFloat, big: m.big,
+          renamed: Engine.mangle(m.key) !== m.key, neverTyped: m.ty === 'bot',
+        })),
+      })),
+    };
+  } catch (e) {
+    return {ok: false, error: e.msg || String(e)};
+  }
+}
+
+async function translate(src, config) {
+  if (serverUp === false) return {via: 'browser', report: localReport(src, config)};
+  try {
+    const r = await fetch('/translate', {
+      method: 'POST',
+      body: JSON.stringify({input: src, config}),
+    });
+    if (!r.ok) throw 0;
+    const j = await r.json();
+    serverUp = true;
+    return {via: 'lean', report: j};
+  } catch (e) {
+    serverUp = false;
+    return {via: 'browser', report: localReport(src, config)};
+  }
+}
+
+/* ---- the Observations tab, verbatim rules ---- */
+const isOptional = c => / option$/.test(c.type);
+
+function notes(c, visits) {
+  const t = [];
+  if (c.widened) t.push(['widened', 'an integer and a float were both seen, so the column is a float']);
+  if (c.big) t.push(['widened', "an integer too large for OCaml's int widened it to float"]);
+  if (c.neverTyped) t.push(['untyped', 'no value was ever observed here']);
+  if (/ list$/.test(c.type)) t.push(['collection', 'holds a collection, so its members are a table of their own']);
+  else if (/\./.test(c.type)) t.push(['key', 'holds an object, so the column is a key into that table']);
+  if (isOptional(c)) t.push(['partial', 'absent or null somewhere, so the column carries an option']);
+  if (c.renamed) t.push(['renamed', 'not a legal OCaml identifier as written']);
+  if (!isOptional(c) && visits > 1) t.push(['total', 'present with a value every time']);
+  return t;
+}
+
+const isCollection = p => /\[\]$|\{\}$/.test(p);
+
+/* ---- panes ---- */
+
+function Modules({report, file, setFile, edits, setEdits}) {
+  if (!report) return null;
+  if (!report.ok)
+    return h('div', {id: 'errbox'}, h('div', {className: 'err'}, report.error));
+  const files = report.files || [];
+  if (!files.length) return h('p', {className: 'lead'}, 'nothing to generate yet');
+  const i = Math.min(file, files.length - 1);
+  const f = files[i];
+  const text = edits[f.name] !== undefined ? edits[f.name] : f.ocaml;
+  const lines = text.split('\n');
+  return h('div', {className: 'editor'},
+    h('aside', {className: 'files'},
+      files.map((x, k) =>
+        h('button', {
+          key: x.name,
+          className: 'file' + (k === i ? ' on' : '') + (edits[x.name] !== undefined ? ' edited' : ''),
+          onClick: () => setFile(k),
+        }, x.name))),
+    h('div', {className: 'code'},
+      edits[f.name] !== undefined
+        ? h('div', {className: 'notice', style: {display: 'flex'}},
+            h('span', {}, 'Edited by hand — the JSON pane no longer updates this file.'),
+            h('button', {className: 'act', onClick: () => {
+              const e = {...edits}; delete e[f.name]; setEdits(e);
+            }}, 'Discard edits'))
+        : null,
+      h('div', {className: 'surface'},
+        h('pre', {className: 'gutter'}, lines.map((_, n) => n + 1).join('\n')),
+        h('div', {className: 'stack'},
+          h('textarea', {
+            spellCheck: false, value: text,
+            'aria-label': 'Generated OCaml',
+            onChange: e => setEdits({...edits, [f.name]: e.target.value}),
+          })))));
+}
+
+function Shape({report, config, setConfig}) {
+  const tables = (report && report.ok && report.tables) || [];
+  const paths = useMemo(() => {
+    const seen = [], out = [];
+    const add = p => { if (p !== '.' && seen.indexOf(p) < 0) { seen.push(p); out.push(p); } };
+    tables.forEach(t => add(t.path));
+    (config.maps || []).forEach(add);
+    return out.sort();
+  }, [report, config]);
+
+  const toggleMap = p => {
+    const maps = config.maps || [];
+    setConfig({...config, maps: maps.indexOf(p) >= 0 ? maps.filter(x => x !== p) : maps.concat([p])});
+  };
+
+  return h('div', {className: 'scroll'},
+    h('div', {className: 'shape-row'},
+      h('div', {},
+        h('div', {className: 'path'}, '. '),
+        h('div', {className: 'why'},
+          'The root table has no member name to be called after, so its name is invented. ',
+          h('code', {}, 'Root'), ' is only a fallback.')),
+      h('input', {
+        type: 'text', className: 'plain', style: {width: 180},
+        placeholder: 'Root', value: config.root || '',
+        onChange: e => setConfig({...config, root: e.target.value}),
+      })),
+    paths.length === 0
+      ? h('p', {className: 'lead'}, 'No nested tables yet — paste something with an array or an object in it.')
+      : paths.map(p => {
+          const on = (config.maps || []).indexOf(p) >= 0;
+          const mods = tables.filter(t => t.path === p || t.path.indexOf(p) === 0).map(t => t.module);
+          return h('div', {className: 'shape-row', key: p},
+            h('div', {},
+              h('div', {className: 'path'}, p),
+              h('div', {className: 'why'},
+                on
+                  ? 'Read as a map: each member is a row keyed by its name.'
+                  : isCollection(p)
+                    ? 'A collection, so its elements are a table of their own.'
+                    : 'Read as a record. If its keys are data rather than field names, mark it a map.',
+                mods.length ? h('span', {className: 'mods'}, ' — ' + mods.join(', ')) : null)),
+            h('button', {
+              className: 'act' + (on ? ' on' : ''),
+              onClick: () => toggleMap(p),
+            }, on ? 'map ✓' : 'mark as map'));
+        }));
+}
+
+function Config({config, setConfig}) {
+  const wire = {};
+  if ((config.maps || []).length) wire.maps = config.maps.slice();
+  if (config.root) wire.root = config.root;
+  const text = JSON.stringify(wire, null, 2);
+  const [draft, setDraft] = useState(null);
+  const [bad, setBad] = useState('');
+  const shown = draft === null ? text : draft;
+  return h('div', {},
+    h('div', {className: 'cfg-head'},
+      h('p', {}, 'The same choices as a file. Pass it to the binary with ',
+        h('code', {style: {fontFamily: 'var(--mono)'}}, '--config'),
+        '; edit it here and the Shape tab follows.'),
+      h('button', {className: 'act', onClick: () => navigator.clipboard && navigator.clipboard.writeText(shown)}, 'Copy')),
+    bad ? h('div', {className: 'cfg-bad', style: {display: 'block'}}, bad) : null,
+    h('textarea', {
+      className: 'plain', spellCheck: false, value: shown,
+      'aria-label': 'Configuration',
+      onChange: e => {
+        setDraft(e.target.value);
+        try {
+          const c = JSON.parse(e.target.value || '{}');
+          setBad('');
+          setConfig({maps: c.maps || [], root: c.root || ''});
+          setDraft(null);
+        } catch (err) { setBad(String(err.message || err)); }
+      },
+    }));
+}
+
+function Obs({report}) {
+  if (!report || !report.ok) return null;
+  return h('div', {className: 'scroll'},
+    (report.tables || []).map(t =>
+      h('div', {className: 'tbl', key: t.path},
+        h('h3', {}, 'module ', t.module,
+          h('span', {className: 'vis'}, t.path + ' · ' + t.visits +
+            (t.visits === 1 ? ' visit' : ' visits'))),
+        h('table', {},
+          h('thead', {}, h('tr', {},
+            ['column', 'type', 'values', 'nulls', 'absent', ''].map(x =>
+              h('th', {key: x}, x)))),
+          h('tbody', {}, t.columns.map(c =>
+            h('tr', {key: c.key},
+              h('td', {className: 'mono'}, c.name,
+                c.renamed ? h('span', {className: 'was'}, ' was ' + c.key) : null),
+              h('td', {className: 'mono'}, c.type),
+              h('td', {className: 'num'}, c.values),
+              h('td', {className: 'num'}, c.nulls),
+              h('td', {className: 'num'}, c.absent),
+              h('td', {}, notes(c, t.visits).map(([tag, why], k) =>
+                h('span', {key: k, className: 'note ' + tag, title: why}, tag)))))))))); 
+}
+
+/* ---- the page ---- */
+
+function App() {
+  const [src, setSrc] = useState(Engine.EXAMPLES.note);
+  const [config, setConfig] = useState({maps: [], root: ''});
+  const [report, setReport] = useState(null);
+  const [via, setVia] = useState('—');
+  const [tab, setTab] = useState('modules');
+  const [file, setFile] = useState(0);
+  const [edits, setEdits] = useState({});
+  const seq = useRef(0);
+
+  useEffect(() => {
+    const mine = ++seq.current;
+    const wire = {};
+    if (config.maps.length) wire.maps = config.maps.slice();
+    if (config.root) wire.root = config.root;
+    const t = setTimeout(() => {
+      translate(src, wire).then(({via, report}) => {
+        if (seq.current !== mine) return;
+        setVia(via); setReport(report);
+      });
+    }, 120);
+    return () => clearTimeout(t);
+  }, [src, config]);
+
+  const ok = report && report.ok;
+  const nMods = ok ? (report.files || []).length : 0;
+  const nMark = config.maps.length + (config.root ? 1 : 0);
+  const allText = ok ? (report.files || []).map(f =>
+    edits[f.name] !== undefined ? edits[f.name] : f.ocaml).join('\n') : '';
+
+  const copy = () => navigator.clipboard && navigator.clipboard.writeText(allText);
+  const download = () => {
+    const blob = new Blob([allText], {type: 'text/plain'});
+    const a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = 'schema.mli';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  };
+
+  const TABS = [['modules', 'Modules', nMods || ''], ['shape', 'Shape', nMark || ''],
+                ['config', 'Config', nMark ? '●' : ''], ['obs', 'Observations', '']];
+
+  return h('div', {className: 'wrap'},
+    h('header', {},
+      h('div', {className: 'stage'}, 'Phase 1 · JSON to OCaml signatures'),
+      h('h1', {}, 'Tatami Playground'),
+      h('p', {className: 'lede'},
+        'Paste a JSON object, or an array of them as a corpus. Tatami infers a relational ' +
+        'schema and writes the OCaml signature for it — one module per table, with the keys ' +
+        'and accessors that record how the tables relate. You write the implementation.'),
+      h('div', {className: 'examples'},
+        h('span', {className: 'label'}, 'Try'),
+        [['note', 'Nested object'], ['arrayObjs', 'Array of objects'], ['corpus', 'A corpus'],
+         ['map', 'Keys that are data'], ['tree', 'A comment thread'], ['names', 'Awkward names'],
+         ['nulls', 'Nulls and absence'], ['conflict', 'A type conflict']].map(([k, label]) =>
+          h('button', {key: k, className: 'chip', onClick: () => {
+            setSrc(Engine.EXAMPLES[k]); setEdits({}); setFile(0);
+          }}, label)))),
+
+    h('div', {className: 'bench'},
+      h('div', {className: 'panel'},
+        h('div', {className: 'bar'},
+          h('span', {className: 'title'}, 'JSON in'),
+          h('span', {className: 'right'},
+            h('span', {
+              className: 'engine' + (via === 'lean' ? ' live' : ''),
+              title: via === 'lean'
+                ? 'Produced by the Lean binary, through the local dev server.'
+                : 'No dev server reachable, so the page used its own implementation of the same rules.',
+            }, via === 'lean' ? 'Lean binary' : via === 'browser' ? 'in-browser' : '—'))),
+        h('textarea', {
+          className: 'plain', id: 'in', spellCheck: false, 'aria-label': 'JSON input',
+          value: src, onChange: e => { setSrc(e.target.value); setEdits({}); },
+        })),
+
+      h('div', {className: 'panel'},
+        h('div', {className: 'bar', role: 'tablist'},
+          TABS.map(([k, label, count]) =>
+            h('button', {
+              key: k, className: 'tab' + (tab === k ? ' on' : ''), role: 'tab',
+              'aria-selected': tab === k, onClick: () => setTab(k),
+            }, label, count !== '' ? h('span', {className: 'count'}, count) : null)),
+          h('span', {className: 'right'},
+            h('button', {className: 'act', disabled: !Object.keys(edits).length,
+                         onClick: () => setEdits({})}, 'Revert'),
+            h('button', {className: 'act', onClick: copy}, 'Copy'),
+            h('button', {className: 'act', onClick: download}, 'Download'))),
+
+        h('div', {className: 'pane on'},
+          tab === 'modules' ? h(Modules, {report, file, setFile, edits, setEdits}) : null,
+          tab === 'shape'
+            ? h('div', {},
+                h('p', {className: 'lead'},
+                  'Two shapes cannot be read off the data, so Tatami never guesses them. ',
+                  h('strong', {}, 'Nothing here is set unless you set it.'),
+                  ' Each choice below says what it does to the schema.'),
+                h(Shape, {report, config, setConfig}))
+            : null,
+          tab === 'config' ? h(Config, {config, setConfig}) : null,
+          tab === 'obs'
+            ? h('div', {},
+                h('p', {className: 'lead'},
+                  "One block per table, with the counts each column's type came from. A count is per ",
+                  h('strong', {}, 'visit'),
+                  ' — once per document for the root table, once per parent for a nested one, ' +
+                  'once per element for a collection.'),
+                h(Obs, {report}))
+            : null))),
+
+    h('footer', {},
+      'The generator is a Lean program compiled to a binary; this page runs it through ',
+      h('code', {}, 'dev/serve.py'),
+      ' when one is reachable, and otherwise falls back to an implementation of the same rules ',
+      'in JavaScript — the badge says which. The engine below the page is lifted verbatim from ',
+      h('code', {}, 'web/playground.html'), ', so both pages generate the same text.'));
+}
+
+ReactDOM.createRoot(document.getElementById('root')).render(h(App));
+</script>
+</body>
+</html>
