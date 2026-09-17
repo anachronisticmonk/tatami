@@ -138,7 +138,7 @@
   /* the memory diagram */
   .diagram{margin-top:22px; background:var(--surface); border:1px solid var(--rule);
            border-radius:4px; padding:18px; box-shadow:var(--shadow)}
-  .diagram svg{display:block; width:100%; height:auto; overflow:visible}
+  .diagram svg{display:block; width:100%; height:auto}
   .dl{font-family:"Source Sans 3",sans-serif; font-size:13px; fill:var(--ink)}
   .dm{font-family:"JetBrains Mono",monospace; font-size:12px; fill:var(--muted); letter-spacing:.03em}
   .dc{font-family:"JetBrains Mono",monospace; font-size:13px; font-weight:500; fill:var(--ink)}
@@ -162,7 +162,7 @@
   /* ---- charts ------------------------------------------------------------ */
   .chart{margin-top:20px; background:var(--surface); border:1px solid var(--rule);
          border-radius:4px; padding:18px 18px 12px; box-shadow:var(--shadow)}
-  .chart svg{display:block; width:100%; height:auto; overflow:visible}
+  .chart svg{display:block; width:100%; height:auto}
   .ct{font-family:"JetBrains Mono",monospace; font-size:11px; fill:var(--muted); letter-spacing:.04em}
   .cv{font-family:"JetBrains Mono",monospace; font-size:12px; font-weight:700; fill:var(--ink)}
   .cl{font-family:"Source Sans 3",sans-serif; font-size:12.5px; fill:var(--ink-2)}
@@ -232,9 +232,7 @@
       <ul>
         <li><span>Optionality has <strong>two spellings</strong>: a field may be <code>null</code>, or simply absent. They mean the same thing.</span></li>
         <li><span>The usual answer is to guess the schema, hand-write a loader, and discover where you guessed wrong in production.</span></li>
-        <li><span>A guess that says <code>string</code> where the data needs <code>string option</code> <strong>compiles cleanly</strong> — then dies on the first document missing that field.</span></li>
-      </ul>
-      <p>So the question is not "can we infer a schema". It is: <strong>can we infer one we are entitled to rely on?</strong></p>
+        <li><span>A wrong guess <strong>compiles cleanly</strong> — and fails at load, on real data.</span></li>
     </section>
 
     <!-- 3 ------------------------------------------------------------------ -->
@@ -277,14 +275,14 @@
       <div class="cols">
         <div>
           <h3 style="font-size:1.05em;color:var(--igusa)">Lean 4 — inference and proof</h3>
-          <p style="margin-top:8px">Inference is the one component whose correctness everything else rests on. In Lean it is not merely tested; it carries theorems. The generator and its proof live in the same language, so the thing proved <em>is</em> the thing that runs.</p>
+          <p style="margin-top:8px">The one component everything else rests on. In Lean it carries theorems, not just tests — and the thing proved <em>is</em> the thing that runs.</p>
         </div>
         <div>
           <h3 style="font-size:1.05em;color:var(--blue)">OCaml — loading, storage, measurement</h3>
-          <p style="margin-top:8px">The generated signatures are OCaml, so the contract is enforced by the compiler that builds the loader. Stores, queries and benchmarks are all OCaml — no imperative escape hatch in the middle.</p>
+          <p style="margin-top:8px">The contract is enforced by the compiler that builds the loader. Stores, queries and benchmarks are all OCaml — no imperative escape hatch.</p>
         </div>
       </div>
-      <p>The one place correctness truly had to be guaranteed is the one place we could hand to a theorem prover. Everything downstream is ordinary, typed, functional code that the contract holds together.</p>
+      <p>The one place correctness had to be guaranteed is the one place we could hand to a theorem prover.</p>
     </section>
 
     <!-- 5 ------------------------------------------------------------------ -->
@@ -302,7 +300,7 @@
         <div class="arrow">&rarr;</div>
         <div class="node ml"><span class="tag">OCaml</span><h3>Columnar store</h3><p>One dense typed array per column. Mask only where <code>option</code>.</p></div>
       </div>
-      <p>Every child row records the parent it came from and the position it held, so the nesting the JSON carried survives the flattening. The same loader fills Postgres, which lets the whole shredding be cross-checked in SQL.</p>
+      <p>Every child row keeps its parent and its array position, so the nesting survives the flattening. The same loader fills Postgres, which lets the shredding be checked in SQL.</p>
     </section>
 
     <!-- 6 ------------------------------------------------------------------ -->
@@ -342,7 +340,7 @@
         </tbody>
       </table>
       </div>
-      <p>What it does <strong>not</strong> claim: every part is conditional on inference and generation both succeeding, and it says nothing about rows — Lean describes the tables, OCaml fills them.</p>
+      <p>Conditional on both stages succeeding — and silent about rows: Lean describes the tables, OCaml fills them.</p>
     </section>
 
     <!-- 7 ------------------------------------------------------------------ -->
@@ -362,8 +360,8 @@
           <p><strong>And the flag reads off it.</strong> A field is optional precisely when it carried a value fewer times than its table was visited.</p>
         </div>
       </div>
-      <p>This matters because absence is computed by <em>truncating</em> subtraction. Without the identity, a field some document omitted could report <code>absent = 0</code>, come out non-optional, and the generator would emit <code>string</code> where the data needs <code class="em">string option</code>.</p>
-      <p>That OCaml <strong>compiles</strong>. The store does defend itself — a total column meeting a <code>null</code> aborts with <code>step.error is NULL in the data, but its signature says otherwise</code> — so it is a loud failure, not corruption. But it lands at <em>load time, on production data, in code a theorem prover wrote and the compiler accepted</em>. The theorem does not make the crash survivable; it makes the condition <span class="em">unreachable</span>.</p>
+      <p>Absence is computed by <em>truncating</em> subtraction. Without the identity a field somebody omitted could report <code>absent = 0</code>, come out non-optional, and the generator would emit <code>string</code> for data needing <code class="em">string option</code>.</p>
+      <p>The store does abort loudly rather than corrupt. But at <em>load time, on production data, in code the compiler accepted</em>. The theorem makes the condition <span class="em">unreachable</span>.</p>
     </section>
 
     <!-- 8 ------------------------------------------------------------------ -->
@@ -371,102 +369,85 @@
       <div class="eyebrow">The payoff</div>
       <h2>The proof is what lets us delete the mask</h2>
       <div class="diagram">
-        <svg viewBox="0 0 660 330" role="img" aria-label="Two array layouts. An int array stores the integers directly, so one 64-byte cache line holds eight values and one fetch answers eight comparisons. An int option array stores pointers, so the same line holds eight addresses and no values; each value then needs a dependent load to a separate 16-byte heap block of header plus value, scattered through the heap.">
-
-          <!-- ── int array ─────────────────────────────────────────────── -->
-          <text class="dl" x="0" y="12"><tspan class="dc" fill="var(--blue)">int array</tspan>  —  the value <tspan font-style="italic">is</tspan> the array slot</text>
-
-          <rect x="0" y="22" width="648" height="34" rx="3" fill="var(--surface-2)" stroke="var(--blue)" stroke-width="1.5"></rect>
-          <g stroke="var(--blue)" stroke-width="1" opacity="0.45">
-            <line x1="81"  y1="22" x2="81"  y2="56"></line>
-            <line x1="162" y1="22" x2="162" y2="56"></line>
-            <line x1="243" y1="22" x2="243" y2="56"></line>
-            <line x1="324" y1="22" x2="324" y2="56"></line>
-            <line x1="405" y1="22" x2="405" y2="56"></line>
-            <line x1="486" y1="22" x2="486" y2="56"></line>
-            <line x1="567" y1="22" x2="567" y2="56"></line>
+        <svg viewBox="0 0 640 300" role="img" aria-label="An int array stores values directly, so one 64-byte cache line holds eight of them. An int option array holds eight pointers and no values; each Some is a 16-byte block of header plus value, so only four fit per cache line and the values occupy two further lines, each reached by a dependent load.">
+          <text class="dc" x="0" y="11" fill="var(--blue)">int array</text>
+          <rect x="0" y="18" width="640" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)" stroke-width="1.5"></rect>
+          <g stroke="var(--blue)" stroke-width="1" opacity="0.4">
+          <line x1="80" y1="18" x2="80" y2="48"></line>
+          <line x1="160" y1="18" x2="160" y2="48"></line>
+          <line x1="240" y1="18" x2="240" y2="48"></line>
+          <line x1="320" y1="18" x2="320" y2="48"></line>
+          <line x1="400" y1="18" x2="400" y2="48"></line>
+          <line x1="480" y1="18" x2="480" y2="48"></line>
+          <line x1="560" y1="18" x2="560" y2="48"></line>
           </g>
-          <g class="dc" text-anchor="middle">
-            <text x="40"  y="44">11414</text><text x="121" y="44">28320</text>
-            <text x="202" y="44">3674</text> <text x="283" y="44">9051</text>
-            <text x="364" y="44">44120</text><text x="445" y="44">812</text>
-            <text x="526" y="44">6607</text> <text x="607" y="44">15903</text>
-          </g>
-          <text class="dm" x="0" y="74" fill="var(--blue)">one 64-byte cache line  =  8 values  →  1 fetch answers 8 comparisons, and the prefetcher runs ahead of the stride</text>
+          <g class="dc" text-anchor="middle"><text x="40" y="38">11414</text><text x="120" y="38">28320</text><text x="200" y="38">3674</text><text x="280" y="38">9051</text><text x="360" y="38">44120</text><text x="440" y="38">812</text><text x="520" y="38">6607</text><text x="600" y="38">15903</text></g>
+          <text class="dm" x="0" y="64" fill="var(--blue)">one 64-byte cache line  →  8 values</text>
 
-          <!-- ── int option array ──────────────────────────────────────── -->
-          <text class="dl" x="0" y="122"><tspan class="dc" fill="var(--vermilion)">int option array</tspan>  —  the array slot is an <tspan font-style="italic">address</tspan></text>
-
-          <rect x="0" y="132" width="648" height="34" rx="3" fill="var(--paper)" stroke="var(--vermilion)" stroke-width="1.5"></rect>
-          <g stroke="var(--vermilion)" stroke-width="1" opacity="0.45">
-            <line x1="81"  y1="132" x2="81"  y2="166"></line>
-            <line x1="162" y1="132" x2="162" y2="166"></line>
-            <line x1="243" y1="132" x2="243" y2="166"></line>
-            <line x1="324" y1="132" x2="324" y2="166"></line>
-            <line x1="405" y1="132" x2="405" y2="166"></line>
-            <line x1="486" y1="132" x2="486" y2="166"></line>
-            <line x1="567" y1="132" x2="567" y2="166"></line>
+          <text class="dc" x="0" y="104" fill="var(--vermilion)">int option array</text>
+          <rect x="0" y="111" width="640" height="30" rx="3" fill="var(--surface-2)" stroke="var(--vermilion)" stroke-width="1.5"></rect>
+          <g stroke="var(--vermilion)" stroke-width="1" opacity="0.4">
+          <line x1="80" y1="111" x2="80" y2="141"></line>
+          <line x1="160" y1="111" x2="160" y2="141"></line>
+          <line x1="240" y1="111" x2="240" y2="141"></line>
+          <line x1="320" y1="111" x2="320" y2="141"></line>
+          <line x1="400" y1="111" x2="400" y2="141"></line>
+          <line x1="480" y1="111" x2="480" y2="141"></line>
+          <line x1="560" y1="111" x2="560" y2="141"></line>
           </g>
-          <g fill="var(--vermilion)">
-            <circle cx="40"  cy="149" r="3.5"></circle><circle cx="121" cy="149" r="3.5"></circle>
-            <circle cx="202" cy="149" r="3.5"></circle><circle cx="283" cy="149" r="3.5"></circle>
-            <circle cx="364" cy="149" r="3.5"></circle><circle cx="445" cy="149" r="3.5"></circle>
-            <circle cx="526" cy="149" r="3.5"></circle><circle cx="607" cy="149" r="3.5"></circle>
-          </g>
-          <text class="dm" x="0" y="184" fill="var(--vermilion)">the same 64-byte line  =  8 pointers  =  0 values</text>
+          <g fill="var(--vermilion)"><circle cx="40" cy="126" r="3.5"></circle><circle cx="120" cy="126" r="3.5"></circle><circle cx="200" cy="126" r="3.5"></circle><circle cx="280" cy="126" r="3.5"></circle><circle cx="360" cy="126" r="3.5"></circle><circle cx="440" cy="126" r="3.5"></circle><circle cx="520" cy="126" r="3.5"></circle><circle cx="600" cy="126" r="3.5"></circle></g>
+          <text class="dm" x="0" y="157" fill="var(--vermilion)">the same 64-byte line  →  8 pointers, 0 values</text>
 
-          <!-- the indirection: pointers land on blocks in no particular order -->
-          <g stroke="var(--muted)" stroke-width="1" fill="none" opacity="0.75">
-            <path d="M40 153  L283 236"></path>
-            <path d="M121 153 L201 236"></path>
-            <path d="M202 153 L119 236"></path>
-            <path d="M283 153 L529 236"></path>
-            <path d="M364 153 L37 236"></path>
-            <path d="M445 153 L365 236"></path>
-            <path d="M526 153 L611 236"></path>
-            <path d="M607 153 L447 236"></path>
-          </g>
+          <path d="M40 141 L40 190" stroke="var(--muted)" stroke-width="1" fill="none"></path>
+          <text class="dm" x="70" y="182">each Some is 16 bytes — header + value — so only 4 fit in a line</text>
 
-          <g>
-            <rect x="0"   y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="82"  y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="164" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="246" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="328" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="410" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="492" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <rect x="574" y="236" width="74" height="28" rx="2" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
-            <g stroke="var(--rule-strong)" stroke-width="1" stroke-dasharray="2 2">
-              <line x1="37"  y1="236" x2="37"  y2="264"></line>
-              <line x1="119" y1="236" x2="119" y2="264"></line>
-              <line x1="201" y1="236" x2="201" y2="264"></line>
-              <line x1="283" y1="236" x2="283" y2="264"></line>
-              <line x1="365" y1="236" x2="365" y2="264"></line>
-              <line x1="447" y1="236" x2="447" y2="264"></line>
-              <line x1="529" y1="236" x2="529" y2="264"></line>
-              <line x1="611" y1="236" x2="611" y2="264"></line>
-            </g>
-            <g class="dm" text-anchor="middle" font-size="10">
-              <text x="18"  y="254">hdr</text><text x="100" y="254">hdr</text>
-              <text x="182" y="254">hdr</text><text x="264" y="254">hdr</text>
-              <text x="346" y="254">hdr</text><text x="428" y="254">hdr</text>
-              <text x="510" y="254">hdr</text><text x="592" y="254">hdr</text>
-            </g>
-            <g class="dc" text-anchor="middle" font-size="11">
-              <text x="56"  y="254">44120</text><text x="138" y="254">3674</text>
-              <text x="220" y="254">28320</text><text x="302" y="254">11414</text>
-              <text x="384" y="254">812</text>  <text x="466" y="254">15903</text>
-              <text x="548" y="254">9051</text> <text x="630" y="254">6607</text>
-            </g>
+          <rect x="0" y="190" width="640" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+          <g stroke="var(--rule-strong)" stroke-width="1.5">
+          <line x1="160" y1="190" x2="160" y2="220"></line>
+          <line x1="320" y1="190" x2="320" y2="220"></line>
+          <line x1="480" y1="190" x2="480" y2="220"></line>
+          </g><g stroke="var(--rule-strong)" stroke-width="1" stroke-dasharray="2 2">
+          <line x1="80" y1="190" x2="80" y2="220"></line>
+          <line x1="240" y1="190" x2="240" y2="220"></line>
+          <line x1="400" y1="190" x2="400" y2="220"></line>
+          <line x1="560" y1="190" x2="560" y2="220"></line>
+          </g><g class="dm" text-anchor="middle" font-size="10">
+          <text x="40" y="209">hdr</text>
+          <text x="200" y="209">hdr</text>
+          <text x="360" y="209">hdr</text>
+          <text x="520" y="209">hdr</text>
+          </g><g class="dc" text-anchor="middle" font-size="12">
+          <text x="120" y="209">11414</text>
+          <text x="280" y="209">28320</text>
+          <text x="440" y="209">3674</text>
+          <text x="600" y="209">9051</text>
+          </g>
+          <rect x="0" y="232" width="640" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
+          <g stroke="var(--rule-strong)" stroke-width="1.5">
+          <line x1="160" y1="232" x2="160" y2="262"></line>
+          <line x1="320" y1="232" x2="320" y2="262"></line>
+          <line x1="480" y1="232" x2="480" y2="262"></line>
+          </g><g stroke="var(--rule-strong)" stroke-width="1" stroke-dasharray="2 2">
+          <line x1="80" y1="232" x2="80" y2="262"></line>
+          <line x1="240" y1="232" x2="240" y2="262"></line>
+          <line x1="400" y1="232" x2="400" y2="262"></line>
+          <line x1="560" y1="232" x2="560" y2="262"></line>
+          </g><g class="dm" text-anchor="middle" font-size="10">
+          <text x="40" y="251">hdr</text>
+          <text x="200" y="251">hdr</text>
+          <text x="360" y="251">hdr</text>
+          <text x="520" y="251">hdr</text>
+          </g><g class="dc" text-anchor="middle" font-size="12">
+          <text x="120" y="251">44120</text>
+          <text x="280" y="251">812</text>
+          <text x="440" y="251">6607</text>
+          <text x="600" y="251">15903</text>
           </g>
 
-          <text class="dm" x="0" y="286">each <tspan fill="var(--vermilion)">Some</tspan> is its own 16-byte heap block — header + value — reached in no particular order</text>
-          <text class="dm" x="0" y="306" fill="var(--ink-2)">a <tspan font-weight="700">dependent load</tspan> per element: the next address is unknown until the pointer arrives, so the CPU cannot issue it early,</text>
-          <text class="dm" x="0" y="322" fill="var(--ink-2)">cannot reorder around it, and the prefetcher cannot follow a pointer it has not read yet</text>
+          <text class="dm" x="0" y="284" fill="var(--ink-2)">2 more cache lines, and a dependent load per value</text>
         </svg>
       </div>
-      <p><strong>8 bytes an element against 24</strong>, measured — but the size is the smaller half. The dense array is walked; the boxed one is <em>chased</em>.</p>
-      <p>This is why a columnar store never uses the boxed form: an optional column is kept dense with a separate validity mask beside it. And a column the signature calls <span class="em">total</span> needs neither the boxing nor the mask — it is already the top row. That is what the nullability theorem buys.</p>
+      <p>8 bytes an element against 24 — but size is the smaller half. The dense array is <em>walked</em>; the boxed one is <strong>chased</strong>, and the next address is unknown until the current pointer lands.</p>
     </section>
 
     <!-- 9 ------------------------------------------------------------------ -->
@@ -480,8 +461,8 @@
   printf <span class="o">"%d disagreements -- timings below are meaningless"</span></pre>
         <figcaption>bin/bench.ml — the answers are compared before the timings are believed</figcaption>
       </figure>
-      <p><strong>All three stores return identical answers, on every corpus.</strong> Float sums are compared to a tolerance, because they are summed in a different order on each side; everything else is integral and must match exactly.</p>
-      <p>Only then are the timings worth reading.</p>
+      <p><strong>All three agree, on every corpus.</strong> Only then are the timings worth reading.</p>
+      
     </section>
 
     <!-- 10 ----------------------------------------------------------------- -->
@@ -539,7 +520,7 @@
           <span><i style="background:var(--amber)"></i>row-major faster</span>
         </div>
       </div>
-      <p><strong>We are not claiming to have built a faster database.</strong> Two of the five go the other way <em>by design</em> — <code>document</code> is the case a row store exists for. If columns won that one too, the benchmark would be wrong somewhere. The useful claim is narrower: <strong>once the type is known, you can predict which queries get faster — from the schema, before reading a row.</strong></p>
+      <p><strong>Not a faster database.</strong> Two go the other way by design — <code>document</code> is what a row store is for. The claim: <strong>once the type is known you can predict which queries get faster, from the schema, before reading a row.</strong></p>
     </section>
 
     <!-- 11 ----------------------------------------------------------------- -->
@@ -592,7 +573,7 @@
           <text class="ct" x="52" y="264">speedup of the columnar scan over row-major · 50 MB corpus</text>
         </svg>
       </div>
-      <p>A <strong>U-curve</strong>. Highly selective predicates and full scans both do very well; the middle is where per-row branching costs most. This is exactly the shape a query planner would want — and <strong>the schema already says which columns are scannable and which are nullable, before a single row is read.</strong></p>
+      <p>A <strong>U-curve</strong>. Selective predicates and full scans both win; the middle is where per-row branching costs most — and the schema already says which columns are scannable.</p>
     </section>
 
     <!-- 12 ----------------------------------------------------------------- -->
@@ -602,16 +583,16 @@
       <div class="usp">
         <div>
           <h3>The proof is spent, not displayed</h3>
-          <p>Machine-checked principality is old news — Algorithm W is mechanised in Coq, Isabelle and HOL4. JSON schema inference has paper proofs too (Baazizi et al.). What we have not found is the <strong>link between the theorem and the bytes</strong>: nullability is the licence to <span class="em">delete the validity mask</span> from the layout, and the saving is measured.</p>
+          <p>Machine-checked principality is old news — Algorithm W is mechanised in Coq, Isabelle, HOL4. JSON schema inference has paper proofs too. What we have not found is the <strong>link between theorem and bytes</strong>: nullability is the licence to <span class="em">delete the mask</span>, and the saving is measured.</p>
         </div>
         <div>
           <h3>OCaml has no columnar story</h3>
-          <p>No Arrow binding, no Parquet reader, no columnar engine. <code>pgx</code> is excellent and gives you <em>rows</em>. If you want dense typed columns in OCaml today, you write them — so we did, driven entirely by generated types. The absence is the opportunity; the numbers are the argument for closing it.</p>
+          <p>No Arrow, no Parquet, no columnar engine. <code>pgx</code> gives you <em>rows</em>. Dense typed columns in OCaml you write yourself — so we did, driven by generated types.</p>
         </div>
       </div>
-      <p>Functional the whole way down: Lean 4 for inference and proof, OCaml for loading, storage, querying and measurement.</p>
+      <p>Functional the whole way down: Lean 4 for inference and proof, OCaml for everything after.</p>
       <div class="run">docker run --rm -p 8000:8000 -p 8420:8420 durwasa/tatami</div>
-      <p style="font-size:.88em;color:var(--muted)"><code>:8000</code> the demonstration — a document beside the tables it shreds into, both stores side by side, the charts. &nbsp;<code>:8420</code> the playground — paste any JSON, read the <code>.mli</code> it implies.</p>
+      <p style="font-size:.88em;color:var(--muted)"><code>:8000</code> the demonstration · <code>:8420</code> the playground</p>
     </section>
 
   </main>
