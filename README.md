@@ -12,6 +12,40 @@ tables and measures what the typing bought.**
 
 ---
 
+## A note on what we proposed, and what we built
+
+Our design document at the start of the hackathon proposed
+**"Effect-Typed Shredding of JSON into a Queryable OCaml"**. We have deviated
+from it, and it is worth saying so plainly rather than letting a reader work it
+out.
+
+**We did not do the effect-typed part.** No effect system, no effect handlers,
+nothing in the pipeline is typed by its effects.
+
+What we did instead was go as deep as we could on the shredding itself, so what
+we are submitting is **end-to-end shredding of JSON into a queryable OCaml**.
+Inference in Lean 4 with a machine-checked proof that the schema describes the
+documents, generated `.mli` and `.ml` and a loader, a streaming shred into four
+tables with referential integrity, Postgres through `pgx`, a columnar store laid
+out from the generated signature, and a benchmark that compares it against a
+row-major store and against raw JSON with every answer cross-checked first.
+
+The scope narrowed; the part that remains is finished rather than sketched.
+
+### See it running
+
+```sh
+docker pull durwasa/tatami
+docker run --rm -p 8000:8000 -p 8420:8420 durwasa/tatami
+```
+
+Then <http://localhost:8000> for the demonstration and
+<http://localhost:8420> for the playground, where you can paste your own JSON
+and read the `.mli` it implies. The image carries both `linux/amd64` and
+`linux/arm64`, so it runs on Apple silicon and on x86 without any arguments.
+
+---
+
 ## The idea in one paragraph
 
 An `.mli` file is a *contract*. It sits on the boundary between two pieces of
