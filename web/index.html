@@ -153,6 +153,23 @@ const dur = v =>
   : v >= 0.001  ? (v * 1000).toFixed(2) + '\u00b5s'
   :               (v * 1e6).toFixed(0) + 'ns';
 
+/* The same ladder as `dur`, but chosen once for a whole axis rather than per
+   value, so every tick is in one unit and the axis can say which.
+
+   Times here span five orders of magnitude -- `document` is a few hundred
+   nanoseconds, `by_status` is eighty milliseconds -- and a fixed unit cannot
+   label both: `(0.0003).toFixed(0)` is "0", which is why the document axis
+   read zero at every gridline. */
+const unitOf = ymax =>
+  ymax >= 1     ? {mul: 1,   name: 'ms'}
+  : ymax >= 0.001 ? {mul: 1e3, name: '\u00b5s'}
+  :                 {mul: 1e6, name: 'ns'};
+
+/* Decimals for a tick, from the top of the axis, so all ticks share a
+   precision: rounding 10.48 and its quarters to whole numbers printed
+   0, 3, 5, 8, 10, which reads as an irregular scale rather than an even one. */
+const ticks = top => (top >= 100 ? 0 : top >= 10 ? 1 : 2);
+
 document.querySelectorAll('nav button').forEach(b => b.onclick = () => {
   document.querySelectorAll('nav button').forEach(x => x.classList.toggle('on', x === b));
   ['data','query','perf'].forEach(t => $('#' + t).hidden = (t !== b.dataset.tab));
@@ -291,23 +308,37 @@ function Bars({rows, keys, colours, fmt, label}) {
 }
 
 function Line({runs, query}) {
-  const W = 720, H = 240, pl = 56, pb = 30, pt = 10, pr = 56;
-  const pts = runs.map(run => ({
+  const W = 720, H = 240, pl = 64, pb = 30, pt = 10, pr = 56;
+  /* One point per corpus size. A rerun appends a record rather than replacing
+     one, so two runs can share a size -- there are two at 50 MB -- and
+     plotting both put two points on one x: a vertical jump in the line and
+     the size printed twice on the axis. The later run wins, which is the run
+     the tables above already report. */
+  const perSize = new Map();
+  runs.forEach(run => perSize.set(run.bytes, run));
+  const pts = [...perSize.values()].map(run => ({
     x: run.bytes / 1e6,
     rec: (run.stores.find(s => s.name === 'records').queries.find(q => q.q === query) || {}).ms,
     col: (run.stores.find(s => s.name === 'columnar').queries.find(q => q.q === query) || {}).ms,
   })).sort((a, b) => a.x - b.x);
   const xmax = Math.max(...pts.map(p => p.x)) || 1;
   const ymax = Math.max(...pts.flatMap(p => [p.rec, p.col])) || 1;
+  const u = unitOf(ymax);
+  const dp = ticks(ymax * u.mul);
   const X = v => pl + v / xmax * (W - pl - pr);
   const Y = v => H - pb - v / ymax * (H - pb - pt);
   const path = k => pts.map((p, i) => `${i ? 'L' : 'M'}${X(p.x)},${Y(p[k])}`).join(' ');
   return h('svg', {viewBox: `0 0 ${W} ${H}`, style: {maxWidth: '100%'}},
     [0, .25, .5, .75, 1].map(f =>
       h('g', {key: f},
-        h('line', {x1: pl, y1: Y(ymax * f), x2: W - pr, y2: Y(ymax * f), stroke: '#e3dfd6'}),
+        h('line', {x1: pl, y1: Y(ymax * f), x2: W - pr, y2: Y(ymax * f), stroke: 'var(--line)'}),
         h('text', {x: pl - 8, y: Y(ymax * f) + 4, textAnchor: 'end', fontSize: 10.5,
-                   fill: '#6f6a61'}, (ymax * f).toFixed(0)))),
+                   fill: 'var(--dim)'}, (ymax * f * u.mul).toFixed(dp)))),
+    /* rotate(-90) sends (x, y) to (y, -x), so this reads up the left margin
+       beside the ticks it names. */
+    h('text', {transform: 'rotate(-90)', x: -(pt + (H - pb - pt) / 2), y: 13,
+               textAnchor: 'middle', fontSize: 11, fill: 'var(--dim)'},
+      'median time (' + u.name + ')'),
     [['rec', 'var(--rec)', 'records'], ['col', 'var(--col)', 'columnar']].map(([k, c, n]) =>
       h('g', {key: k},
         h('path', {d: path(k), fill: 'none', stroke: c, strokeWidth: 2}),
@@ -315,8 +346,8 @@ function Line({runs, query}) {
         h('text', {x: X(pts[pts.length-1].x) + 6, y: Y(pts[pts.length-1][k]) + 4,
                    fontSize: 11, fill: c}, n))),
     pts.map((p, i) => h('text', {key: 'x' + i, x: X(p.x), y: H - 10, textAnchor: 'middle',
-                                 fontSize: 10.5, fill: '#6f6a61'}, p.x.toFixed(0))),
-    h('text', {x: W / 2, y: H - 0, textAnchor: 'middle', fontSize: 11, fill: '#6f6a61'},
+                                 fontSize: 10.5, fill: 'var(--dim)'}, p.x.toFixed(0))),
+    h('text', {x: W / 2, y: H - 0, textAnchor: 'middle', fontSize: 11, fill: 'var(--dim)'},
       'corpus MB'));
 }
 
@@ -331,20 +362,20 @@ function Sweep({points}) {
   const X = i => pl + (i / Math.max(1, points.length - 1)) * (W - pl - pr);
   const Y = v => H - pb - (v / ymax) * (H - pb - pt);
   return h('svg', {viewBox: `0 0 ${W} ${H}`, style: {maxWidth: '100%'}},
-    h('line', {x1: pl, y1: Y(1), x2: W - pr, y2: Y(1), stroke: '#a3271c',
+    h('line', {x1: pl, y1: Y(1), x2: W - pr, y2: Y(1), stroke: 'var(--bad)',
                strokeDasharray: '4 3'}),
-    h('text', {x: W - pr, y: Y(1) - 5, textAnchor: 'end', fontSize: 10.5, fill: '#a3271c'},
+    h('text', {x: W - pr, y: Y(1) - 5, textAnchor: 'end', fontSize: 10.5, fill: 'var(--bad)'},
       '1× — below this line row-major would win'),
     [0.25, 0.5, 0.75, 1].map(f =>
       h('text', {key: f, x: pl - 8, y: Y(ymax * f) + 4, textAnchor: 'end', fontSize: 10.5,
-                 fill: '#6f6a61'}, (ymax * f).toFixed(0) + '×')),
+                 fill: 'var(--dim)'}, (ymax * f).toFixed(0) + '×')),
     h('path', {d: xs.map(i => `${i ? 'L' : 'M'}${X(i)},${Y(ratio(points[i]))}`).join(' '),
                fill: 'none', stroke: 'var(--col)', strokeWidth: 2}),
     xs.map(i => h('circle', {key: i, cx: X(i), cy: Y(ratio(points[i])), r: 3, fill: 'var(--col)'})),
     xs.map(i => h('text', {key: 't' + i, x: X(i), y: H - 22, textAnchor: 'middle',
-                           fontSize: 10, fill: '#6f6a61'},
+                           fontSize: 10, fill: 'var(--dim)'},
                   points[i].pct.toFixed(points[i].pct < 1 ? 2 : 0) + '%')),
-    h('text', {x: W / 2, y: H - 4, textAnchor: 'middle', fontSize: 11, fill: '#6f6a61'},
+    h('text', {x: W / 2, y: H - 4, textAnchor: 'middle', fontSize: 11, fill: 'var(--dim)'},
       'rows kept by the predicate'));
 }
 

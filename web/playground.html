@@ -10,7 +10,7 @@
     --accent: #5F7440; --accent-bg: #E6ECD8;
     --gold: #8A6C1F; --gold-bg: #F0E7CC;
     --alarm: #9E3A22; --alarm-bg: #F5DFD8;
-    --heri: #2B3A4A; --sel: #CBD9AE;
+    --heri: #2B3A4A; --sel: rgba(150, 180, 100, 0.42);
     --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
     --sans: "IBM Plex Sans", system-ui, -apple-system, sans-serif;
     --serif: "Newsreader", Georgia, serif;
@@ -23,7 +23,7 @@
       --accent: #A6BE6E; --accent-bg: #23291A;
       --gold: #CDAB5C; --gold-bg: #2A2416;
       --alarm: #E4836A; --alarm-bg: #2E1B15;
-      --heri: #8FA8C4; --sel: #35402A;
+      --heri: #8FA8C4; --sel: rgba(110, 140, 80, 0.38);
     }
   }
   :root[data-theme="dark"] {
@@ -32,7 +32,7 @@
     --accent: #A6BE6E; --accent-bg: #23291A;
     --gold: #CDAB5C; --gold-bg: #2A2416;
     --alarm: #E4836A; --alarm-bg: #2E1B15;
-    --heri: #8FA8C4; --sel: #35402A;
+    --heri: #8FA8C4; --sel: rgba(110, 140, 80, 0.38);
   }
 
   * { box-sizing: border-box; }
@@ -178,7 +178,11 @@
     color: transparent; background: transparent; caret-color: var(--accent);
     resize: none; outline: none;
   }
+  /* The textarea sits above the highlighted <pre> and paints its own text
+     transparent, so the selection rectangle is drawn over the text it is
+     selecting. An opaque fill would hide it; `--sel` is a wash instead. */
   .stack textarea::selection { background: var(--sel); }
+  .stack textarea::-moz-selection { background: var(--sel); }
   .kw { color: var(--accent); }
   .cm { color: var(--muted); font-style: italic; }
   .ty { color: var(--heri); }

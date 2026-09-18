@@ -18,7 +18,7 @@
     --accent: #4FC1FF; --accent-bg: #10344F;
     --gold: #DCDCAA; --gold-bg: #33301E;
     --alarm: #F48771; --alarm-bg: #3A1D1D;
-    --heri: #4EC9B0; --sel: #264F78;
+    --heri: #4EC9B0; --sel: rgba(56, 114, 180, 0.38); --well: #1B1B1B;
     /* syntax, kept apart from the interface tokens: a comment is green in an
        editor and muted grey in a sentence, and one variable cannot be both */
     --kw: #569CD6; --ty: #4EC9B0; --cm: #6A9955;
@@ -35,7 +35,7 @@
     --accent: #4FC1FF; --accent-bg: #10344F;
     --gold: #DCDCAA; --gold-bg: #33301E;
     --alarm: #F48771; --alarm-bg: #3A1D1D;
-    --heri: #4EC9B0; --sel: #264F78;
+    --heri: #4EC9B0; --sel: rgba(56, 114, 180, 0.38); --well: #1B1B1B;
     --kw: #569CD6; --ty: #4EC9B0; --cm: #6A9955;
   }
 
@@ -49,7 +49,7 @@
     --accent: #B35C00; --accent-bg: #FFE4C4;
     --gold: #8A6C1F; --gold-bg: #F5E9CE;
     --alarm: #9E3A22; --alarm-bg: #F5DFD8;
-    --heri: #2B3A4A; --sel: #FFD9A8;
+    --heri: #2B3A4A; --sel: rgba(255, 168, 74, 0.45); --well: #FAF0DF;
     --kw: #9A4B00; --ty: #21606E; --cm: #4F7A3A;
   }
 
@@ -78,12 +78,12 @@
   .crumbs {
     position: absolute; top: 0; right: 0; display: flex; gap: 6px; align-items: center;
   }
-  .crumbs a {
+  .crumbs a, .crumbs button {
     font-family: var(--sans); font-size: 12.5px; background: var(--surface);
     color: var(--ink); border: 1px solid var(--line); padding: 4px 10px;
-    text-decoration: none;
+    text-decoration: none; cursor: pointer;
   }
-  .crumbs a:hover { border-color: var(--accent); color: var(--accent); }
+  .crumbs a:hover, .crumbs button:hover { border-color: var(--accent); color: var(--accent); }
   header { position: relative; }
 
   .examples { display: flex; flex-wrap: wrap; gap: 6px; margin: 14px 0 0; align-items: baseline; }
@@ -149,6 +149,7 @@
   button.act:hover:not(:disabled) { color: var(--accent); border-color: var(--accent); }
   button.act:disabled { opacity: 0.4; cursor: default; }
   button.act:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+  button.act.on { color: var(--accent); border-color: var(--accent); background: var(--accent-bg); }
 
   textarea.plain {
     font-family: var(--mono); font-size: var(--code-size); line-height: var(--code-line);
@@ -157,6 +158,25 @@
   }
   textarea.plain:focus-visible { box-shadow: inset 0 0 0 2px var(--accent); }
   #in { min-height: 520px; resize: vertical; }
+
+  /* The textarea rule above is element-qualified, so an input carrying the
+     same class got nothing and fell back to the browser default -- a white
+     box with dark text, which is wrong in the dark theme rather than merely
+     plain. A one-line code field, sunk like the config box. */
+  input.plain {
+    font-family: var(--mono); font-size: 13px; line-height: 1.5;
+    background: var(--well); color: var(--ink);
+    border: 1px solid var(--line); padding: 5px 9px; outline: none;
+  }
+  input.plain::placeholder { color: var(--faint); }
+  input.plain:focus-visible {
+    border-color: var(--accent); outline: 2px solid var(--accent); outline-offset: -1px;
+  }
+
+  /* A tab body has to be a flex column itself for `flex: 1` on the textarea
+     or the scroller inside it to mean anything: `.pane` makes its children
+     flex items, not flex containers. */
+  .fill { display: flex; flex-direction: column; flex: 1; min-height: 0; }
 
   .pane { display: none; flex-direction: column; flex: 1; min-height: 520px; min-width: 0; }
   .pane.on { display: flex; }
@@ -211,7 +231,12 @@
     color: transparent; background: transparent; caret-color: var(--accent);
     resize: none; outline: none;
   }
+  /* The textarea sits above the highlighted <pre> and paints its own text
+     transparent, so the selection rectangle is drawn over the text it is
+     selecting. An opaque fill would hide it; `--sel` is a wash instead, and
+     what reads through it is the <pre> underneath. */
   .stack textarea::selection { background: var(--sel); }
+  .stack textarea::-moz-selection { background: var(--sel); }
   .kw { color: var(--kw); }
   .cm { color: var(--cm); font-style: italic; }
   .ty { color: var(--ty); }
@@ -266,6 +291,30 @@
     font-family: var(--mono); font-size: 12px; color: var(--faint); margin-top: 5px;
   }
 
+  /* shape */
+  .shape-row {
+    display: flex; align-items: flex-start; gap: 14px;
+    padding: 13px 16px; border-bottom: 1px solid var(--line);
+  }
+  .shape-row > div:first-child { flex: 1; min-width: 0; }
+  .shape-row .path {
+    font-family: var(--mono); font-size: 13.5px; font-weight: 500;
+    color: var(--ink); overflow-wrap: anywhere;
+  }
+  .shape-row .why {
+    font-size: 13px; line-height: 1.55; color: var(--muted);
+    margin-top: 5px; max-width: 80ch;
+  }
+  .shape-row .why code { font-family: var(--mono); font-size: 0.92em; color: var(--ink); }
+  .shape-row .mods { font-family: var(--mono); font-size: 12px; color: var(--faint); }
+  .shape-row > .act, .shape-row > input { flex: none; margin-top: 1px; }
+  .shape-row input.plain { width: 180px; max-width: 100%; }
+  @media (max-width: 560px) {
+    .shape-row { flex-direction: column; align-items: stretch; gap: 9px; }
+    .shape-row input.plain { width: 100%; }
+    .shape-row > .act { align-self: flex-start; }
+  }
+
   /* config */
   .cfg-head {
     display: flex; align-items: center; gap: 10px; padding: 10px 16px;
@@ -277,6 +326,19 @@
     background: var(--alarm-bg); padding: 9px 16px; border-bottom: 1px solid var(--line);
   }
   .cfg-bad.on { display: block; }
+  /* Sunk and bordered: `textarea.plain` paints itself `--surface`, which is
+     exactly the panel behind it, so the config box had no edge at all. It
+     also carried `flex: 1` against a parent that was not a flex container,
+     and so fell back to the two-row default. */
+  textarea.cfg-edit {
+    flex: 1; width: auto; min-height: 260px;
+    margin: 14px 16px 16px; padding: 12px 14px;
+    background: var(--well); border: 1px solid var(--line);
+  }
+  textarea.cfg-edit:focus-visible {
+    box-shadow: none; border-color: var(--accent);
+    outline: 2px solid var(--accent); outline-offset: -1px;
+  }
 
   /* observations */
   table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
@@ -1162,7 +1224,7 @@ function Shape({report, config, setConfig}) {
           'The root table has no member name to be called after, so its name is invented. ',
           h('code', {}, 'Root'), ' is only a fallback.')),
       h('input', {
-        type: 'text', className: 'plain', style: {width: 180},
+        type: 'text', className: 'plain',
         placeholder: 'Root', value: config.root || '',
         onChange: e => setConfig({...config, root: e.target.value}),
       })),
@@ -1196,15 +1258,15 @@ function Config({config, setConfig}) {
   const [draft, setDraft] = useState(null);
   const [bad, setBad] = useState('');
   const shown = draft === null ? text : draft;
-  return h('div', {},
+  return h('div', {className: 'fill'},
     h('div', {className: 'cfg-head'},
       h('p', {}, 'The same choices as a file. Pass it to the binary with ',
         h('code', {style: {fontFamily: 'var(--mono)'}}, '--config'),
         '; edit it here and the Shape tab follows.'),
       h('button', {className: 'act', onClick: () => navigator.clipboard && navigator.clipboard.writeText(shown)}, 'Copy')),
-    bad ? h('div', {className: 'cfg-bad', style: {display: 'block'}}, bad) : null,
+    bad ? h('div', {className: 'cfg-bad on'}, bad) : null,
     h('textarea', {
-      className: 'plain', spellCheck: false, value: shown,
+      className: 'plain cfg-edit', spellCheck: false, value: shown,
       'aria-label': 'Configuration',
       onChange: e => {
         setDraft(e.target.value);
@@ -1314,7 +1376,11 @@ function App() {
          link is built rather than hard-coded to localhost. */
       h('div', {className: 'crumbs'},
         h('a', {href: location.protocol + '//' + location.hostname + ':8000/'},
-          'Phase 2 · backend →')),
+          'Phase 2 · backend →'),
+        h('button', {
+          title: 'switch between light and dark',
+          onClick: () => setTheme(NEXT[theme]),
+        }, THEME_LABEL[theme])),
       h('div', {className: 'stage'}, 'Phase 1 · JSON to OCaml signatures'),
       h('h1', {}, 'Tatami Playground'),
       h('p', {className: 'lede'},
@@ -1348,11 +1414,6 @@ function App() {
         h('div', {className: 'bar'},
           h('span', {className: 'title'}, 'JSON in'),
           h('span', {className: 'right'},
-            h('button', {
-              className: 'act', style: {marginRight: 8},
-              title: 'switch between light and dark',
-              onClick: () => setTheme(NEXT[theme]),
-            }, THEME_LABEL[theme]),
             h('span', {
               className: 'engine' + (via === 'lean' ? ' live' : ''),
               title: via === 'lean'
@@ -1380,7 +1441,7 @@ function App() {
         h('div', {className: 'pane on'},
           tab === 'modules' ? h(Modules, {report, file, setFile, edits, setEdits, blank: src.trim() === ''}) : null,
           tab === 'shape'
-            ? h('div', {},
+            ? h('div', {className: 'fill'},
                 h('p', {className: 'lead'},
                   'Two shapes cannot be read off the data, so Tatami never guesses them. ',
                   h('strong', {}, 'Nothing here is set unless you set it.'),
@@ -1389,7 +1450,7 @@ function App() {
             : null,
           tab === 'config' ? h(Config, {config, setConfig}) : null,
           tab === 'obs'
-            ? h('div', {},
+            ? h('div', {className: 'fill'},
                 h('p', {className: 'lead'},
                   "One block per table, with the counts each column's type came from. A count is per ",
                   h('strong', {}, 'visit'),
