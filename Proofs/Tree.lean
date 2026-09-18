@@ -665,7 +665,7 @@ theorem memberCol_ty {gen : List String} {c : Column} {col : Col}
     by_cases hg : (gen.contains (mangle c.name)) = true
     · rw [if_pos hg] at h; cases h
     · rw [if_neg hg] at h
-      cases hty : c.field.ty <;> rw [hty] at h <;> cases h <;> simp [hty]
+      cases hty : c.field.ty <;> rw [hty] at h <;> cases h <;> simp
 
 /-- Of the columns a table's position puts there, only the back reference is
     a key into another table -- a key is never an object, and a position is a

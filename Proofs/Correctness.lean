@@ -52,7 +52,7 @@ theorem signature_wellFormed (nm : Naming) (s : Schema) (f : File)
 theorem schema_canonical (cfg : Config) (ds : List Doc) (ts : Tables)
     (hinf : inferCorpus cfg ds = .ok ts) :
     ∀ es ts', ds.Perm es → inferCorpus cfg es = .ok ts' → ts = ts' :=
-  fun es ts' hperm hinf' => infer_perm cfg ds es hperm hinf hinf'
+  fun es _ts' hperm hinf' => infer_perm cfg ds es hperm hinf hinf'
 
 /-- **Structure preservation.** The tree the documents induce and the graph a
     reader finds in the generated signatures are the same graph.

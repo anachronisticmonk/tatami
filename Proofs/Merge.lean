@@ -28,7 +28,7 @@ theorem Obs.merge_ok {a b : Obs} (ha : ObsOk a) (hb : ObsOk b) :
     ObsOk (Obs.merge a b) :=
   unionBy_sorted tyOrder _ _ ha hb
 
-theorem Obs.merge_comm {a b : Obs} (ha : ObsOk a) (hb : ObsOk b) :
+theorem Obs.merge_comm {a b : Obs} (_ha : ObsOk a) (_hb : ObsOk b) :
     Obs.merge a b = Obs.merge b a := by
   unfold Obs.merge
   rw [unionBy_comm tyOrder a.seen b.seen]
@@ -118,7 +118,7 @@ theorem Tables.upsert_ok {ts : Tables} {p : Path} {f : TableObs → TableObs}
     · intro pr hpr; obtain ⟨q, t⟩ := pr
       by_cases hq : (q == p) = true
       · simp only [hq, if_pos]; exact hf t hpr
-      · simp only [hq, if_neg, Bool.false_eq_true]; exact hpr
+      · simp only [hq, Bool.false_eq_true]; exact hpr
   · exact ⟨insertBy_sorted pathOrder ts h.1,
            insertBy_allV (P := TableObsOk) (fun _ _ _ hy => hy)
              (hf _ TableObsOk.empty) ts h.2⟩

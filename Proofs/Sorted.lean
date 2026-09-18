@@ -240,7 +240,7 @@ theorem lookupBy_of_below {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk) 
 /-- The head of a sorted list is below its tail, so its key looks up to its
     own value and nothing else. -/
 theorem lookupBy_head {lt eqk : K → K → Bool} (ho : StrictOrder lt eqk)
-    {k : K} {v : V} {tl : List (K × V)} (hs : SortedBy lt ((k, v) :: tl)) :
+    {k : K} {v : V} {tl : List (K × V)} (_hs : SortedBy lt ((k, v) :: tl)) :
     lookupBy eqk k ((k, v) :: tl) = some v := by
   rw [lookupBy, if_pos ((ho.eq_iff k k).mpr rfl)]
 
@@ -407,7 +407,7 @@ theorem mergeBy_lookup {lt eqk : K → K → Bool} {combine : V → V → V}
       | nil =>
           intro _ _ k
           rw [mergeBy]
-          · cases h : lookupBy eqk k (pa :: as) <;> simp [lookupBy, combineOpt, h]
+          · cases h : lookupBy eqk k (pa :: as) <;> simp [lookupBy, combineOpt]
           · simp
       | cons pb bs ihb =>
           intro hsa hsb k
@@ -637,7 +637,7 @@ theorem lookupBy_allV {eqk : K → K → Bool} {P : V → Prop} {k : K} {v : V} 
     type sets are sorted, and not otherwise. -/
 theorem mergeBy_assocOn {lt eqk : K → K → Bool} {combine : V → V → V} {P : V → Prop}
     (ho : StrictOrder lt eqk)
-    (hP : ∀ x y, P x → P y → P (combine x y))
+    (_hP : ∀ x y, P x → P y → P (combine x y))
     (hca : ∀ x y z, P x → P y → P z → combine (combine x y) z = combine x (combine y z)) :
     ∀ a b c : List (K × V), SortedBy lt a → SortedBy lt b → SortedBy lt c →
       AllV P a → AllV P b → AllV P c →

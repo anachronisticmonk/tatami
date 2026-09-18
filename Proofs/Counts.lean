@@ -101,7 +101,7 @@ theorem frame_widen {q q' : Path} {a b : Tables}
 
 theorem frame_upsert {q p : Path} (hq : q <+: p) (ts : Tables)
     (f : TableObs → TableObs) : Frame q ts (ts.upsert p f) :=
-  fun r hr => upsert_lookup_ne (fun hrp => hr (hrp ▸ hq))
+  fun _r hr => upsert_lookup_ne (fun hrp => hr (hrp ▸ hq))
 
 theorem recordMember_frame {q p : Path} (hq : q <+: p) (ts : Tables)
     (k : String) (s : Seen) : Frame q ts (recordMember ts p k s) := by
@@ -577,7 +577,7 @@ theorem lookup_map_self {p : Path} {f : TableObs → TableObs} {t : TableObs} :
       by_cases hpa : p = a
       · subst hpa
         simp at h; subst h
-        simp [List.lookup_cons]
+        simp
       · have hb : (p == a) = false := by simpa using hpa
         rw [hb] at h
         have hb2 : (a == p) = false := by simpa using (Ne.symm hpa)
@@ -597,7 +597,7 @@ theorem insertBy_lookup_self {lt eqk : K → K → Bool} [BEq K] [LawfulBEq K]
       (insertBy lt eqk (fun _ new => new) p v l).lookup p = some v := by
   intro l
   induction l with
-  | nil => intro _; simp [insertBy, List.lookup_cons]
+  | nil => intro _; simp [insertBy]
   | cons hd tl ih =>
       obtain ⟨k', v'⟩ := hd
       intro h

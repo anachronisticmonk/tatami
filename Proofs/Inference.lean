@@ -311,7 +311,7 @@ theorem obs_least {o : Obs} {τ σ : Ty} (h : o.joined = some τ)
     `some` -- it refuses a corpus where any member's types have no common
     type, which is exactly the `none` case. -/
 theorem infer_admits (cfg : Config) (ds : List Doc) (ts : Tables)
-    (h : inferCorpus cfg ds = .ok ts) :
+    (_h : inferCorpus cfg ds = .ok ts) :
     ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
       ∀ τ, o.joined = some τ → ∀ ty, ty ∈ o.seen → ty ⊑ τ := by
   intro _ _ _ _ _ _ _ hj
@@ -320,7 +320,7 @@ theorem infer_admits (cfg : Config) (ds : List Doc) (ts : Tables)
 /-- The type given to a member is the least one admitting every value observed
     there -- nothing is widened further than the data forces. -/
 theorem infer_least (cfg : Config) (ds : List Doc) (ts : Tables)
-    (h : inferCorpus cfg ds = .ok ts) :
+    (_h : inferCorpus cfg ds = .ok ts) :
     ∀ p t, (p, t) ∈ ts → ∀ k o, (k, o) ∈ t.members →
       ∀ τ σ, o.joined = some τ → (∀ ty, ty ∈ o.seen → ty ⊑ σ) → τ ⊑ σ := by
   intro _ _ _ _ _ _ _ _ hj hσ
