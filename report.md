@@ -113,7 +113,7 @@ soundness bug would hide. Chapter 4 is largely about closing that hole.
 
 ## 4. What is proved
 
-**221 theorems and lemmas across twelve files, zero `sorry`s.** They compose
+**223 theorems and lemmas across twelve files, zero `sorry`s.** They compose
 into a single top-level result, `pipeline_correct`, stated in five named parts
 so the guarantee can be read without opening nine files.
 
@@ -589,7 +589,7 @@ From source:
 
 ```sh
 lake build tatami                # the generator
-lake build Proofs                # the 221 theorems
+lake build Proofs                # the 223 theorems
 dune build                       # the servers and stores
 
 dune exec bin/gen_corpus.exe -- --bytes 1.5G --seed 20260914 --out corpus/ci.json

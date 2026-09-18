@@ -133,7 +133,7 @@ A wrong `option` in the other direction never crashes at all, which is worse
 in its own way: it costs a mask, a branch, and the memory to hold
 them, on every row, forever, and nothing ever tells you.
 
-So we proved it. **221 theorems and lemmas, zero `sorry`s.** They compose into
+So we proved it. **223 theorems and lemmas, zero `sorry`s.** They compose into
 a single top-level result, `pipeline_correct`, in five named parts:
 
 | Part                       | What it says                                                                                                                                                                                                                                                    |
@@ -305,7 +305,7 @@ dune exec bin/verify.exe        # assert the JSON and the database agree
 lake build Proofs
 ```
 
-221 theorems and lemmas, zero `sorry`s. The top-level statement is
+223 theorems and lemmas, zero `sorry`s. The top-level statement is
 `pipeline_correct` in `Proofs/Correctness.lean`, which groups the five parts so
 the guarantee can be read without opening nine files.
 
