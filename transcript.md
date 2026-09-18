@@ -54,21 +54,65 @@ so we cannot infer its type so its unit option.
 
 ---
 
-## 1:50 — The proof (70s)
+## 1:50 — The proof (95s)
 
-Tatami proof script
-Tatami infers a database schema from schemaless JSON. Why trust it? Because the OCaml signature we generate is a contract. And since we generate it rather than write it, we can prove things about the generator. It all comes down to one theorem.
-[open Proofs/Correctness.lean:148, point at it]
-Here it is. If Tatami accepted your data and produced a schema, this guarantees five things. One. The names it makes are always legal, and no two things end up with the same name. Two. Run it twice on the same data in a different order, and you get the exact same answer. Three. The shape comes through. If your JSON nests jobs inside runs, the generated code nests them the same way. Four. Every field gets the tightest type that still fits all the data. And five, a field is optional exactly when some record was missing it. That's the claim. Here's where it's proved.
-[show the files in the Proofs/ folder in VS Code]
-That's twelve files, and they're all about two questions. Is the schema right? And does the generated code say so? Correctness.lean is the one we were just in, the five I've described. Counts.lean is the counting behind 'optional'. Inference.lean is where order stops mattering, and where the types come out as tight as they go. Lattice.lean proves joining two types is well defined in the first place. Mangle.lean is the renaming: a JSON field name becomes an OCaml one without two names ever turning into one. Merge.lean shows combining two documents works either way round. Tree.lean is the nesting surviving into the modules. Walk.lean keeps everything sorted as it reads. Wellformed.lean is the check behind number one. And the rest prove the conditions those depend on.
-[show the output of lake build on a terminal]
-And it all builds. Two hundred and twenty-three theorems, and we have proved all of them in Lean4.
+*Screen: talking head, or hold the previous frame.*
 
+> Tatami infers a database schema from schemaless JSON. Why trust it?
+>
+> Because the OCaml signature we generate is a contract. And since we generate
+> it rather than write it, we can prove things about the generator.
+>
+> It all comes down to one theorem.
 
+*Screen: open `Proofs/Correctness.lean` at **line 148**, `pipeline_correct`.
+Point at it.*
 
+> Here it is. If Tatami accepted your data and produced a schema, this
+> guarantees five things.
+>
+> **One.** The names it makes are always legal, and no two things end up with
+> the same name.
+>
+> **Two.** Run it twice on the same data in a different order, and you get the
+> exact same answer.
+>
+> **Three.** The shape comes through. If your JSON nests jobs inside runs, the
+> generated code nests them the same way.
+>
+> **Four.** Every field gets the tightest type that still fits all the data.
+>
+> **And five,** a field is optional exactly when some record was missing it.
+>
+> That's the claim. Here's where it's proved.
 
----
+*Screen: the `Proofs/` folder in VS Code, all twelve files visible. Highlight
+each as it is named.*
+
+> That's twelve files, and they're all about two questions. Is the schema right?
+> And does the generated code say so?
+
+| highlight | say |
+|---|---|
+| `Correctness.lean` | is the one we were just in, the five I've described. |
+| `Counts.lean` | is the counting behind 'optional'. |
+| `Inference.lean` | is where order stops mattering, and where the types come out as tight as they go. |
+| `Lattice.lean` | proves joining two types is well defined in the first place. |
+| `Mangle.lean` | is the renaming: a JSON field name becomes an OCaml one without two names ever turning into one. |
+| `Merge.lean` | shows combining two documents works either way round. |
+| `Tree.lean` | is the nesting surviving into the modules. |
+| `Walk.lean` | keeps everything sorted as it reads. |
+| `Wellformed.lean` | is the check behind number one. |
+
+> And the rest prove the conditions those depend on.
+
+*(the rest: `Order.lean`, `Sorted.lean`, `Spec.lean`)*
+
+*Screen: terminal, the output of `lake build`. Run it before the take so the
+recording does not sit through a compile.*
+
+> And it all builds. Two hundred and twenty-three theorems, and we have proved
+> all of them in Lean 4.
 
 ## 3:00 — Why the layout wins (75s)
 
