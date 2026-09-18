@@ -55,13 +55,25 @@
   .num{font-variant-numeric:tabular-nums}
 
   /* ---- deck frame -------------------------------------------------------- */
+  /* One frame for every slide. `min-height:100%` resolved against a body of
+     auto height, so the page was as tall as whichever slide was showing: it
+     ran from 447px to 1151px in a 961px window, and the nav bar walked up and
+     down the screen between slides. The deck is the viewport now, and the
+     slide is fitted into it. */
+  html,body{height:100%}
   .deck{
-    min-height:100%;
+    height:100vh; height:100dvh;
     display:grid; grid-template-rows:1fr auto;
     padding:0 16px;
     max-width:1240px; margin:0 auto;
   }
-  .stage{display:grid; align-content:center; padding-block:clamp(24px,4vh,56px); min-height:0}
+  .stage{
+    display:grid; align-content:center; align-content:safe center;
+    padding-block:clamp(24px,4vh,56px); min-height:0;
+    /* only reachable if `zoom` is unavailable; `safe` keeps the top of an
+       over-tall slide scrollable rather than clipped above the centre line */
+    overflow-y:auto; overscroll-behavior:contain;
+  }
 
   .slide{animation:rise .34s cubic-bezier(.2,.7,.3,1) both}
   @keyframes rise{from{opacity:.001;transform:translateY(6px)}to{opacity:1;transform:none}}
@@ -253,9 +265,11 @@
   .count{font-family:"JetBrains Mono",monospace; font-size:.8em; color:var(--muted); font-variant-numeric:tabular-nums}
 
   @media print{
+    html,body{height:auto}
     .nav{display:none}
-    .slide{break-after:page; animation:none}
-    .deck{max-width:none}
+    .slide{break-after:page; animation:none; zoom:1}
+    .deck{max-width:none; height:auto}
+    .stage{overflow:visible; align-content:start}
   }
 </style>
 </head>
@@ -270,7 +284,7 @@
         <div class="weave"></div>
         <p class="thesis">Tatami reads JSON that declares no schema, and writes the OCaml types it implies. Every value in the data fits its type (<b>adequacy</b>). The type allows nothing the data never contained (<b>minimality</b>). And a field is <code>option</code> only where a value was actually missing.</p>
         <p class="proofline">All of it machine-checked in Lean 4</p>
-        <p class="authors">Vimala &nbsp;&middot;&nbsp; Vishakh &nbsp;&middot;&nbsp; Durwasa<span>IIT Madras</span></p>
+        <p class="authors">Durwasa &nbsp;&middot;&nbsp; Vimala &nbsp;&middot;&nbsp; Vishakh<span>IIT Madras</span></p>
         <div class="chips">
           <div class="chip"><b class="num">223</b><span>theorems &amp; lemmas</span></div>
           <div class="chip"><b class="num">3.5&times;</b><span>on computed scans</span></div>
@@ -626,6 +640,7 @@
 <script>
 (function(){
   var slides = Array.prototype.slice.call(document.querySelectorAll('.slide'));
+  var stage = document.getElementById('stage');
   var dots = document.getElementById('dots');
   var count = document.getElementById('count');
   var prev = document.getElementById('prev');
@@ -653,8 +668,44 @@
     slides[i].style.animation = 'none';
     void slides[i].offsetWidth;
     slides[i].style.animation = '';
+    fit();
     paint();
   }
+
+  /* The frame is fixed, so a slide denser than the window has to shrink to it
+     rather than scroll: scrolling mid-sentence is worse than smaller type.
+
+     `zoom` rather than `transform:scale` because zoom takes part in layout --
+     the stage goes on centring the slide by its scaled height, where a
+     transform would leave the original box behind and centre the wrong one.
+     The floor stops a runaway slide from becoming unreadable; it would then
+     scroll, which is what the stage's overflow is for. */
+  function fit(){
+    var s = slides[i];
+    s.style.zoom = '';
+    var cs = getComputedStyle(stage);
+    var avail = stage.clientHeight - parseFloat(cs.paddingTop) - parseFloat(cs.paddingBottom);
+    if (!(avail > 0)) return;
+    /* Shrinking reflows the slide, so its height is not simply the old height
+       times the factor -- a line that fitted can wrap, and the slide comes
+       back taller than the arithmetic said. So the ratio is re-measured
+       instead of trusted; three passes settle it well inside a pixel. */
+    var z = 1;
+    for (var pass = 0; pass < 3; pass++) {
+      var shown = s.getBoundingClientRect().height;
+      if (shown <= avail) break;
+      z = Math.max(0.55, z * (avail / shown) * 0.995);
+      s.style.zoom = z;
+    }
+  }
+  var resizing;
+  window.addEventListener('resize', function(){
+    clearTimeout(resizing);
+    resizing = setTimeout(fit, 120);
+  });
+  /* web fonts land after first paint and change every measurement */
+  if (document.fonts && document.fonts.ready) document.fonts.ready.then(fit);
+
   function paint(){
     count.textContent = (i+1) + ' / ' + slides.length;
     prev.disabled = i === 0;
@@ -673,6 +724,7 @@
     else if (e.key === 'End') { e.preventDefault(); go(slides.length-1); }
   });
   paint();
+  fit();
 })();
 </script>
 </body>
