@@ -13,11 +13,11 @@ anything that trips your tongue, change it.*
 > So let's say we have a collection of JSON documents. In our case it's data for
 > a CI service's build history, so repos contain runs, runs contain jobs, and
 > jobs contain steps. And crucially, there's no predetermined schema. Nobody
-> wrote one down.
+> wrote one down; there is no SCHEMA.
 >
 > Now what I actually want is this in typed columnar tables. And the reasoning is
-> pretty simple: tables query faster than documents, and for scans, a columnar
-> layout has been the known answer for decades. That part isn't ours.
+> : tables query faster than documents, and for scans, a columnar
+> layout has been the known answer for decades.
 >
 > So what we built is the path between those two. And it's three pieces. First,
 > **Lean 4 infers the schema, and proves the inference correct**. Then it
@@ -43,11 +43,10 @@ to paste.*
 > documents, so there's nothing to infer a type from at all, and you get
 > `unit option`.
 >
-> *(paste a second, unrelated document)*
 >
-> And nothing here is built for that one corpus. Completely different shape,
+> And nothing here is built for that one corpus. You can paste your own json;  different shape,
 > nested object, couple of arrays, a map, and you get a different set of tables
-> out. The theorem is quantified over *any* list of documents.
+> out. The theorem is quantified over *any* list of wellformed json.
 
 ---
 
@@ -124,8 +123,8 @@ to paste.*
 > testing first.
 >
 > And all of this is one machine, by the way. A MacBook Pro with an Apple M2
-> Pro: ten cores, six performance and four efficiency, 16 gig, 64K of L1 data
-> cache, 4 meg of L2, and **128-byte cache lines**. OCaml 5.3. So as we said, a
+> Pro: ten cores, six performance and four efficiency, 16 gig, 
+> and **128-byte cache lines**. OCaml 5.3. So as we said, a
 > dense `int` column puts **sixteen** values on one line.
 >
 > Scans come out about **three times** faster. And the computed query, that's
@@ -146,12 +145,7 @@ to paste.*
 > the purpose. We want all the optimisations to happen strictly based on the
 > `.mli` file.
 
-*Screen: the selectivity sweep.*
 
-> And here's the shape a planner would want. Sweep the predicate threshold: at
-> 0.02% selectivity, fourteen times. At a full scan, fifteen. And in the middle,
-> about three. So, a U-curve. And the schema already says which columns are
-> scannable and which are nullable.
 
 ---
 
@@ -193,24 +187,20 @@ each as you name it.*
 > So that's twelve files, and they're all really about two questions. Is the
 > schema right? And does the generated code say so?
 
-| highlight | say |
-|---|---|
-| `Correctness.lean` | is the one we were just in, the five I've described. |
-| `Counts.lean` | is the counting behind 'optional'. |
-| `Inference.lean` | is where order stops mattering, and where the types come out as tight as they go. |
-| `Lattice.lean` | proves joining two types is well defined in the first place. |
-| `Mangle.lean` | is the renaming: a JSON field name becomes an OCaml one, without two names ever turning into one. |
-| `Merge.lean` | shows combining two documents works either way round. |
-| `Tree.lean` | is the nesting surviving into the modules. |
-| `Walk.lean` | keeps everything sorted as it reads. |
-| `Wellformed.lean` | is the check behind number one. |
+| highlight          | say                                                                                               |
+|--------------------|---------------------------------------------------------------------------------------------------|
+| `Correctness.lean` | is the one we were just in, the five I've described.                                              |
+| `Counts.lean`      | is the counting behind 'optional'.                                                                |
+| `Inference.lean`   | is where order stops mattering, and where the types come out as tight as they go.                 |
+| `Lattice.lean`     | proves joining two types is well defined in the first place.                                      |
+| `Mangle.lean`      | is the renaming: a JSON field name becomes an OCaml one, without two names ever turning into one. |
+| `Merge.lean`       | shows combining two documents works either way round.                                             |
+| `Tree.lean`        | is the nesting surviving into the modules.                                                        |
+| `Walk.lean`        | keeps everything sorted as it reads.                                                              |
+| `Wellformed.lean`  | is the check behind number one.                                                                   |
 
 > And then the rest prove the conditions those ones depend on.
 
-*(the rest: `Order.lean`, `Sorted.lean`, `Spec.lean`)*
-
-*Screen: terminal with the output of `lake build` already on it. Run it before
-the take so the recording doesn't sit through a compile.*
 
 > And it all builds. Two hundred and twenty-three theorems, and we have proved
 > all of them in Lean 4.
@@ -223,36 +213,14 @@ the take so the recording doesn't sit through a compile.*
 
 > So, two things I'd leave you with.
 >
-> One: columnar storage is solved. Arrow, Parquet, Polars. We haven't improved
-> on any of it. But every one of them takes the schema *on faith*. Arrow and
-> Parquet require a schema, they never derive one. And whether a column is
-> nullable, which is the bit that decides if a validity bitmap gets allocated
-> for every row, forever, that's guessed upstream by sampling, or declared by
-> hand.
+> One: columnar storage is solved. We are inferring types from the data, and providing a formal proof of its conversion 
+> to .mli files.
 >
 > We made that bit a theorem, and then we spent it on the layout.
 >
-> And two: it's functional the whole way down. Lean 4 for inference and proof,
+> And two: the entire machinery is functional the whole way down. Lean4 for inference and proof,
 > OCaml for loading, storage and measurement. The one place correctness truly
 > had to be guaranteed is the one place we could hand to a theorem prover.
 >
 > And that's it. `docker run -p 8000:8000 -p 8420:8420 durwasa/tatami`. Both
 > ports, one command.
-
----
-
-## Shot list
-
-| Time | Screen | Have ready beforehand |
-|---|---|---|
-| 0:00 | terminal | `head -c 400 corpus/small.json` |
-| 0:45 | `localhost:8420` | the `x` / `y` / `z` document in the clipboard, plus a second unrelated one |
-| 1:30 | editor | `runs_jobs_steps.mli` |
-| 2:05 | editor | `lib/rowmajor/records.ml` at `type step`, then `lib/columnar/columnar.ml` at `scan`, then `schema/step.mli` |
-| 3:20 | `localhost:8000` | performance tab, then the selectivity sweep |
-| 4:20 | editor → explorer → terminal | `Proofs/Correctness.lean` at line 148 · `Proofs/` expanded, twelve files visible · `lake build` already run |
-| 5:55 | terminal | the `docker run` line |
-
-Start the container before recording — the first run pulls ~118 MB, and the
-backend spends a moment loading the corpus. Run `lake build` beforehand for the
-same reason.
