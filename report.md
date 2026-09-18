@@ -326,6 +326,31 @@ columns:
 | `by_status` | the longest step under each status — five groups over the whole table |
 | `three_hop` | total step duration for one organisation: step → job → run → repo |
 
+### The machine
+
+Every number in chapters 9 and 10 was taken on one machine: a MacBook Pro with
+an Apple M2 Pro, ten cores (six performance, four efficiency), 16 GB of memory,
+64 KB L1 data cache, 4 MB L2, **128-byte cache lines**, 16 KB pages, macOS 15.6,
+OCaml 5.3.0, five repeats a point.
+
+The line size is worth stating because it sets the arithmetic. A dense `int`
+column is 8 bytes an element, so one line carries **sixteen** values, not the
+eight a 64-byte line would. Measured on the same machine with
+`Obj.reachable_words`:
+
+| representation | bytes/element | per 128-byte line |
+|---|---|---|
+| `int array`, a dense total column | 8 | 16 values |
+| dense values + `bool array` mask | 16 | 8 values |
+| `int option array` | 24 | 5.3 cells, holding pointers |
+| `step` record array (row-major) | 56 | 2.3 records |
+
+A `step` block is a header plus five fields, 48 bytes, and the array holds an
+8-byte pointer to each: 56 in total. Reading one field of it moves seven times
+the bytes that reading the same field from a dense column moves. The observed
+speedup on `scan` is 3.21×, not 7×, so traffic predicts the direction and not
+the magnitude.
+
 `bin/bench.ml` counts disagreements and, if any exist, prints *"N disagreements
 — timings below are meaningless"*. **There are none, on every corpus.** Float
 sums are compared to a relative tolerance because they are accumulated in a
