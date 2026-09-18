@@ -121,6 +121,30 @@ to paste.*
 > record store, and the columnar one. And we treat raw Yojson as an oracle,
 > because timings and measurements only matter if the query passes differential
 > testing first.
+
+*Screen: terminal. Run the two greps below, one after the other. Optional, but
+it answers the obvious objection before anyone raises it.*
+
+```
+$ grep -n "Yojson\|member\|to_int" lib/columnar/columnar.ml | tail -1
+253:let opt_int b k j = match member k j with `Int x -> put_int b x | _ -> put_null b
+
+$ grep -n "^let scan\|^let computed\|^let three_hop" lib/columnar/columnar.ml
+334:let scan t threshold =
+345:let computed t threshold =
+457:let three_hop t org =
+```
+
+> And one thing worth heading off. Yojson shows up in all three stores, so let
+> me be precise about where. In the columnar store the last Yojson call is on
+> line 253, and that's inside `load`. The first query doesn't start until line
+> 334. So JSON is parsed once, on the way in, and after that nothing in the
+> query path touches it. Same story in the record store: Yojson ends at line 64,
+> queries start at 117.
+>
+> The only store that calls Yojson per query is the oracle, and that's the whole
+> point of it.
+
 >
 > And all of this is one machine, by the way. A MacBook Pro with an Apple M2
 > Pro: ten cores, six performance and four efficiency, 16 gig, 
