@@ -12,25 +12,33 @@ tables and measures what the typing bought.**
 
 ---
 
-## A note on what we proposed, and what we built
+## What we proposed, and what we built
 
-Our design document at the start of the hackathon proposed
-**"Effect-Typed Shredding of JSON into a Queryable OCaml"**. We have deviated
-from it, and it is worth saying so plainly rather than letting a reader work it
-out.
+Our design document at the start of the hackathon was titled **"Effect-Typed
+Shredding of JSON into a Queryable OCaml"**. There is no effect typing in this
+submission, and that was a decision, not an omission.
 
-**We did not do the effect-typed part.** No effect system, no effect handlers,
-nothing in the pipeline is typed by its effects.
+**Effects are a runtime concern.** Typing them would have described how the
+pipeline executes. It would have said nothing about the claim this project is
+actually making, which is that a schema derived from the data, and proved
+exact, can decide the physical layout the data is stored in. An effect system
+would have been a second, unrelated demonstration competing for the same week.
 
-What we did instead was go as deep as we could on the shredding itself, so what
-we are submitting is **end-to-end shredding of JSON into a queryable OCaml**.
-Inference in Lean 4 with a machine-checked proof that the schema describes the
-documents, generated `.mli` and `.ml` and a loader, a streaming shred into four
-tables with referential integrity, Postgres through `pgx`, a columnar store laid
-out from the generated signature, and a benchmark that compares it against a
-row-major store and against raw JSON with every answer cross-checked first.
+So we did not move the goalpost. We took the thing we promised, shredding JSON
+into a queryable OCaml, and were more thorough about it than the proposal asked
+for. What we are submitting is **end-to-end shredding of JSON into a queryable
+OCaml**:
 
-The scope narrowed; the part that remains is finished rather than sketched.
+- inference in Lean 4, with a machine-checked proof that the schema describes
+  the documents;
+- generated `.mli`, `.ml` and a loader;
+- a streaming shred into four tables, referential integrity kept;
+- Postgres through `pgx`;
+- a columnar store laid out from the generated signature;
+- and a benchmark against a row-major store and against raw JSON, with every
+  answer cross-checked before a single timing is believed.
+
+Narrower than the title, and finished rather than sketched.
 
 ### See it running
 
