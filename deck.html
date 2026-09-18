@@ -126,7 +126,7 @@
               max-width:68ch; margin:7px 0 0; line-height:1.5}
   .close .big .hi{color:var(--indigo)}
   #s11 .close{gap:clamp(30px,6vh,64px); margin-top:clamp(26px,5vh,52px)}
-  #s11 .close .big{font-size:clamp(26px,3.1vw + 13px,54px); max-width:34ch; line-height:1.1}
+  #s11 .close .big{font-size:clamp(25px,2.6vw + 14px,40px); line-height:1.14; letter-spacing:-.012em; max-width:none}
   #s11 .close .sub{font-size:clamp(14px,.45vw + 12.8px,17.5px); max-width:none; margin-top:13px}
   #s11 .run{margin-top:clamp(30px,6vh,60px)}
   .proofline{font-family:"JetBrains Mono",monospace; font-size:.82em; letter-spacing:.06em;
@@ -165,18 +165,24 @@
   li{display:grid; grid-template-columns:auto 1fr; gap:11px; align-items:baseline; max-width:64ch}
   li::before{content:""; width:7px; height:7px; border-radius:1px; background:var(--igusa); transform:translateY(-1px)}
 
+  /* two-column bullet list */
+  .slide > ul, ul.split{font-size:1.08em}
+  ul.split{display:block; columns:2; column-gap:34px; margin-top:14px}
+  ul.split li{break-inside:avoid; max-width:none; margin:0 0 13px; line-height:1.5}
+  @media (max-width:760px){ ul.split{columns:1} }
+  /* slide 10: flow in order across the row, so the third point starts the next row on the left */
+  #s4 ul.split{columns:auto; display:grid; grid-template-columns:1fr 1fr; gap:13px 34px; align-items:start}
+  #s4 ul.split li{margin:0}
+  @media (max-width:760px){ #s4 ul.split{grid-template-columns:1fr} }
+
   table{border-collapse:collapse; width:100%; margin-top:20px; font-size:.9em}
   th,td{text-align:left; padding:9px 12px 9px 0; border-bottom:1px solid var(--rule); vertical-align:top}
   th{font-family:"JetBrains Mono",monospace; font-size:.76em; text-transform:uppercase;
      letter-spacing:.09em; color:var(--muted); font-weight:500; border-bottom-color:var(--rule-strong)}
   td:first-child{font-weight:600; white-space:nowrap; padding-right:20px}
   .tscroll{overflow-x:auto}
-  .parts td:nth-child(2){
-    font-family:"JetBrains Mono",monospace; font-size:.78em; line-height:1.5;
-    color:var(--indigo); white-space:nowrap; padding-right:22px;
-  }
-  .parts td:nth-child(3){color:var(--ink-2)}
-  .parts th:nth-child(2),.parts th:nth-child(3){white-space:nowrap}
+  .parts td:nth-child(2){color:var(--ink-2)}
+  .parts td:first-child{color:var(--ink); padding-right:26px}
 
   /* the five queries */
   .qt{font-size:.85em}
@@ -184,9 +190,12 @@
   .qt td:nth-child(2){font-family:"JetBrains Mono",monospace; font-size:.92em; color:var(--ink-2); white-space:nowrap; padding-right:18px}
   .qt td:nth-child(3){color:var(--muted); white-space:nowrap}
   .qt th{font-size:.72em}
+  .qt th,.qt td{padding-top:6px; padding-bottom:6px}
+  #s10 .chart{max-width:800px}
+  #s10 > p{margin-top:14px}
 
   /* the memory diagram */
-  .diagram{margin-top:22px; background:var(--surface); border:1px solid var(--rule);
+  .diagram{max-width:900px; margin-top:22px; background:var(--surface); border:1px solid var(--rule);
            border-radius:4px; padding:18px; box-shadow:var(--shadow)}
   .diagram svg{display:block; width:100%; height:auto}
   .dl{font-family:"Source Sans 3",sans-serif; font-size:13px; fill:var(--ink)}
@@ -210,7 +219,7 @@
   @media (max-width:760px){ .arrow{display:none} }
 
   /* ---- charts ------------------------------------------------------------ */
-  .chart{margin-top:20px; background:var(--surface); border:1px solid var(--rule);
+  .chart{max-width:900px; margin-top:20px; background:var(--surface); border:1px solid var(--rule);
          border-radius:4px; padding:18px 18px 12px; box-shadow:var(--shadow)}
   .chart svg{display:block; width:100%; height:auto}
   .ct{font-family:"JetBrains Mono",monospace; font-size:11px; fill:var(--muted); letter-spacing:.04em}
@@ -277,27 +286,27 @@
 <div class="deck">
   <main class="stage" id="stage">
 
-    <!-- 1 ------------------------------------------------------------------ -->
+    <!-- 1 ------------------------------------------------------------------- -->
     <section class="slide" id="s1">
       <div class="title-wrap">
         <div class="wordmark">tatami</div>
         <div class="weave"></div>
-        <p class="thesis">Tatami reads JSON that declares no schema, and writes the OCaml types it implies. Every value in the data fits its type (<b>adequacy</b>). The type allows nothing the data never contained (<b>minimality</b>). And a field is <code>option</code> only where a value was actually missing.</p>
-        <p class="proofline">All of it machine-checked in Lean 4</p>
+        <p class="thesis">Hand Tatami a pile of JSON with no schema. It finds the tables inside, writes a typed <code>.mli</code> for each one, and a loader to fill them. The data ends up in typed columns, which is what makes queries fast.</p>
+        <p class="proofline">Schema inference and code generation, proved in Lean 4</p>
         <p class="authors">Durwasa &nbsp;&middot;&nbsp; Vimala &nbsp;&middot;&nbsp; Vishakh<span>IIT Madras</span></p>
         <div class="chips">
-          <div class="chip"><b class="num">223</b><span>theorems &amp; lemmas</span></div>
           <div class="chip"><b class="num">3.5&times;</b><span>on computed scans</span></div>
-          <div class="chip"><b>Lean 4 &rarr; .mli &rarr; OCaml</b><span>end to end</span></div>
+          <div class="chip"><b class="num">223</b><span>theorems proved</span></div>
+          <div class="chip"><b>JSON &rarr; Lean 4 &rarr; OCaml</b><span>inferred, then compiled</span></div>
         </div>
       </div>
     </section>
 
-    <!-- 2 ------------------------------------------------------------------ -->
+    <!-- 2 ------------------------------------------------------------------- -->
     <section class="slide" id="s2" hidden>
       <div class="eyebrow">The problem</div>
       <h2>Querying JSON Is Slow. Querying Tables Is Fast.</h2>
-      <p class="lede">A document has to be walked. A table can be scanned, indexed and joined. Getting from one to the other needs a schema, and the JSON never states one, so we derive it from the documents themselves:</p>
+      <p class="lede" style="max-width:none">A document has to be walked. A table can be scanned, indexed and joined. Getting from one to the other needs a schema, and the JSON never states one, so we derive it from the documents themselves:</p>
       <ul>
         <li><span><strong>The types.</strong> <code>ms</code> is an <code>int</code>, <code>rate</code> a <code>float</code>.</span></li>
         <li><span><strong>The nullability.</strong> Which fields can be missing, and which never are.</span></li>
@@ -305,11 +314,26 @@
       </ul>
     </section>
 
+    <!-- 3 ------------------------------------------------------------------- -->
     <section class="slide" id="s3" hidden>
       <div class="eyebrow">The thesis</div>
       <h2>An <code>.mli</code> Is a Contract</h2>
-      <p class="lede">A signature file sits on a boundary and says exactly what crosses it. That is the right home for an inferred schema, not a JSON-schema document some loader re-interprets at runtime.</p>
+      <p class="lede" style="max-width:none">A signature file sits on a boundary and says exactly what crosses it. That is the right home for an inferred schema, not a JSON-schema document some loader re-interprets at runtime.</p>
       <div class="cols">
+        <figure style="margin:0">
+<pre><span class="c">// small.json, one job and its steps</span>
+<span class="k">"jobs"</span>: [
+  { "id": 2, "os": "windows",
+    <span class="k">"steps"</span>: [
+      { "id": 3, "name": "lint",
+        "ms": 4516, "rate": 0.000724,
+        <span class="o">"error"</span>: <span class="h">null</span> },
+      { "id": 4, "name": "checkout",
+        "ms": 2083, "rate": 0.000308,
+        <span class="o">"error"</span>: "\"sync-web\" not found" },
+      { "id": 5, "name": "deploy",
+        "ms": 98950, "rate": 0.000936 } ] } ]</pre>
+        </figure>
         <figure style="margin:0">
 <pre><span class="c">(* step.mli, generated by Lean *)</span>
 <span class="k">type</span> t
@@ -321,125 +345,70 @@
 <span class="k">val</span> <span class="o">error</span> : t -&gt; string <span class="h">option</span>
 <span class="k">val</span> ms    : t -&gt; int
 <span class="k">val</span> rate  : t -&gt; float</pre>
-          <figcaption>schema/step.mli</figcaption>
         </figure>
-        <div>
-          <p style="margin-top:0">Read it and you know the table:</p>
-          <ul>
-            <li><span>its columns and their types;</span></li>
-            <li><span>that <code>error</code> is the <span class="em">only</span> column that can be null;</span></li>
-            <li><span>that <code>ms</code> is <code>int</code>, <strong>not</strong> <code>int option</code>, because the data never lacked it;</span></li>
-            <li><span><code>of_job</code>, the foreign key expressed as a function;</span></li>
-            <li><span><code>idx</code>, the array position. A JSON array is a <strong>list</strong>; a SQL table is a <strong>set</strong>, so the ordering is lost on the way in. <code>ORDER BY idx</code> is what brings it back.</span></li>
-          </ul>
-        </div>
+      </div>
+      <div>
+        <p style="margin-top:18px">Read it and you know the table:</p>
+        <ul class="split">
+          <li><span>its columns and their types;</span></li>
+          <li><span>that <code>error</code> is the <span class="em">only</span> column that can be null. It holds a string in one step, <code>null</code> in another and is missing altogether from a third, so the type is <code>string option</code>;</span></li>
+          <li><span>that <code>ms</code> is <code>int</code>, <strong>not</strong> <code>int option</code>, because the data never lacked it;</span></li>
+          <li><span><code>of_job</code>, the foreign key expressed as a function. It comes from the nesting, not from any field in the step;</span></li>
+          <li><span><code>idx</code>, the array position. A JSON array is a <strong>list</strong>; a SQL table is a <strong>set</strong>, so the ordering is lost on the way in. <code>ORDER BY idx</code> is what brings it back.</span></li>
+        </ul>
       </div>
     </section>
 
-    <!-- 4 ------------------------------------------------------------------ -->
-    <section class="slide" id="s4" hidden>
-      <div class="eyebrow">Why functional</div>
-      <h2>Proved, Compiled and Executed</h2>
-      <p class="lede">Lean 4 for inference and proof, OCaml for everything after. The <code>.mli</code> is the only thing that passes between them, and all three stages read the same one.</p>
-      <ul>
-        <li><span><strong>Lean 4 proves it, then writes it.</strong> For every corpus it accepts, the signature it emits is provably a description of that data: types principal, nullability exact, the table graph the same graph. The step from documents to a signature carries a <span class="em">theorem</span>, not a test suite.</span></li>
-        <li><span><strong>The generated <code>.ml</code> fills the tables.</strong> The same signature, compiled: it streams documents into four tables and pushes the rows into Postgres through <code>pgx</code>, parents and array positions intact.</span></li>
-        <li><span><strong>The backend reads it again at run time.</strong> <code>Schema.load_dir "schema"</code> parses the <code>.mli</code> files as data and picks each column's physical layout from them, <code>Plain</code> or <code>Nullable</code>, <code>Dense</code> or <code>Var</code>. Nothing is special-cased by name.</span></li>
-      </ul>
-    </section>
-
+    <!-- 4 ------------------------------------------------------------------- -->
     <section class="slide" id="s5" hidden>
       <div class="eyebrow">The pipeline</div>
       <h2>From Documents to Dense Typed Columns</h2>
       <div class="flow">
-        <div class="node"><span class="tag">input</span><h3>Schemaless JSON</h3><p>Four nested levels, every level an array. No declared shape.</p></div>
+        <div class="node"><span class="tag">input</span><h3>Schemaless JSON</h3><p>Objects and arrays nested to any depth. No declared shape.</p></div>
         <div class="arrow">&rarr;</div>
         <div class="node lean"><span class="tag">Lean 4</span><h3>Infer &amp; Prove</h3><p>Principal type per field; counts of value, null and absence.</p></div>
         <div class="arrow">&rarr;</div>
         <div class="node lean"><span class="tag">Lean 4</span><h3>Emit Contract</h3><p>One <code>.mli</code> per table, plus <code>.ml</code> and a loader.</p></div>
         <div class="arrow">&rarr;</div>
-        <div class="node ml"><span class="tag">OCaml</span><h3>Stream &amp; Shred</h3><p>Four tables, referential integrity kept. Postgres via <code>pgx</code>.</p></div>
+        <div class="node ml"><span class="tag">OCaml</span><h3>Stream &amp; Shred</h3><p>A table per nested level, references kept. Postgres via <code>pgx</code>.</p></div>
         <div class="arrow">&rarr;</div>
         <div class="node ml"><span class="tag">OCaml</span><h3>Columnar Store</h3><p>One dense typed array per column. Mask only where <code>option</code>.</p></div>
       </div>
-      <p>Every child row keeps its parent and its array position, so the nesting survives the flattening. The same loader fills Postgres, which lets the shredding be checked in SQL.</p>
+      <p style="max-width:none">Every child row keeps its parent and its array position, so the nesting survives the flattening.<br>The same loader fills Postgres, which lets the shredding be checked in SQL.</p>
     </section>
 
-    <!-- 6 ------------------------------------------------------------------ -->
-    <section class="slide" id="s6" hidden>
-      <div class="eyebrow">The proof</div>
-      <h2><code>pipeline_correct</code>, in Five Parts</h2>
-      <p class="lede">223 theorems and lemmas, zero <code>sorry</code>s, composing into one top-level statement.</p>
-      <div class="tscroll">
-      <table class="parts">
-        <thead><tr><th>Part</th><th>What it says</th><th>In plain words</th></tr></thead>
-        <tbody>
-          <tr>
-            <td>Well-formedness</td>
-            <td><code>f.WellFormed</code></td>
-            <td>The output is legal OCaml: nothing is declared twice.</td>
-          </tr>
-          <tr>
-            <td>Canonicity</td>
-            <td><code>ds.Perm es → ts = ts'</code></td>
-            <td>Shuffle the corpus, get the <em>same</em> schema. Two runs agree byte for byte.</td>
-          </tr>
-          <tr>
-            <td>Structure preservation</td>
-            <td><code>CollEdge ↔ FileCollEdge</code><br><code>∧ Rooted s</code></td>
-            <td>The tables mirror the document tree exactly: no link lost, none invented, none unreachable.</td>
-          </tr>
-          <tr>
-            <td>Principality</td>
-            <td><code>(∀ ty ∈ seen, ty ⊑ τ)</code><br><code>∧ (∀ σ …, τ ⊑ σ)</code></td>
-            <td>The least type that fits. Not <code>float</code> for integers, not <code>int option</code> for a column that is never empty.</td>
-          </tr>
-          <tr>
-            <td>Nullability</td>
-            <td><code>values + nulls + absent</code><br><code>= visits</code></td>
-            <td>Optional exactly when something was missing. The <code>option</code> is neither absent nor gratuitous.</td>
-          </tr>
-        </tbody>
-      </table>
-      </div>
-      <p><strong>Quantified over every document list, not ours.</strong> <code>pipeline_correct (ds : List Doc)</code> names no corpus, and nothing in the generator or the store special-cases the CI data. Conditional on both stages succeeding, and silent about rows: Lean describes the tables, OCaml fills them.</p>
-    </section>
-
-    <!-- 7 ------------------------------------------------------------------ -->
+    <!-- 5 ------------------------------------------------------------------- -->
     <section class="slide" id="s7" hidden>
       <div class="eyebrow">Nullability</div>
       <h2>What Knowing Nullability Buys You</h2>
-      <p class="lede">One bit per column, and it settles the entire physical layout.</p>
+      <p class="lede" style="max-width:none">One bit per column, and it decides the whole physical layout.</p>
       <div class="usp">
         <div style="border-left-color:var(--blue)">
-          <h3>The Signature Says <code>int</code></h3>
+          <h3>A column that is never missing</h3>
           <ul>
-            <li><span>Store the integers directly, dense and contiguous.</span></li>
-            <li><span><strong>No mask array at all.</strong></span></li>
-            <li><span>No check before a value: the loop reads, compares, moves on.</span></li>
-            <li><span><strong class="num">8 bytes</strong> a row.</span></li>
-            <li><span>A run of rows can be copied or scanned as one block.</span></li>
+            <li><span>The values sit in one dense array, back to back.</span></li>
+            <li><span>No mask, and no check before reading a value.</span></li>
+            <li><span><strong class="num">8 bytes</strong> a row, and a run of rows can be scanned as one block.</span></li>
           </ul>
         </div>
         <div>
-          <h3>The Signature Says <code>int option</code></h3>
+          <h3>A column that can be missing</h3>
           <ul>
-            <li><span>Dense values, <em>plus</em> a parallel mask.</span></li>
-            <li><span>A missing value leaves the slot at its initialiser: <code>0</code> for an int, <code>""</code> for a string.</span></li>
-            <li><span>Those bytes are <span class="em">identical</span> to a real <code>0</code> or a real empty string.</span></li>
-            <li><span>A check before every value.</span></li>
-            <li><span><strong class="num">16 bytes</strong> a row.</span></li>
+            <li><span>The same values, plus a second array saying which ones are real.</span></li>
+            <li><span>A missing slot still holds something: <code>0</code> for a number, <code>""</code> for a string, <span class="em">identical</span> to a real zero or a real empty string.</span></li>
+            <li><span><strong class="num">16 bytes</strong> a row, and a check before every value.</span></li>
           </ul>
         </div>
       </div>
-      <p>That is the mask's whole job: telling <em>no value</em> apart from a value that happens to be zero. When the type says the column is total, there is nothing left to tell apart, so the mask is never built.</p>
+      <p style="max-width:none">That is all the mask is for: telling <em>no value</em> apart from a value that happens to be zero.<br>When the type says the column is never missing, there is nothing left to tell apart, so the mask is never built.</p>
     </section>
 
+    <!-- 6 ------------------------------------------------------------------- -->
     <section class="slide" id="s8" hidden>
       <div class="eyebrow">The payoff</div>
-      <h2>The Proof Is What Lets Us Delete the Mask</h2>
+      <h2>What an <code>option</code> Costs in Memory</h2>
       <div class="diagram">
-        <svg viewBox="0 0 640 300" role="img" aria-label="An int array stores values directly, so one 64-byte cache line holds eight of them. An int option array holds eight pointers and no values; each Some is a 16-byte block of header plus value, so only four fit per cache line and the values occupy two further lines, each reached by a dependent load.">
+        <svg viewBox="0 0 640 300" role="img" aria-label="An int array stores values directly, so one cache line holds eight of them. An int option array holds eight pointers and no values; each Some is a 16-byte block of header plus value, so the values occupy two further lines, each reached by a dependent load.">
           <text class="dc" x="0" y="11" fill="var(--blue)">int array</text>
           <rect x="0" y="18" width="640" height="30" rx="3" fill="var(--surface-2)" stroke="var(--blue)" stroke-width="1.5"></rect>
           <g stroke="var(--blue)" stroke-width="1" opacity="0.4">
@@ -452,7 +421,7 @@
           <line x1="560" y1="18" x2="560" y2="48"></line>
           </g>
           <g class="dc" text-anchor="middle"><text x="40" y="38">11414</text><text x="120" y="38">28320</text><text x="200" y="38">3674</text><text x="280" y="38">9051</text><text x="360" y="38">44120</text><text x="440" y="38">812</text><text x="520" y="38">6607</text><text x="600" y="38">15903</text></g>
-          <text class="dm" x="0" y="64" fill="var(--blue)">one 64-byte cache line  →  8 values</text>
+          <text class="dm" x="0" y="64" fill="var(--blue)">one cache line  →  8 values</text>
 
           <text class="dc" x="0" y="104" fill="var(--vermilion)">int option array</text>
           <rect x="0" y="111" width="640" height="30" rx="3" fill="var(--surface-2)" stroke="var(--vermilion)" stroke-width="1.5"></rect>
@@ -466,10 +435,10 @@
           <line x1="560" y1="111" x2="560" y2="141"></line>
           </g>
           <g fill="var(--vermilion)"><circle cx="40" cy="126" r="3.5"></circle><circle cx="120" cy="126" r="3.5"></circle><circle cx="200" cy="126" r="3.5"></circle><circle cx="280" cy="126" r="3.5"></circle><circle cx="360" cy="126" r="3.5"></circle><circle cx="440" cy="126" r="3.5"></circle><circle cx="520" cy="126" r="3.5"></circle><circle cx="600" cy="126" r="3.5"></circle></g>
-          <text class="dm" x="0" y="157" fill="var(--vermilion)">the same 64-byte line  →  8 pointers, 0 values</text>
+          <text class="dm" x="0" y="157" fill="var(--vermilion)">the same line  →  8 pointers, no values</text>
 
           <path d="M40 141 L40 190" stroke="var(--muted)" stroke-width="1" fill="none"></path>
-          <text class="dm" x="70" y="182">each Some is 16 bytes (header + value), so only 4 fit in a line</text>
+          <text class="dm" x="70" y="182">every value is boxed away: 16 bytes, a header and the number</text>
 
           <rect x="0" y="190" width="640" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
           <g stroke="var(--rule-strong)" stroke-width="1.5">
@@ -514,17 +483,17 @@
           <text x="600" y="251">15903</text>
           </g>
 
-          <text class="dm" x="0" y="284" fill="var(--ink-2)">2 more cache lines, and a dependent load per value</text>
+          <text class="dm" x="0" y="284" fill="var(--ink-2)">two more cache lines, and a pointer to follow for every value</text>
         </svg>
       </div>
-      <p>8 bytes an element against 24, but size is the smaller half. The dense array is <em>walked</em>; the boxed one is <strong>chased</strong>, and the next address is unknown until the current pointer lands.</p>
+      <p style="max-width:none">Eight bytes an element against twenty four, and size is the smaller half of it.<br>The dense array is <em>walked</em>. The boxed one is <strong>chased</strong>, and the next address is unknown until the current pointer lands.</p>
     </section>
 
-    <!-- 9 ------------------------------------------------------------------ -->
+    <!-- 7 ------------------------------------------------------------------- -->
     <section class="slide" id="s9" hidden>
       <div class="eyebrow">The measurements</div>
       <h2>Both Stores Must Agree</h2>
-      <p class="lede">Five questions. Three stores, each implementing the same signature.</p>
+      <p class="lede" style="max-width:none">The same questions, asked of three stores that all implement the same signature.</p>
 
       <div class="agree">
         <div class="st">raw Yojson</div>
@@ -536,22 +505,24 @@
 
       <div class="run">if !disagreements &gt; 0 then printf "%d disagreements -- timings below are meaningless"</div>
 
-      <p><strong>Zero disagreements, on every corpus.</strong> A benchmark where each side answers a question shaped to suit it measures nothing, so the answers are compared before the timings are believed.</p>
-      <p style="font-size:.88em;color:var(--muted)">Differential <em>testing</em>, not a theorem. Lean proves the schema; that the two stores answer alike is checked, not proved.</p>
+      <p style="max-width:none"><strong>Zero disagreements, on every corpus.</strong> If each store answered a question shaped to suit it, the timings would mean nothing.<br>So the answers are compared first, and only then are the timings believed.</p>
+      <p style="font-size:.88em;color:var(--muted);max-width:none">This part is <em>tested</em>, not proved. Lean proves the schema. That the stores answer alike is checked by running them.</p>
     </section>
 
+    <!-- 8 ------------------------------------------------------------------- -->
     <section class="slide" id="s10" hidden>
       <div class="eyebrow">The measurements &middot; results</div>
       <h2>Which Queries the Types Make Faster</h2>
+      <p class="lede" style="max-width:none">Five queries, each touching the data a different way.</p>
       <div class="tscroll">
       <table class="qt">
         <thead><tr><th>Query</th><th>In SQL</th><th>What it touches</th></tr></thead>
         <tbody>
-          <tr><td>computed</td><td>SELECT sum(ms * rate) FROM step WHERE ms &gt; n</td><td>two columns, arithmetic</td></tr>
-          <tr><td>scan</td><td>SELECT count(*) FROM step WHERE ms &gt; n</td><td>one column of ten</td></tr>
+          <tr><td>computed</td><td>SELECT sum(ms * rate) FROM step WHERE ms &gt; n</td><td>two columns, and arithmetic over both</td></tr>
+          <tr><td>scan</td><td>SELECT count(*) FROM step WHERE ms &gt; n</td><td>one column out of ten</td></tr>
           <tr><td>by_status</td><td>SELECT status, max(ms) FROM step GROUP BY status</td><td>one column, grouped</td></tr>
-          <tr><td>document</td><td>SELECT * FROM repo JOIN run JOIN job JOIN step WHERE repo.id = ?</td><td>every column of one subtree</td></tr>
-          <tr><td>three_hop</td><td>SELECT sum(step.ms) FROM step JOIN job JOIN run JOIN repo WHERE org = ?</td><td>three joins upward</td></tr>
+          <tr><td>document</td><td>SELECT * FROM repo JOIN run JOIN job JOIN step WHERE repo.id = ?</td><td>every column of one subtree, joined back together</td></tr>
+          <tr><td>three_hop</td><td>SELECT sum(step.ms) FROM step JOIN job JOIN run JOIN repo WHERE org = ?</td><td>three joins up the nesting</td></tr>
         </tbody>
       </table>
       </div>
@@ -606,21 +577,69 @@
           <span><i style="background:var(--amber)"></i>row-major faster</span>
         </div>
       </div>
-      <p><strong>Not a faster database.</strong> Two go the other way by design: <code>document</code> is what a row store is for. The claim: <strong>once the type is known you can predict which queries get faster, from the schema, before reading a row.</strong></p>
+      <p style="max-width:none"><strong>Not a faster database.</strong> Two go the other way, and that is expected: rebuilding a whole record is what a row store is for.<br>The claim is narrower. <strong>Once the types are known, you can say which queries get faster by reading the schema, before touching a single row.</strong></p>
         </section>
 
+    <!-- 9 ------------------------------------------------------------------- -->
+    <section class="slide" id="s6" hidden>
+      <div class="eyebrow">The proof</div>
+      <h2><code>pipeline_correct</code>, in Five Parts</h2>
+      <p class="lede" style="max-width:none">223 theorems, zero <code>sorry</code>s, composing into one top-level statement.</p>
+      <div class="tscroll">
+      <table class="parts">
+        <thead><tr><th>Part</th><th>What it says</th></tr></thead>
+        <tbody>
+          <tr>
+            <td>Well-formedness</td>
+            <td>The output is legal OCaml. Nothing is declared twice.</td>
+          </tr>
+          <tr>
+            <td>Canonicity</td>
+            <td>Shuffle the documents and you get the <em>same</em> schema. Two runs agree byte for byte.</td>
+          </tr>
+          <tr>
+            <td>Structure preservation</td>
+            <td>The tables mirror the nesting exactly. No link lost, none invented, none left unreachable.</td>
+          </tr>
+          <tr>
+            <td>Principality</td>
+            <td>Every field gets the tightest type that still fits. Not a decimal for whole numbers, and not an optional column that was never empty.</td>
+          </tr>
+          <tr>
+            <td>Nullability</td>
+            <td>A field is optional exactly when some record was missing it. The <code>option</code> is neither absent nor gratuitous.</td>
+          </tr>
+        </tbody>
+      </table>
+      </div>
+      <p style="max-width:none"><strong>It holds for any documents, not just ours.</strong> The theorem is written for any list of documents, so nothing in it is tuned to the data we tested on.</p>
+    </section>
+
+    <!-- 10 ------------------------------------------------------------------ -->
+    <section class="slide" id="s4" hidden>
+      <div class="eyebrow">Why functional</div>
+      <h2>Proved, Compiled and Executed</h2>
+      <p class="lede" style="max-width:none">Lean 4 does the inference and the proof. OCaml does everything after. The <code>.mli</code> is the only thing that passes between them, and all three stages read the same one.</p>
+      <ul class="split">
+        <li><span><strong>Lean 4 proves it, then writes it.</strong> For any data it accepts, the signature it emits is provably a description of that data: the tightest types, the exact nullability, the same nesting. That step carries a <span class="em">theorem</span>, not a test suite.</span></li>
+        <li><span><strong>The generated code fills the tables.</strong> The same signature, compiled. It streams the documents into the tables and pushes the rows into Postgres, with parents and array positions intact.</span></li>
+        <li><span><strong>The store reads the signature again when it runs.</strong> It parses the <code>.mli</code> files as data and picks each column's layout from what they say. Nothing is special-cased by name.</span></li>
+      </ul>
+    </section>
+
+    <!-- 11 ------------------------------------------------------------------ -->
     <section class="slide" id="s11" hidden>
       <div class="eyebrow">In conclusion</div>
 
       <div class="close">
         <div>
           <p class="big">Everywhere else nullability is an <span class="hi">input</span>. Here it is an <span class="hi">output</span>.</p>
-          <p class="sub">Parquet and Arrow already drop the validity buffer for a non&#8209;nullable field. But somebody <em>asserts</em> that flag, hand&#8209;written or sampled and guessed, and nothing checks it, though it decides whether a bitmap exists for every row for the life of the data. We derive it from the documents and prove it exact, then hand it to the storage engine as an <code>.mli</code> that Lean proves, OCaml compiles, and the server parses at startup.</p>
+          <p class="sub">Parquet and Arrow already skip the validity bitmap for a column that cannot be null. But somebody has to <em>assert</em> that flag, by hand or by sampling and guessing, and nothing checks it, even though it decides whether a bitmap exists for every row for the life of the data. We work it out from the documents instead, and prove it exact.</p>
         </div>
 
         <div>
           <p class="big">And the exactness survives being computed with.</p>
-          <p class="sub">A conservative analysis decays: maybe&#8209;null combined with maybe&#8209;null is maybe&#8209;null, and a few operations deep everything is <code>option</code> again. Our leaves are generated exact, so <code>ms &times; rate</code> is total too and needs no mask of its own. That is why <code>computed</code> at <strong class="num">3.34&times;</strong> beats <code>scan</code> at <strong class="num">3.21&times;</strong> while doing strictly more work per row.</p>
+          <p class="sub">A cautious analysis decays: maybe null combined with maybe null is maybe null, and a few steps later everything is optional again. Ours start out exact, so a product of two total columns is total as well and needs no mask of its own. That is why the computed query, at <strong class="num">3.34&times;</strong>, beats the plain scan at <strong class="num">3.21&times;</strong> while doing strictly more work per row.</p>
         </div>
       </div>
 
