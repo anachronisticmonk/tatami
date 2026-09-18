@@ -1,21 +1,25 @@
 # tatami — 5 minute demo transcript
 
-*Roughly 780 spoken words. Screen directions in italics. Timings are targets,
+*Roughly 1021 spoken words. Screen directions in italics. Timings are targets,
 not a script to race against.*
 
 ---
 
-## 0:00 — The problem (30s)
+## 0:00 — The problem (45s)
 
 
-> Here's a pile of JSON. A CI service's build history — repos contain runs,
-> runs contain jobs, jobs contain steps. Nobody wrote down what shape it is.
+> Here's a pile of JSON: a CI service's build history. Repos contain runs, runs
+> contain jobs, jobs contain steps, and nothing declares the shape.
 >
-> I want this in typed columnar tables. The usual way is to guess the schema,
-> write a loader by hand, and find out where you were wrong in production.
+> I want it in typed columnar tables. Tables query faster than documents, and
+> for scans a columnar layout has been the known answer for decades. That part
+> is not in question.
 >
-> We did something else. We asked Lean 4 to infer the schema **and prove the
-> inference correct**, then had it generate the OCaml that does the loading.
+> What we built is the path between the two, and it is three pieces. **Lean 4
+> infers the schema and proves the inference correct.** It then **generates the
+> OCaml**: a signature per table, and the loader that streams the documents into
+> four tables and into Postgres. And then we **benchmarked** the result against
+> a row-major store and against raw JSON.
 
 ---
 
@@ -35,6 +39,13 @@ and a `note` that is null in one record and absent in another.*
 > That's the whole thesis in one line. `qty` is `int`, not `int option`. The
 > analysis is conservative by nature, but the leaves are *generated*, so it
 > comes out exact.
+>
+> *Paste a second, unrelated document: `examples/orders/orders.json`.*
+>
+> And nothing here is built for that one corpus. Different shape, nested object,
+> two arrays, a map, and you get a different set of tables out. The theorem is
+> quantified over *any* list of documents. `pipeline_correct` never mentions our
+> data, and neither the generator nor the store special-cases a field by name.
 
 ---
 
