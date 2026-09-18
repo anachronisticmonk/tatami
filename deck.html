@@ -59,7 +59,7 @@
     min-height:100%;
     display:grid; grid-template-rows:1fr auto;
     padding:0 16px;
-    max-width:1120px; margin:0 auto;
+    max-width:1240px; margin:0 auto;
   }
   .stage{display:grid; align-content:center; padding-block:clamp(24px,4vh,56px); min-height:0}
 
@@ -113,6 +113,10 @@
   .close .sub{font-size:clamp(13.5px,.35vw + 12.6px,15.5px); color:var(--muted);
               max-width:68ch; margin:7px 0 0; line-height:1.5}
   .close .big .hi{color:var(--indigo)}
+  #s11 .close{gap:clamp(30px,6vh,64px); margin-top:clamp(26px,5vh,52px)}
+  #s11 .close .big{font-size:clamp(26px,3.1vw + 13px,54px); max-width:34ch; line-height:1.1}
+  #s11 .close .sub{font-size:clamp(14px,.45vw + 12.8px,17.5px); max-width:none; margin-top:13px}
+  #s11 .run{margin-top:clamp(30px,6vh,60px)}
   .proofline{font-family:"JetBrains Mono",monospace; font-size:.82em; letter-spacing:.06em;
              color:var(--igusa); text-transform:uppercase; font-weight:500}
   .authors{font-size:1.04em; color:var(--ink); font-weight:600; letter-spacing:.01em}
@@ -595,11 +599,6 @@
       <div class="eyebrow">In conclusion</div>
 
       <div class="close">
-        <div>
-          <p class="big">Columns beating rows on scans is not our finding.</p>
-          <p class="sub">Settled since MonetDB and C&#8209;Store. Our numbers agree with it on some queries and not others, and agreeing with established results is not a contribution.</p>
-        </div>
-
         <div>
           <p class="big">Everywhere else nullability is an <span class="hi">input</span>. Here it is an <span class="hi">output</span>.</p>
           <p class="sub">Parquet and Arrow already drop the validity buffer for a non&#8209;nullable field. But somebody <em>asserts</em> that flag, hand&#8209;written or sampled and guessed, and nothing checks it, though it decides whether a bitmap exists for every row for the life of the data. We derive it from the documents and prove it exact, then hand it to the storage engine as an <code>.mli</code> that Lean proves, OCaml compiles, and the server parses at startup.</p>
