@@ -1,74 +1,175 @@
-# tatami — 5 minute demo transcript
+# tatami — demo transcript
 
-*Roughly 1021 spoken words. Screen directions in italics. Timings are targets,
-not a script to race against.*
+*Presenter notes. Italics are what's on screen, quoted blocks are what you say.
+Timings are targets, not a metronome. Read it aloud once before the take, and
+anything that trips your tongue, change it.*
 
 ---
 
 ## 0:00 — The problem (45s)
 
+*Screen: terminal, the first few hundred bytes of `corpus/small.json`.*
 
-> Let us say we have a collection of JSON documents for example we have data for a CI service's build history. 
-> Repos contain runs, runs
-> contain jobs, jobs contain steps, and we don't have a predetermined SCHEMA.
+> So let's say we have a collection of JSON documents. In our case it's data for
+> a CI service's build history, so repos contain runs, runs contain jobs, and
+> jobs contain steps. And crucially, there's no predetermined schema. Nobody
+> wrote one down.
 >
-> I want it in typed columnar tables. Tables query faster than documents, and
-> for scans a columnar layout has been the known answer for decades. 
+> Now what I actually want is this in typed columnar tables. And the reasoning is
+> pretty simple: tables query faster than documents, and for scans, a columnar
+> layout has been the known answer for decades. That part isn't ours.
 >
-> What we built is the path between the two, and it is three pieces. **Lean 4
-> infers the schema and proves the inference correct.** It then **generates the
-> OCaml**: a signature per table, and the loader that streams the documents into
-> tables and into Postgres. And then we **benchmarked** it.
->
+> So what we built is the path between those two. And it's three pieces. First,
+> **Lean 4 infers the schema, and proves the inference correct**. Then it
+> **generates the OCaml** for us: a signature per table, plus the loader that
+> streams the documents into tables and into Postgres. And then finally, we
+> **benchmarked** it.
 
 ---
 
-## 0:30 — The playground (45s)
+## 0:45 — The playground (45s)
 
-*Screen: browser, `localhost:8420`. "null and absence"
+*Screen: browser, `localhost:8420`, with the "null and absence" document ready
+to paste.*
 
-Given a json document wer are generating equivalent .mli file which is an interface file for OCaml.
-
-Here we have an example where the key x is there in every document; every document is represented as a value in an array.
-the key y is null and int so we infer the type option int whereas the key z does not have a value in each of the document 
-so we cannot infer its type so its unit option.
-
+> Right, so this is the playground. Given a JSON document, we generate the
+> equivalent `.mli` file, which is just the interface file for OCaml.
 >
-> And nothing here is built for that one corpus. Different shape, nested object,
-> two arrays, a map, and you get a different set of tables out. The theorem is
-> quantified over *any* list of documents. 
+> And here we have an example. Every document is a value in an array, and the
+> key `x` is there in every single document, so that one's easy.
+>
+> Now the key `y` is sometimes null and sometimes an int, so we infer the type
+> `int option`. Whereas the key `z` doesn't have a value in *any* of the
+> documents, so there's nothing to infer a type from at all, and you get
+> `unit option`.
+>
+> *(paste a second, unrelated document)*
+>
+> And nothing here is built for that one corpus. Completely different shape,
+> nested object, couple of arrays, a map, and you get a different set of tables
+> out. The theorem is quantified over *any* list of documents.
+
 ---
 
-## 1:15 — Why an .mli (35s)
+## 1:30 — Why an .mli (35s)
 
 *Screen: editor, `runs_jobs_steps.mli`.*
 
-> Why a signature file? Because an `.mli` is a **contract** — it's what sits on
-> a boundary and says exactly what crosses it.
+> So why a signature file? Well, because an `.mli` is a **contract**. It's the
+> thing that sits on a boundary and says exactly what crosses it.
 >
-> We learn the table's columns, their types, the column `error` is
-> a column that can be null, its string option because error has a string message in the corpus, and the foreign key, expressed
-> as a function. The  data has become something the OCaml compiler
-> enforces, instead of a JSON schema document some loader interprets at
-> runtime.
+> And you can just read it off. We learn the table's columns, we learn their
+> types. So let's say the column `error` is a column that can be null: it comes
+> out as `string option`, because error carries a string message in the corpus.
+> And the foreign key is there too, expressed as a function.
+>
+> So the data has become something the OCaml compiler enforces, instead of a
+> JSON schema document that some loader interprets at runtime.
 
 ---
 
-## 1:50 — The proof (95s)
+## 2:05 — Why the layout wins (75s)
+
+*Screen: `lib/rowmajor/records.ml`, the `type step` declaration.*
+
+> Okay, so this is the row-major store's step record. Five fields.
+>
+> Now, every OCaml heap block carries a one-word header, and every field takes
+> one word whatever it holds. So that's six words, at eight bytes a word, which
+> gives you **48 bytes** a record.
+>
+> And a step array is an array of *pointers*, so per element you also add the
+> eight-byte slot in the array. So, **56 bytes an element**.
+>
+> Now, to sum `ms`, you load a pointer, you dereference it, and you pull the
+> cache line holding the block. And this machine is a MacBook Pro M2, so the
+> cache line is 128 bytes, and a block is 48. Which means one line gives you two
+> or three records. Call it **under three values a line**.
+
+*Screen: `lib/columnar/columnar.ml`, the `scan` loop.*
+
+> Same query, columnar. Here `ms` is an `int array`, and an OCaml int is
+> immediate, so it lives in the array word itself. Eight bytes an element. So one
+> 128-byte cache line carries **sixteen values, and every byte of it is a value
+> you want**.
+>
+> So that's **under three, against sixteen**.
+>
+> And here's the thing: both stores know `ms` is an int and cannot be null. The
+> record store's types are hand-written, and they're just as good. Only the
+> layout differs.
+
+*Screen: back to `schema/step.mli`.*
+
+> So then, why not skip the inference and just make every column `int option`?
+>
+> Because on a scalar, `option` is a boxing. `Some` is a sixteen-byte block, and
+> the array holds a pointer to it. So that's **24 bytes an element**, and an
+> indirection before you even see the number. You end up with around 5.3 values
+> a line. Which is better than row-major, sure, but we get more performance from
+> knowing the type is `int` instead of an `int option`.
+>
+> And that's the cost of not knowing. And you pay it per row, for the life of
+> the data.
+
+---
+
+## 3:20 — The measurements (60s)
+
+*Screen: browser, `localhost:8000`, the performance tab.*
+
+> So we're running five queries across three stores: raw Yojson, a row-major
+> record store, and the columnar one. And we treat raw Yojson as an oracle,
+> because timings and measurements only matter if the query passes differential
+> testing first.
+>
+> And all of this is one machine, by the way. A MacBook Pro with an Apple M2
+> Pro: ten cores, six performance and four efficiency, 16 gig, 64K of L1 data
+> cache, 4 meg of L2, and **128-byte cache lines**. OCaml 5.3. So as we said, a
+> dense `int` column puts **sixteen** values on one line.
+>
+> Scans come out about **three times** faster. And the computed query, that's
+> `sum(ms × rate)`, about three and a half.
+
+*Point at `document` and `three_hop`.*
+
+> Now, we also have two queries, `document` and `three_hop`, where the row-major
+> store beats the column-major one. So these two go the *other* way.
+>
+> And `document` is really the case a row store exists for. That's primarily
+> because a join at the record level already gets all the required data sitting
+> right there, whereas in contrast the columnar store has to hop around between
+> tables to get the data the join asked for.
+>
+> And moreover, we don't want to optimise the query based on the cardinality of
+> the table, because that would mean sneaking into the data, and that defeats
+> the purpose. We want all the optimisations to happen strictly based on the
+> `.mli` file.
+
+*Screen: the selectivity sweep.*
+
+> And here's the shape a planner would want. Sweep the predicate threshold: at
+> 0.02% selectivity, fourteen times. At a full scan, fifteen. And in the middle,
+> about three. So, a U-curve. And the schema already says which columns are
+> scannable and which are nullable.
+
+---
+
+## 4:20 — The proof (95s)
 
 *Screen: talking head, or hold the previous frame.*
 
-> Tatami infers a database schema from schemaless JSON. Why trust it?
+> So, Tatami infers a database schema from schemaless JSON. Why trust it?
 >
-> Because the OCaml signature we generate is a contract. And since we generate
-> it rather than write it, we can prove things about the generator.
+> Well, because the OCaml signature we generate is a contract. And since we
+> *generate* it rather than write it, we can prove things about the generator.
 >
-> It all comes down to one theorem.
+> And it all comes down to one theorem.
 
 *Screen: open `Proofs/Correctness.lean` at **line 148**, `pipeline_correct`.
 Point at it.*
 
-> Here it is. If Tatami accepted your data and produced a schema, this
+> So here it is. If Tatami accepted your data and produced a schema, this
 > guarantees five things.
 >
 > **One.** The names it makes are always legal, and no two things end up with
@@ -77,20 +178,20 @@ Point at it.*
 > **Two.** Run it twice on the same data in a different order, and you get the
 > exact same answer.
 >
-> **Three.** The shape comes through. If your JSON nests jobs inside runs, the
-> generated code nests them the same way.
+> **Three.** The shape comes through. So if your JSON nests jobs inside runs,
+> the generated code nests them the same way.
 >
 > **Four.** Every field gets the tightest type that still fits all the data.
 >
 > **And five,** a field is optional exactly when some record was missing it.
 >
-> That's the claim. Here's where it's proved.
+> So that's the claim. Now here's where it's proved.
 
 *Screen: the `Proofs/` folder in VS Code, all twelve files visible. Highlight
-each as it is named.*
+each as you name it.*
 
-> That's twelve files, and they're all about two questions. Is the schema right?
-> And does the generated code say so?
+> So that's twelve files, and they're all really about two questions. Is the
+> schema right? And does the generated code say so?
 
 | highlight | say |
 |---|---|
@@ -98,129 +199,60 @@ each as it is named.*
 | `Counts.lean` | is the counting behind 'optional'. |
 | `Inference.lean` | is where order stops mattering, and where the types come out as tight as they go. |
 | `Lattice.lean` | proves joining two types is well defined in the first place. |
-| `Mangle.lean` | is the renaming: a JSON field name becomes an OCaml one without two names ever turning into one. |
+| `Mangle.lean` | is the renaming: a JSON field name becomes an OCaml one, without two names ever turning into one. |
 | `Merge.lean` | shows combining two documents works either way round. |
 | `Tree.lean` | is the nesting surviving into the modules. |
 | `Walk.lean` | keeps everything sorted as it reads. |
 | `Wellformed.lean` | is the check behind number one. |
 
-> And the rest prove the conditions those depend on.
+> And then the rest prove the conditions those ones depend on.
 
 *(the rest: `Order.lean`, `Sorted.lean`, `Spec.lean`)*
 
-*Screen: terminal, the output of `lake build`. Run it before the take so the
-recording does not sit through a compile.*
+*Screen: terminal with the output of `lake build` already on it. Run it before
+the take so the recording doesn't sit through a compile.*
 
 > And it all builds. Two hundred and twenty-three theorems, and we have proved
 > all of them in Lean 4.
 
-## 3:00 — Why the layout wins (75s)
-
-*Screen: `lib/rowmajor/records.ml`, the `type step` declaration.*
-
-> The row-major store's step record. Five fields. Every OCaml heap block carries
-> a one-word header and every field takes one word whatever it holds, so six
-> words at eight bytes: **48 bytes** a record.
->
-> And a step array is an array of *pointers*, so per element add the eight-byte
-> slot in the array. **56 bytes an element.**
->
-> To sum `ms` you load a pointer, dereference it, and pull the cache line
-> holding the block. This machine's line is 128 bytes and a block is 48, so one
-> line gives you **two or three records. Call it under three values a line**, and
-> about twenty-one of the hundred and twenty-eight bytes you fetched are `ms`.
-> The rest is header, name, rate and error, which this query never reads.
-
-*Screen: `lib/columnar/columnar.ml`, the `scan` loop.*
-
-> Same query, columnar. `ms` is an `int array`, and an OCaml int is immediate:
-> it lives in the array word. No block, no pointer. Eight bytes an element, so
-> one 128-byte line carries **sixteen values, and every byte of it is a value
-> you want**. Under three against sixteen, for the same question.
->
-> Both stores know `ms` is an int and cannot be null. The record store's types
-> are hand-written and just as good. Only the layout differs, and that is the
-> three times.
-
-*Screen: back to `schema/step.mli`.*
-
-> So why not skip inference and make every column `int option`? Because on a
-> scalar, `option` is a boxing. `Some` is a sixteen-byte block and the array
-> holds a pointer to it: **24 bytes an element**, and an indirection before you
-> see the number. Even the honest encoding, a dense column beside a mask, is
-> sixteen bytes and a branch on every row.
->
-> That is the cost of not knowing, and you pay it per row for the life of the
-> data.
-
-## 3:45 — The measurements (60s)
-
-*Screen: browser, `localhost:8000`, the charts tab.*
-
-> Five queries, three stores: raw Yojson, a row-major record store, and the
-> columnar one. Every answer is compared before any timing is believed; the
-> harness prints "timings are meaningless" if the stores disagree. They don't.
->
-> All of this is one machine, a MacBook Pro with an Apple M2 Pro: ten cores,
-> six performance and four efficiency, 16 GB, 64 KB of L1 data cache, 4 MB of
-> L2, and **128-byte cache lines**. OCaml 5.3. Five repeats a point. The cache
-> line matters for the next number, so it is worth saying out loud: a dense
-> `int` column puts **sixteen** values on one line, not eight.
->
-> Scans get about **three times** faster. The computed query — `sum(ms × rate)`
-> — about three and a half.
->
-> *Point at `document` and `three_hop`.*
->
-> And these two go the *other* way. That's deliberate. `document` is the case a
-> row store exists for. If columns won that one too, the benchmark would be
-> wrong somewhere.
->
-> We're not claiming we built a faster database. We're claiming something more
-> useful: **once the type is known, you can predict which queries get faster** —
-> from the schema, before reading a row.
->
-> *Screen: the selectivity sweep.*
->
-> And here's the shape a planner would want. Sweep the predicate threshold: at
-> 0.02% selectivity, fourteen times. At full scan, fifteen. In the middle,
-> three. A U-curve — and the schema already says which columns are scannable
-> and which are nullable.
-
 ---
 
-## 4:45 — Close (25s)
+## 5:55 — Close (25s)
 
-> Two things I'd leave you with.
+*Screen: terminal, ready to run the container.*
+
+> So, two things I'd leave you with.
 >
-> One: columnar storage is solved — Arrow, Parquet, Polars. We haven't improved
+> One: columnar storage is solved. Arrow, Parquet, Polars. We haven't improved
 > on any of it. But every one of them takes the schema *on faith*. Arrow and
-> Parquet require a schema; they never derive one. And whether a column is
-> nullable — the bit that decides if a validity bitmap gets allocated for every
-> row, forever — is guessed upstream by sampling, or declared by hand.
+> Parquet require a schema, they never derive one. And whether a column is
+> nullable, which is the bit that decides if a validity bitmap gets allocated
+> for every row, forever, that's guessed upstream by sampling, or declared by
+> hand.
 >
-> We made that bit a theorem, and then spent it on the layout.
+> We made that bit a theorem, and then we spent it on the layout.
 >
-> Two: it's functional the whole way down. Lean 4 for inference and proof,
+> And two: it's functional the whole way down. Lean 4 for inference and proof,
 > OCaml for loading, storage and measurement. The one place correctness truly
 > had to be guaranteed is the one place we could hand to a theorem prover.
 >
-> `docker run -p 8000:8000 -p 8420:8420 durwasa/tatami`. Both ports, one
-> command.
+> And that's it. `docker run -p 8000:8000 -p 8420:8420 durwasa/tatami`. Both
+> ports, one command.
 
 ---
 
 ## Shot list
 
-| Time | Screen           | Have ready beforehand                                    |
-|------|------------------|----------------------------------------------------------|
-| 0:00 | terminal         | `head -c 400 corpus/small.json`                          |
-| 0:30 | `localhost:8420` | JSON with `qty`/`price`/nullable `note` in the clipboard |
-| 1:15 | editor           | `schema/step.mli`                                        |
-| 1:50 | editor           | `Proofs/Correctness.lean` at `nullability_sound`         |
-| 3:00 | editor           | `lib/columnar/columnar.ml` header                        |
-| 3:45 | `localhost:8000` | charts tab, then the sweep                               |
-| 4:45 | terminal         | the `docker run` line                                    |
+| Time | Screen | Have ready beforehand |
+|---|---|---|
+| 0:00 | terminal | `head -c 400 corpus/small.json` |
+| 0:45 | `localhost:8420` | the `x` / `y` / `z` document in the clipboard, plus a second unrelated one |
+| 1:30 | editor | `runs_jobs_steps.mli` |
+| 2:05 | editor | `lib/rowmajor/records.ml` at `type step`, then `lib/columnar/columnar.ml` at `scan`, then `schema/step.mli` |
+| 3:20 | `localhost:8000` | performance tab, then the selectivity sweep |
+| 4:20 | editor → explorer → terminal | `Proofs/Correctness.lean` at line 148 · `Proofs/` expanded, twelve files visible · `lake build` already run |
+| 5:55 | terminal | the `docker run` line |
 
 Start the container before recording — the first run pulls ~118 MB, and the
-backend spends a moment loading the corpus.
+backend spends a moment loading the corpus. Run `lake build` beforehand for the
+same reason.
