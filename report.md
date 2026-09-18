@@ -474,63 +474,53 @@ not allocated where the proof says it cannot be needed.
 
 ### The part we think is actually new
 
-Nullability analysis is **conservative by nature**. Combine two values that
+State it as an inversion, because that is what it is.
+
+**Everywhere else, nullability is an input. Here it is an output.**
+
+Parquet and Arrow both carry a nullable flag per field, and both omit the
+validity buffer when it is false. Dropping the mask on a total column is
+therefore not new. What is different is where the flag comes from. In Arrow
+somebody *asserts* it: a hand-written schema, or Spark sampling documents and
+guessing. Nothing checks it. So the single most expensive entry in a columnar
+layout, the one that decides whether a bitmap exists for every row for the life
+of the data, is also the one entry nobody verifies.
+
+Tatami computes it from the documents (`values + nulls + absent = visits`),
+proves it exact (`nullable ↔ values < visits`), and then spends it: the mask is
+not allocated where the theorem says it cannot be needed.
+
+**And because the leaves are exact, the exactness survives composition.**
+
+This is the part that makes the inversion worth something rather than merely
+tidy. Nullability analysis is conservative by nature: combine two values that
 might be null and a sound analysis must call the result possibly-null. Masks
-propagate; a few operations deep, everything is optional again and the analysis
-has decayed into uselessness.
+propagate, and a few operations deep everything is optional again and the
+analysis has decayed into uselessness.
 
-That decay does not happen here, because the leaves are *generated* with proved
-exact nullability. `ms` is total and `rate` is total, therefore `ms × rate` is
-total — not conservatively assumed, provably. The exactness flows downstream
-instead of degrading, and the product needs no mask of its own.
+That decay does not happen here. `ms` is total and `rate` is total, so
+`ms × rate` is total, provably rather than by assumption, and the product needs
+no mask of its own. From `lib/columnar/columnar.ml`:
 
-That is visible in the measurements: `computed` runs at **3.34×** against
-`scan`'s **3.21×** — faster despite doing strictly more work per row, because
-neither input nor output carries a check.
+> Two dense arrays walked in step. Both columns are total in the `.mli`, so
+> there is no mask to consult on either and no branch for absence, and the
+> product they compute needs no mask of its own for the same reason.
 
-A proof about inferred data types, carried through a host language's type
-system into a physical memory layout, with the resulting saving measured: that
-composition is what we could not find anywhere, and it is the claim we would
+It is measurable: `computed` runs at **3.34×** against `scan`'s **3.21×**,
+faster despite strictly more work per row, because neither the inputs nor the
+result carry a check.
+
+**The mechanism that allows it: one artifact, three readers.**
+
+The `.mli` is not a description of the pipeline kept alongside it. Lean proves
+it, OCaml compiles against it, and `Schema.load_dir "schema"` parses the
+signature files as text when the server starts, choosing `Plain` or `Nullable`
+and `Dense` or `Var` from what it reads. Proof object, compile-time contract
+and runtime layout configuration are the same file, so there is no pair of
+representations to drift apart.
+
+That composition, rather than any of its three ingredients, is what we would
 defend.
-
-### What is, and is not, new about the proof
-
-An overclaimed novelty is worth less than an accurate one, so this section
-states the prior art first.
-
-**Machine-checked type inference is well-trodden.** Algorithm W and the
-Damas–Milner system have been mechanised repeatedly — a monadic Coq
-formalisation with correctness *and completeness* of inference plus soundness,
-completeness and termination of unification; Dubois' ML soundness in Coq;
-Naraschewski and Nipkow in Isabelle; CakeML's type inferencer verified in HOL4
-as part of an end-to-end verified ML implementation. Completeness of Algorithm
-W *is* principality — it computes the most general type. Nothing about proving
-principality by machine is novel in itself.
-
-**JSON schema inference already has formal proofs.** Baazizi, Ben Lahmar,
-Colazzo, Ghelli and Sartiani's schema inference for massive JSON datasets
-(EDBT 2017, extended in the VLDB Journal) ships a companion *Proofs for
-parametric schema inference for massive JSON datasets* (2018). Their algorithm
-fuses records and marks fields absent from some of them as optional — the same
-occurrence-counting territory as chapter 4.5. Those proofs are pen-and-paper
-rather than mechanised, but the properties are not new.
-
-**The nearest Lean neighbour proves something else.** `lean4-json-schema`
-carries soundness and completeness theorems for JSON Schema *validation* —
-that a document satisfies a **given** schema. It does not infer a schema from
-data, so it does not speak to principality or to nullability at all.
-
-**What we could not find elsewhere is the link between the theorem and the
-bytes.** The nullability result here is not a certificate to be displayed
-alongside the code; it is the licence to remove the validity mask from the
-physical layout. Without exact nullability you cannot delete the mask, and
-deleting the mask is where a large part of both the memory saving (264 MB
-against 297 MB) and the scan throughput comes from.
-
-Proof → storage-layout decision → measured benefit is the chain we claim, and
-we state it that way deliberately: it is falsifiable, and a reviewer who knows
-of prior work joining those three should say so. The weaker claim — "we proved
-our inference correct" — would be true and unremarkable.
 
 ---
 

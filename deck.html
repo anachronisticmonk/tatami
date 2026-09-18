@@ -93,7 +93,34 @@
       repeating-linear-gradient(90deg,var(--igusa) 0 3px,transparent 3px 9px),
       linear-gradient(var(--surface-2),var(--surface-2));
     border-block:1px solid var(--rule-strong);}
-  .thesis{font-size:clamp(18px,1vw + 15px,24px); color:var(--ink-2); max-width:34ch; font-weight:400}
+  .thesis{font-size:clamp(18px,1vw + 15px,24px); color:var(--ink-2); max-width:44ch; font-weight:400}
+  #s1 .thesis{font-size:clamp(15.5px,.55vw + 14px,19px); max-width:62ch; line-height:1.55}
+  #s1 .thesis b{color:var(--indigo); font-weight:700}
+  #s1 .title-wrap{text-align:center; justify-items:center}
+  #s1 .title-wrap p{margin:0}
+  #s1 .weave{width:100%}
+  #s1 .chips{justify-content:center}
+  .props{display:grid; gap:7px; max-width:56ch; font-size:clamp(14px,.4vw + 12.6px,16.5px);
+         color:var(--ink-2); line-height:1.5}
+  .props b{color:var(--indigo); font-weight:700}
+  /* the closing statement */
+  .close{display:grid; gap:clamp(20px,3.4vh,34px); margin-top:clamp(18px,3vh,30px)}
+  .close .big{
+    font-family:"Zilla Slab",Georgia,serif; font-weight:600;
+    font-size:clamp(21px,1.9vw + 13px,34px); line-height:1.18; letter-spacing:-.01em;
+    color:var(--ink); max-width:26ch; text-wrap:balance; margin:0;
+  }
+  .close .sub{font-size:clamp(13.5px,.35vw + 12.6px,15.5px); color:var(--muted);
+              max-width:68ch; margin:7px 0 0; line-height:1.5}
+  .close .big .hi{color:var(--indigo)}
+  .proofline{font-family:"JetBrains Mono",monospace; font-size:.82em; letter-spacing:.06em;
+             color:var(--igusa); text-transform:uppercase; font-weight:500}
+  .authors{font-size:1.04em; color:var(--ink); font-weight:600; letter-spacing:.01em}
+  .authors span{
+    display:block; margin-top:6px; font-family:"JetBrains Mono",monospace;
+    font-size:.68em; font-weight:400; color:var(--muted);
+    letter-spacing:.16em; text-transform:uppercase;
+  }
   .chips{display:flex; flex-wrap:wrap; gap:10px; margin-top:4px}
   .chip{
     display:flex; align-items:baseline; gap:7px;
@@ -134,6 +161,13 @@
   }
   .parts td:nth-child(3){color:var(--ink-2)}
   .parts th:nth-child(2),.parts th:nth-child(3){white-space:nowrap}
+
+  /* the five queries */
+  .qt{font-size:.85em}
+  .qt td:first-child{color:var(--indigo); font-family:"JetBrains Mono",monospace; font-weight:500}
+  .qt td:nth-child(2){font-family:"JetBrains Mono",monospace; font-size:.92em; color:var(--ink-2); white-space:nowrap; padding-right:18px}
+  .qt td:nth-child(3){color:var(--muted); white-space:nowrap}
+  .qt th{font-size:.72em}
 
   /* the memory diagram */
   .diagram{margin-top:22px; background:var(--surface); border:1px solid var(--rule);
@@ -176,8 +210,24 @@
              border-radius:3px; padding:15px 17px; box-shadow:var(--shadow)}
   .usp h3{font-size:1.02em; margin-bottom:6px; font-weight:600}
   .usp p{margin:0; font-size:.88em; color:var(--ink-2)}
+  .usp ul{margin-top:10px; gap:8px}
+  .usp li{font-size:.88em; color:var(--ink-2); max-width:none}
+  .usp li::before{width:6px; height:6px}
   .run{margin-top:22px; background:var(--code-bg); color:var(--code-ink); border-radius:4px;
        padding:15px 18px; font-family:"JetBrains Mono",monospace; font-size:.86em; overflow-x:auto}
+
+  /* the agreement flash */
+  .agree{display:flex; flex-wrap:wrap; align-items:center; justify-content:center;
+         gap:clamp(8px,2vw,18px); margin-top:clamp(22px,4vh,40px)}
+  .st{
+    background:var(--surface); border:1px solid var(--rule-strong); border-radius:3px;
+    padding:clamp(10px,2vh,16px) clamp(14px,2.5vw,26px); box-shadow:var(--shadow);
+    font-family:"JetBrains Mono",monospace; font-size:clamp(14px,1.1vw + 11px,19px);
+    color:var(--ink-2); white-space:nowrap;
+  }
+  .st.win{border-color:var(--blue); color:var(--blue); border-width:2px}
+  .eq{font-family:"JetBrains Mono",monospace; font-weight:700; color:var(--igusa);
+      font-size:clamp(20px,2vw + 12px,32px); line-height:1}
 
   /* ---- nav --------------------------------------------------------------- */
   .nav{
@@ -214,10 +264,11 @@
       <div class="title-wrap">
         <div class="wordmark">tatami</div>
         <div class="weave"></div>
-        <p class="thesis">A typed columnar schema, derived from schemaless JSON — and <strong>proved</strong> correct.</p>
+        <p class="thesis">Tatami reads JSON that declares no schema, and writes the OCaml types it implies. Every value in the data fits its type (<b>adequacy</b>). The type allows nothing the data never contained (<b>minimality</b>). And a field is <code>option</code> only where a value was actually missing.</p>
+        <p class="proofline">All of it machine-checked in Lean 4</p>
+        <p class="authors">Vimala &nbsp;&middot;&nbsp; Vishakh &nbsp;&middot;&nbsp; Durwasa<span>IIT Madras</span></p>
         <div class="chips">
           <div class="chip"><b class="num">221</b><span>theorems &amp; lemmas</span></div>
-          <div class="chip"><b class="num">0</b><span>sorries</span></div>
           <div class="chip"><b class="num">3.5&times;</b><span>on computed scans</span></div>
           <div class="chip"><b>Lean 4 &rarr; .mli &rarr; OCaml</b><span>end to end</span></div>
         </div>
@@ -227,22 +278,22 @@
     <!-- 2 ------------------------------------------------------------------ -->
     <section class="slide" id="s2" hidden>
       <div class="eyebrow">The problem</div>
-      <h2>Nobody wrote down what shape the data is</h2>
-      <p class="lede">You are handed a pile of JSON — a CI service's build history. Repos hold runs, runs hold jobs, jobs hold steps. Four levels, every level an array, no declaration anywhere.</p>
+      <h2>Querying JSON Is Slow. Querying Tables Is Fast.</h2>
+      <p class="lede">A document has to be walked. A table can be scanned, indexed and joined. Getting from one to the other needs a schema, and the JSON never states one, so we derive it from the documents themselves:</p>
       <ul>
-        <li><span>Optionality has <strong>two spellings</strong>: a field may be <code>null</code>, or simply absent. They mean the same thing.</span></li>
-        <li><span>The usual answer is to guess the schema, hand-write a loader, and discover where you guessed wrong in production.</span></li>
-        <li><span>A wrong guess <strong>compiles cleanly</strong> — and fails at load, on real data.</span></li>
+        <li><span><strong>The types.</strong> <code>ms</code> is an <code>int</code>, <code>rate</code> a <code>float</code>.</span></li>
+        <li><span><strong>The nullability.</strong> Which fields can be missing, and which never are.</span></li>
+        <li><span><strong>The tables.</strong> What it shreds into, and the references that hold it together.</span></li>
+      </ul>
     </section>
 
-    <!-- 3 ------------------------------------------------------------------ -->
     <section class="slide" id="s3" hidden>
       <div class="eyebrow">The thesis</div>
-      <h2>An <code>.mli</code> is a contract</h2>
-      <p class="lede">A signature file sits on a boundary and says exactly what crosses it. That is the right home for an inferred schema — not a JSON-schema document some loader re-interprets at runtime.</p>
+      <h2>An <code>.mli</code> Is a Contract</h2>
+      <p class="lede">A signature file sits on a boundary and says exactly what crosses it. That is the right home for an inferred schema, not a JSON-schema document some loader re-interprets at runtime.</p>
       <div class="cols">
         <figure style="margin:0">
-<pre><span class="c">(* step.mli — generated by Lean *)</span>
+<pre><span class="c">(* step.mli, generated by Lean *)</span>
 <span class="k">type</span> t
 <span class="k">type</span> id = int
 <span class="k">val</span> make : id:int -&gt; job_id:Job.id -&gt;
@@ -259,9 +310,9 @@
           <ul>
             <li><span>its columns and their types;</span></li>
             <li><span>that <code>error</code> is the <span class="em">only</span> column that can be null;</span></li>
-            <li><span>that <code>ms</code> is <code>int</code>, <strong>not</strong> <code>int option</code> — the data never lacked it;</span></li>
-            <li><span><code>of_job</code> — the foreign key, expressed as a function;</span></li>
-            <li><span><code>idx</code> — the array position, kept because order is information a table would otherwise lose.</span></li>
+            <li><span>that <code>ms</code> is <code>int</code>, <strong>not</strong> <code>int option</code>, because the data never lacked it;</span></li>
+            <li><span><code>of_job</code>, the foreign key expressed as a function;</span></li>
+            <li><span><code>idx</code>, the array position. A JSON array is a <strong>list</strong>; a SQL table is a <strong>set</strong>, so the ordering is lost on the way in. <code>ORDER BY idx</code> is what brings it back.</span></li>
           </ul>
         </div>
       </div>
@@ -270,35 +321,28 @@
     <!-- 4 ------------------------------------------------------------------ -->
     <section class="slide" id="s4" hidden>
       <div class="eyebrow">Why functional</div>
-      <h2>Two languages, one discipline</h2>
-      <p class="lede">The pipeline is functional end to end. That is not a costume for the hackathon — it is what makes the central claim checkable.</p>
-      <div class="cols">
-        <div>
-          <h3 style="font-size:1.05em;color:var(--igusa)">Lean 4 — inference and proof</h3>
-          <p style="margin-top:8px">The one component everything else rests on. In Lean it carries theorems, not just tests — and the thing proved <em>is</em> the thing that runs.</p>
-        </div>
-        <div>
-          <h3 style="font-size:1.05em;color:var(--blue)">OCaml — loading, storage, measurement</h3>
-          <p style="margin-top:8px">The contract is enforced by the compiler that builds the loader. Stores, queries and benchmarks are all OCaml — no imperative escape hatch.</p>
-        </div>
-      </div>
-      <p>The one place correctness had to be guaranteed is the one place we could hand to a theorem prover.</p>
+      <h2>Proved, Compiled and Executed</h2>
+      <p class="lede">Lean 4 for inference and proof, OCaml for everything after. The <code>.mli</code> is the only thing that passes between them, and all three stages read the same one.</p>
+      <ul>
+        <li><span><strong>Lean 4 proves it, then writes it.</strong> For every corpus it accepts, the signature it emits is provably a description of that data: types principal, nullability exact, the table graph the same graph. The step from documents to a signature carries a <span class="em">theorem</span>, not a test suite.</span></li>
+        <li><span><strong>The generated <code>.ml</code> fills the tables.</strong> The same signature, compiled: it streams documents into four tables and pushes the rows into Postgres through <code>pgx</code>, parents and array positions intact.</span></li>
+        <li><span><strong>The backend reads it again at run time.</strong> <code>Schema.load_dir "schema"</code> parses the <code>.mli</code> files as data and picks each column's physical layout from them, <code>Plain</code> or <code>Nullable</code>, <code>Dense</code> or <code>Var</code>. Nothing is special-cased by name.</span></li>
+      </ul>
     </section>
 
-    <!-- 5 ------------------------------------------------------------------ -->
     <section class="slide" id="s5" hidden>
       <div class="eyebrow">The pipeline</div>
-      <h2>From documents to dense typed columns</h2>
+      <h2>From Documents to Dense Typed Columns</h2>
       <div class="flow">
         <div class="node"><span class="tag">input</span><h3>Schemaless JSON</h3><p>Four nested levels, every level an array. No declared shape.</p></div>
         <div class="arrow">&rarr;</div>
-        <div class="node lean"><span class="tag">Lean 4</span><h3>Infer &amp; prove</h3><p>Principal type per field; counts of value, null and absence.</p></div>
+        <div class="node lean"><span class="tag">Lean 4</span><h3>Infer &amp; Prove</h3><p>Principal type per field; counts of value, null and absence.</p></div>
         <div class="arrow">&rarr;</div>
-        <div class="node lean"><span class="tag">Lean 4</span><h3>Emit contract</h3><p>One <code>.mli</code> per table, plus <code>.ml</code> and a loader.</p></div>
+        <div class="node lean"><span class="tag">Lean 4</span><h3>Emit Contract</h3><p>One <code>.mli</code> per table, plus <code>.ml</code> and a loader.</p></div>
         <div class="arrow">&rarr;</div>
-        <div class="node ml"><span class="tag">OCaml</span><h3>Stream &amp; shred</h3><p>Four tables, referential integrity kept. Postgres via <code>pgx</code>.</p></div>
+        <div class="node ml"><span class="tag">OCaml</span><h3>Stream &amp; Shred</h3><p>Four tables, referential integrity kept. Postgres via <code>pgx</code>.</p></div>
         <div class="arrow">&rarr;</div>
-        <div class="node ml"><span class="tag">OCaml</span><h3>Columnar store</h3><p>One dense typed array per column. Mask only where <code>option</code>.</p></div>
+        <div class="node ml"><span class="tag">OCaml</span><h3>Columnar Store</h3><p>One dense typed array per column. Mask only where <code>option</code>.</p></div>
       </div>
       <p>Every child row keeps its parent and its array position, so the nesting survives the flattening. The same loader fills Postgres, which lets the shredding be checked in SQL.</p>
     </section>
@@ -306,7 +350,7 @@
     <!-- 6 ------------------------------------------------------------------ -->
     <section class="slide" id="s6" hidden>
       <div class="eyebrow">The proof</div>
-      <h2><code>pipeline_correct</code>, in five parts</h2>
+      <h2><code>pipeline_correct</code>, in Five Parts</h2>
       <p class="lede">221 theorems and lemmas, zero <code>sorry</code>s, composing into one top-level statement.</p>
       <div class="tscroll">
       <table class="parts">
@@ -315,7 +359,7 @@
           <tr>
             <td>Well-formedness</td>
             <td><code>f.WellFormed</code></td>
-            <td>The output is legal OCaml — nothing is declared twice.</td>
+            <td>The output is legal OCaml: nothing is declared twice.</td>
           </tr>
           <tr>
             <td>Canonicity</td>
@@ -325,7 +369,7 @@
           <tr>
             <td>Structure preservation</td>
             <td><code>CollEdge ↔ FileCollEdge</code><br><code>∧ Rooted s</code></td>
-            <td>The tables mirror the document tree exactly — no link lost, none invented, none unreachable.</td>
+            <td>The tables mirror the document tree exactly: no link lost, none invented, none unreachable.</td>
           </tr>
           <tr>
             <td>Principality</td>
@@ -340,34 +384,42 @@
         </tbody>
       </table>
       </div>
-      <p>Conditional on both stages succeeding — and silent about rows: Lean describes the tables, OCaml fills them.</p>
+      <p>Conditional on both stages succeeding, and silent about rows: Lean describes the tables, OCaml fills them.</p>
     </section>
 
     <!-- 7 ------------------------------------------------------------------ -->
     <section class="slide" id="s7" hidden>
-      <div class="eyebrow">The proof · sharpest part</div>
-      <h2>Why nullability had to be proved</h2>
-      <div class="cols">
-        <figure style="margin:0">
-<pre><span class="c">-- Proofs/Correctness.lean</span>
-<span class="k">theorem</span> nullability_sound … :
-  o.values + o.nulls + o.absent = t.visits
-  <span class="o">∧</span> (o.nullable = true <span class="o">↔</span> o.values &lt; t.visits)</pre>
-          <figcaption>Proofs/Correctness.lean</figcaption>
-        </figure>
+      <div class="eyebrow">Nullability</div>
+      <h2>What Knowing Nullability Buys You</h2>
+      <p class="lede">One bit per column, and it settles the entire physical layout.</p>
+      <div class="usp">
+        <div style="border-left-color:var(--blue)">
+          <h3>The Signature Says <code>int</code></h3>
+          <ul>
+            <li><span>Store the integers directly, dense and contiguous.</span></li>
+            <li><span><strong>No mask array at all.</strong></span></li>
+            <li><span>No check before a value: the loop reads, compares, moves on.</span></li>
+            <li><span><strong class="num">8 bytes</strong> a row.</span></li>
+            <li><span>A run of rows can be copied or scanned as one block.</span></li>
+          </ul>
+        </div>
         <div>
-          <p style="margin-top:0"><strong>The counts identity.</strong> Every visit to a table is accounted for at every field — a value, an explicit <code>null</code>, or an absence. Nothing else.</p>
-          <p><strong>And the flag reads off it.</strong> A field is optional precisely when it carried a value fewer times than its table was visited.</p>
+          <h3>The Signature Says <code>int option</code></h3>
+          <ul>
+            <li><span>Dense values, <em>plus</em> a parallel mask.</span></li>
+            <li><span>A missing value leaves the slot at its initialiser: <code>0</code> for an int, <code>""</code> for a string.</span></li>
+            <li><span>Those bytes are <span class="em">identical</span> to a real <code>0</code> or a real empty string.</span></li>
+            <li><span>A check before every value.</span></li>
+            <li><span><strong class="num">16 bytes</strong> a row.</span></li>
+          </ul>
         </div>
       </div>
-      <p>Absence is computed by <em>truncating</em> subtraction. Without the identity a field somebody omitted could report <code>absent = 0</code>, come out non-optional, and the generator would emit <code>string</code> for data needing <code class="em">string option</code>.</p>
-      <p>The store does abort loudly rather than corrupt. But at <em>load time, on production data, in code the compiler accepted</em>. The theorem makes the condition <span class="em">unreachable</span>.</p>
+      <p>That is the mask's whole job: telling <em>no value</em> apart from a value that happens to be zero. When the type says the column is total, there is nothing left to tell apart, so the mask is never built.</p>
     </section>
 
-    <!-- 8 ------------------------------------------------------------------ -->
     <section class="slide" id="s8" hidden>
       <div class="eyebrow">The payoff</div>
-      <h2>The proof is what lets us delete the mask</h2>
+      <h2>The Proof Is What Lets Us Delete the Mask</h2>
       <div class="diagram">
         <svg viewBox="0 0 640 300" role="img" aria-label="An int array stores values directly, so one 64-byte cache line holds eight of them. An int option array holds eight pointers and no values; each Some is a 16-byte block of header plus value, so only four fit per cache line and the values occupy two further lines, each reached by a dependent load.">
           <text class="dc" x="0" y="11" fill="var(--blue)">int array</text>
@@ -399,7 +451,7 @@
           <text class="dm" x="0" y="157" fill="var(--vermilion)">the same 64-byte line  →  8 pointers, 0 values</text>
 
           <path d="M40 141 L40 190" stroke="var(--muted)" stroke-width="1" fill="none"></path>
-          <text class="dm" x="70" y="182">each Some is 16 bytes — header + value — so only 4 fit in a line</text>
+          <text class="dm" x="70" y="182">each Some is 16 bytes (header + value), so only 4 fit in a line</text>
 
           <rect x="0" y="190" width="640" height="30" rx="3" fill="var(--surface-2)" stroke="var(--rule-strong)"></rect>
           <g stroke="var(--rule-strong)" stroke-width="1.5">
@@ -447,28 +499,44 @@
           <text class="dm" x="0" y="284" fill="var(--ink-2)">2 more cache lines, and a dependent load per value</text>
         </svg>
       </div>
-      <p>8 bytes an element against 24 — but size is the smaller half. The dense array is <em>walked</em>; the boxed one is <strong>chased</strong>, and the next address is unknown until the current pointer lands.</p>
+      <p>8 bytes an element against 24, but size is the smaller half. The dense array is <em>walked</em>; the boxed one is <strong>chased</strong>, and the next address is unknown until the current pointer lands.</p>
     </section>
 
     <!-- 9 ------------------------------------------------------------------ -->
     <section class="slide" id="s9" hidden>
       <div class="eyebrow">The measurements</div>
-      <h2>Correctness before speed</h2>
-      <p class="lede">Five queries, answered by three stores — raw Yojson, a row-major record store, and the columnar one. Every store implements the same signature, because a benchmark where each side answers a question shaped to suit it measures nothing.</p>
-      <figure style="margin:22px 0 0">
-<pre><span class="c">(* bin/bench.ml *)</span>
-<span class="k">if</span> !disagreements &gt; 0 <span class="k">then</span>
-  printf <span class="o">"%d disagreements -- timings below are meaningless"</span></pre>
-        <figcaption>bin/bench.ml — the answers are compared before the timings are believed</figcaption>
-      </figure>
-      <p><strong>All three agree, on every corpus.</strong> Only then are the timings worth reading.</p>
-      
+      <h2>Both Stores Must Agree</h2>
+      <p class="lede">Five questions. Three stores, each implementing the same signature.</p>
+
+      <div class="agree">
+        <div class="st">raw Yojson</div>
+        <div class="eq">=</div>
+        <div class="st">row-major</div>
+        <div class="eq">=</div>
+        <div class="st win">columnar</div>
+      </div>
+
+      <div class="run">if !disagreements &gt; 0 then printf "%d disagreements -- timings below are meaningless"</div>
+
+      <p><strong>Zero disagreements, on every corpus.</strong> A benchmark where each side answers a question shaped to suit it measures nothing, so the answers are compared before the timings are believed.</p>
+      <p style="font-size:.88em;color:var(--muted)">Differential <em>testing</em>, not a theorem. Lean proves the schema; that the two stores answer alike is checked, not proved.</p>
     </section>
 
-    <!-- 10 ----------------------------------------------------------------- -->
     <section class="slide" id="s10" hidden>
-      <div class="eyebrow">The measurements · results</div>
-      <h2>Which queries the types make faster</h2>
+      <div class="eyebrow">The measurements &middot; results</div>
+      <h2>Which Queries the Types Make Faster</h2>
+      <div class="tscroll">
+      <table class="qt">
+        <thead><tr><th>Query</th><th>In SQL</th><th>What it touches</th></tr></thead>
+        <tbody>
+          <tr><td>computed</td><td>SELECT sum(ms * rate) FROM step WHERE ms &gt; n</td><td>two columns, arithmetic</td></tr>
+          <tr><td>scan</td><td>SELECT count(*) FROM step WHERE ms &gt; n</td><td>one column of ten</td></tr>
+          <tr><td>by_status</td><td>SELECT status, max(ms) FROM step GROUP BY status</td><td>one column, grouped</td></tr>
+          <tr><td>document</td><td>SELECT * FROM repo JOIN run JOIN job JOIN step WHERE repo.id = ?</td><td>every column of one subtree</td></tr>
+          <tr><td>three_hop</td><td>SELECT sum(step.ms) FROM step JOIN job JOIN run JOIN repo WHERE org = ?</td><td>three joins upward</td></tr>
+        </tbody>
+      </table>
+      </div>
       <div class="chart">
         <svg viewBox="0 0 640 262" role="img" aria-label="Columnar speedup versus the row-major store on a 50 MB corpus. Computed 3.34 times, scan 3.21 times, by_status 1.26 times, three_hop 0.64 times, document 0.72 times.">
           <!-- gridlines at 2x and 3x -->
@@ -520,80 +588,30 @@
           <span><i style="background:var(--amber)"></i>row-major faster</span>
         </div>
       </div>
-      <p><strong>Not a faster database.</strong> Two go the other way by design — <code>document</code> is what a row store is for. The claim: <strong>once the type is known you can predict which queries get faster, from the schema, before reading a row.</strong></p>
-    </section>
+      <p><strong>Not a faster database.</strong> Two go the other way by design: <code>document</code> is what a row store is for. The claim: <strong>once the type is known you can predict which queries get faster, from the schema, before reading a row.</strong></p>
+        </section>
 
-    <!-- 11 ----------------------------------------------------------------- -->
     <section class="slide" id="s11" hidden>
-      <div class="eyebrow">The measurements · selectivity</div>
-      <h2>What a planner would want to know</h2>
-      <p class="lede">Sweeping the predicate threshold — <code>qty &gt; n</code> — across the same 50 MB corpus.</p>
-      <div class="chart">
-        <svg viewBox="0 0 640 272" role="img" aria-label="Columnar speedup against percentage of rows kept: 14.1 times at 0.02 percent, falling to 3.35 times at 54 percent, rising to 15.3 times at 100 percent.">
-          <!-- y gridlines at 0,4,8,12,16 -->
-          <g class="ct" text-anchor="end">
-            <line x1="52" y1="206" x2="612" y2="206" stroke="var(--rule-strong)" stroke-width="1"></line>
-            <line x1="52" y1="160" x2="612" y2="160" stroke="var(--rule)" stroke-width="1"></line>
-            <line x1="52" y1="114" x2="612" y2="114" stroke="var(--rule)" stroke-width="1"></line>
-            <line x1="52" y1="68"  x2="612" y2="68"  stroke="var(--rule)" stroke-width="1"></line>
-            <line x1="52" y1="22"  x2="612" y2="22"  stroke="var(--rule)" stroke-width="1"></line>
-            <text x="46" y="210">0</text><text x="46" y="164">4&times;</text>
-            <text x="46" y="118">8&times;</text><text x="46" y="72">12&times;</text><text x="46" y="26">16&times;</text>
-          </g>
+      <div class="eyebrow">In conclusion</div>
 
-          <!-- x: 52 + pct*5.6 ; y: 206 - speedup*11.5 -->
-          <polyline fill="none" stroke="var(--blue)" stroke-width="2" stroke-linejoin="round" stroke-linecap="round"
-            points="52,44 73,102 105,126 159,149 218,160 355,167 504,145 601,52 612,30"></polyline>
-
-          <g fill="var(--blue)">
-            <circle cx="52"  cy="44"  r="4.5"></circle>
-            <circle cx="73"  cy="102" r="4"></circle>
-            <circle cx="105" cy="126" r="4"></circle>
-            <circle cx="159" cy="149" r="4"></circle>
-            <circle cx="218" cy="160" r="4"></circle>
-            <circle cx="355" cy="167" r="4.5"></circle>
-            <circle cx="504" cy="145" r="4"></circle>
-            <circle cx="601" cy="52"  r="4"></circle>
-            <circle cx="612" cy="30"  r="4.5"></circle>
-          </g>
-
-          <!-- selective direct labels: the two peaks and the trough -->
-          <text class="cv" x="60"  y="38">14.1&times;</text>
-          <text class="cv" x="355" y="186" text-anchor="middle">3.35&times;</text>
-          <text class="cv" x="612" y="22"  text-anchor="end">15.3&times;</text>
-
-          <g class="ct" text-anchor="middle">
-            <text x="52"  y="224">0.02%</text>
-            <text x="159" y="224">19%</text>
-            <text x="355" y="224">54%</text>
-            <text x="504" y="224">81%</text>
-            <text x="608" y="224">100%</text>
-          </g>
-          <text class="ct" x="52" y="248">rows kept by the predicate &rarr;</text>
-          <text class="ct" x="52" y="264">speedup of the columnar scan over row-major · 50 MB corpus</text>
-        </svg>
-      </div>
-      <p>A <strong>U-curve</strong>. Selective predicates and full scans both win; the middle is where per-row branching costs most — and the schema already says which columns are scannable.</p>
-    </section>
-
-    <!-- 12 ----------------------------------------------------------------- -->
-    <section class="slide" id="s12" hidden>
-      <div class="eyebrow">What is new here</div>
-      <h2>Columnar storage is solved. This is about the bit upstream of it.</h2>
-      <div class="usp">
-        <div style="border-left-color:var(--muted)">
-          <h3>Not claiming</h3>
-          <p>Arrow, Parquet, Polars, DuckDB — decades of engineering. JSON schema inference is a studied problem. Machine-checked type inference is older still. A weekend of OCaml improves on none of it.</p>
-        </div>
+      <div class="close">
         <div>
-          <h3>Claiming</h3>
-          <p>All of them take the schema <em>on faith</em>. Arrow and Parquet <strong>require</strong> a schema and never derive one — and whether a column is nullable arrives from outside, sampled or hand-declared. That unverified bit decides whether a validity bitmap is allocated for <em>every row, forever</em>.</p>
+          <p class="big">Columns beating rows on scans is not our finding.</p>
+          <p class="sub">Settled since MonetDB and C&#8209;Store. Our numbers agree with it on some queries and not others, and agreeing with established results is not a contribution.</p>
+        </div>
+
+        <div>
+          <p class="big">Everywhere else nullability is an <span class="hi">input</span>. Here it is an <span class="hi">output</span>.</p>
+          <p class="sub">Parquet and Arrow already drop the validity buffer for a non&#8209;nullable field. But somebody <em>asserts</em> that flag, hand&#8209;written or sampled and guessed, and nothing checks it, though it decides whether a bitmap exists for every row for the life of the data. We derive it from the documents and prove it exact, then hand it to the storage engine as an <code>.mli</code> that Lean proves, OCaml compiles, and the server parses at startup.</p>
+        </div>
+
+        <div>
+          <p class="big">And the exactness survives being computed with.</p>
+          <p class="sub">A conservative analysis decays: maybe&#8209;null combined with maybe&#8209;null is maybe&#8209;null, and a few operations deep everything is <code>option</code> again. Our leaves are generated exact, so <code>ms &times; rate</code> is total too and needs no mask of its own. That is why <code>computed</code> at <strong class="num">3.34&times;</strong> beats <code>scan</code> at <strong class="num">3.21&times;</strong> while doing strictly more work per row.</p>
         </div>
       </div>
-      <p>The most expensive decision in a columnar layout is the least checked one. We make it a <strong>theorem</strong>, then spend it: no mask where the proof says none can be needed.</p>
-      <p>And the part we think is genuinely new — nullability analysis is <em>conservative</em>: combine two maybe-null values and a sound analysis must call the result maybe-null, so masks propagate until everything is optional again. Here the leaves are <strong>generated</strong> with proved-exact nullability, so <code>ms</code> total and <code>rate</code> total makes <code class="em">ms × rate</code> total — provably, not by assumption. The exactness flows downstream instead of decaying. It is why <code>computed</code> at <strong class="num">3.34×</strong> beats <code>scan</code> at <strong class="num">3.21×</strong> while doing strictly more work per row.</p>
+
       <div class="run">docker run --rm -p 8000:8000 -p 8420:8420 durwasa/tatami</div>
-      <p style="font-size:.88em;color:var(--muted)"><code>:8000</code> the demonstration · <code>:8420</code> the playground</p>
     </section>
 
   </main>
