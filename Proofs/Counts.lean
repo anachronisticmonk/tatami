@@ -965,6 +965,57 @@ theorem merge_countsFit {a b : Tables} (ha : CountsFit a) (hb : CountsFit b) :
     exact tableObs_merge_fits (ha _ t1 ht1) (hb _ t2 ht2) k o hko
 
 
+/-! ## The collapse keeps the inequality
+
+The collapse relocates tables and merges the ones that land together. It never
+touches a count -- it rewrites only the types a member was seen with -- so the
+inequality survives for the same reason the merge does: both sides add. -/
+
+theorem collapseTable_fits {S : List Path} {t : TableObs} (h : TableFits t) :
+    TableFits (collapseTable S t) := by
+  intro k o hko
+  obtain ⟨⟨k0, o0⟩, hko0, heq⟩ := List.mem_map.mp hko
+  injection heq with _ ho
+  subst ho
+  exact h k0 o0 hko0
+
+theorem collapseOnce_countsFit {S : List Path} {ts : Tables} (h : CountsFit ts) :
+    CountsFit (collapseOnce S ts) := by
+  unfold collapseOnce
+  have hall : ∀ pt ∈ ts.map (fun (p, t) => (collapsePath S [] p, collapseTable S t)),
+      CountsFit [pt] := by
+    intro pt hpt
+    obtain ⟨⟨p, t⟩, hmem, rfl⟩ := List.mem_map.mp hpt
+    intro q u hq k o hko
+    simp only [List.mem_singleton] at hq
+    injection hq with _ hu
+    subst hu
+    exact collapseTable_fits (h p t hmem) k o hko
+  generalize (ts.map (fun (p, t) => (collapsePath S [] p, collapseTable S t))) = l at hall
+  suffices hgo : ∀ (l : Tables) (acc : Tables), (∀ pt ∈ l, CountsFit [pt]) → CountsFit acc →
+      CountsFit (l.foldl (fun acc pt => Tables.merge acc [pt]) acc) by
+    exact hgo l [] hall countsFit_nil
+  intro l
+  induction l with
+  | nil => intro acc _ hacc; exact hacc
+  | cons x xs ih =>
+      intro acc hx hacc
+      exact ih _ (fun pt hpt => hx pt (List.mem_cons_of_mem _ hpt))
+        (merge_countsFit hacc (hx x (List.mem_cons_self ..)))
+
+theorem collapseGo_countsFit : ∀ (n : Nat) {ts : Tables},
+    CountsFit ts → CountsFit (collapseGo n ts)
+  | 0, _, h => h
+  | n + 1, ts, h => by
+      show CountsFit (if (collapsePoints ts).isEmpty then ts
+                      else collapseGo n (collapseOnce (collapsePoints ts) ts))
+      by_cases hs : (collapsePoints ts).isEmpty = true
+      · rw [if_pos hs]; exact h
+      · rw [if_neg hs]; exact collapseGo_countsFit n (collapseOnce_countsFit h)
+
+theorem collapse_countsFit {ts : Tables} (h : CountsFit ts) : CountsFit (collapse ts) :=
+  collapseGo_countsFit ts.length h
+
 /-! ## The corpus, and the identity itself -/
 
 theorem observeDocument_fits {cfg : Config} {d : Doc} {ts : Tables}
@@ -994,6 +1045,7 @@ theorem inferFinish_counts {cfg : Config} {ts ts' : Tables}
   obtain ⟨_, _, h3⟩ := except_bind_ok h2
   injection h3 with hts
   subst hts
+  have hfit' : CountsFit (collapse ts) := collapse_countsFit hfit
   intro p t hmem k o hko
   obtain ⟨⟨p0, t0⟩, hmem0, heq⟩ := List.mem_map.mp hmem
   injection heq with hp ht
@@ -1002,7 +1054,7 @@ theorem inferFinish_counts {cfg : Config} {ts ts' : Tables}
   obtain ⟨⟨k0, o0⟩, hko0, heq0⟩ := List.mem_map.mp hko
   injection heq0 with hk ho
   subst ho
-  have hle := hfit p0 t0 hmem0 k0 o0 hko0
+  have hle := hfit' p0 t0 hmem0 k0 o0 hko0
   show o0.values + o0.nulls + (t0.visits - o0.values - o0.nulls) = t0.visits
   omega
 

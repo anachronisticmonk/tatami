@@ -320,10 +320,94 @@ def observeDocument (cfg : Config) (d : Doc) : Except Error Tables :=
 def inferStep (cfg : Config) (ts : Tables) (d : Doc) : Except Error Tables := do
   return ts.merge (← observeDocument cfg d)
 
+/-! ## The singleton collapse
+
+A real API writes a lone nested object where it would write an array of them
+if there were two -- the shape PHP and XML-to-JSON converters produce. The
+walk records the two differently: an object member builds a table at `p` and a
+`ref` column pointing at it, an array member builds one at `p[]` and a `coll`
+column. So a member that is an object in one document and an array in another
+leaves *two* tables where there should be one, and a member whose types do not
+join.
+
+The fix is to move the object's rows into the element table and rewrite the
+column to match. Once that is done the two observations are the *same* type,
+and the type lattice needs no new case: there is nothing left to join.
+
+This runs only after the whole corpus has been folded, which is what makes it
+"an object only if every document had an object there": if no document held an
+array of objects, nothing moves. -/
+
+/-- Paths where a member was an object in one document and an array **of
+    objects** in another.
+
+    `elemObject` is what makes that last part hold, and it is not a detail: a
+    member that is an object here and a list of *scalars* there is not a
+    singleton collapse, it is two unrelated shapes. Without the guard those
+    merge into one table carrying both the object's members and the scalars'
+    `value`, every one of them optional -- a silent widening of exactly the
+    kind this program refuses elsewhere. An empty array says nothing about
+    which of the two it is, so it does not collapse either. -/
+def collapsePoints (ts : Tables) : List Path :=
+  ts.filterMap fun (p, _) =>
+    if !p.isEmpty then
+      match ts.lookup (Path.elem p) with
+      | some e => if e.elemObject && !e.elemScalar then some p else none
+      | none => none
+    else none
+
+/-- Insert the element marker after every prefix that is collapsing, unless
+    the path already has one there -- the array side needs no change, and both
+    sides have to land on the same new path for the merge to find them. -/
+def collapsePath (S : List Path) : Path → Path → Path
+  | _, [] => []
+  | pre, seg :: rest =>
+      let pre' := pre ++ [seg]
+      if S.contains pre' then
+        match rest with
+        | .elem :: _ => seg :: collapsePath S pre' rest
+        | _ => seg :: .elem :: collapsePath S pre' rest
+      else seg :: collapsePath S pre' rest
+
+/-- A reference into a collapsing table becomes a collection: that is the
+    whole of what the collapse says. -/
+def collapseTy (S : List Path) : Ty → Ty
+  | .ref q => if S.contains q then .coll (collapsePath S [] q) else .ref (collapsePath S [] q)
+  | .coll q => .coll (collapsePath S [] q)
+  | t => t
+
+def collapseObs (S : List Path) (o : Obs) : Obs :=
+  let seen := (o.seen.map (collapseTy S)).foldl (fun acc t => unionBy Ty.lt (· == ·) acc [t]) []
+  { o with seen := seen }
+
+def collapseTable (S : List Path) (t : TableObs) : TableObs :=
+  { t with members := t.members.map fun (k, o) => (k, collapseObs S o) }
+
+def collapseOnce (S : List Path) (ts : Tables) : Tables :=
+  (ts.map fun (p, t) => (collapsePath S [] p, collapseTable S t)).foldl
+    (fun acc pt => Tables.merge acc [pt]) []
+
+/-- Collapsing the outer table can expose a mixed member inside it: the
+    object's `.b.x` and the element's `.b[].x[]` only become siblings once
+    both sit under `.b[]`. So this runs to a fixpoint. Each round collapses
+    every point it can see, and a chain is bounded by the number of tables.
+
+    Running out of fuel is safe rather than silent: the uncollapsed pair is
+    still an object and an array at one member, so the type check below
+    refuses the corpus. -/
+def collapseGo : Nat → Tables → Tables
+  | 0, ts => ts
+  | n + 1, ts =>
+      let S := collapsePoints ts
+      if S.isEmpty then ts else collapseGo n (collapseOnce S ts)
+
+def collapse (ts : Tables) : Tables := collapseGo ts.length ts
+
 /-- What can only be settled once every document has been seen: a collection
     holding both objects and scalars, a marking that matched nothing, and the
     absent counts, which are against each table's own visit total. -/
 def inferFinish (cfg : Config) (ts : Tables) : Except Error Tables := do
+  let ts := collapse ts
   -- a member holding values with no common type. Checked here rather than
   -- during the walk because the set of types seen is only complete once the
   -- whole corpus has been read, which is what lets the walk merge in any order
