@@ -1,0 +1,321 @@
+{
+"types": {
+"Config": {
+"name": "Config",
+"kind": "structure",
+"file": "Tatami/Config.lean",
+"line": 19,
+"doc": "Markings the user supplies alongside a corpus.\n\nOne shape cannot be read off the data: an object whose keys are values\nrather than field names looks exactly like a record. Guessing from the\ndata would make the schema a function of the sample rather than of the\nshape, so it is marked instead.\n\nThere was a second marking, `recursive`, folding a path into an ancestor\nso both became one table. It is gone. A table is now identified by its\npath and nothing else, which is what makes its parent and its position\ncolumn functions of that path rather than of the documents. The cost is\nrecorded under known gaps: a self-referential shape yields one table per\nlevel the sample happened to reach.",
+"src": "structure Config where\n  /-- objects whose members are data: each becomes a row keyed by its name -/\n  maps : List Path := []\n  /-- what to call the root table. Every other table is named for the members\n      along its path; the root path has none, so its name is invented and\n      `Root` is only a fallback. This is where a better one comes from. -/\n  root : Option String := none\n  /-- what to call any other table, by the path of the table it names. The\n      root's name was always supplied for want of a path to derive one from;\n      these are supplied because a derived name says where a table came from\n      rather than what it is, and `.runs[].jobs[]` is a worse name for a job\n      than `job` is. -/\n  names : List (Path \u00d7 String) := []\n  deriving Inhabited",
+"mentions": [
+"Path"
+]
+},
+"Doc": {
+"name": "Doc",
+"kind": "inductive",
+"file": "Tatami/Doc.lean",
+"line": 13,
+"doc": "A JSON document, as written.\n\n`Lean.Json` parses an object into a tree map, which silently discards a\nrepeated member and loses the order of the rest. It also normalises\nnumbers, so the text a number was written with is not recoverable. Both\nmatter here, so we read JSON ourselves.\n\nKeeping objects as association lists has a second benefit: `Doc` is an\nordinary inductive type, so a walk over it can be given a termination\nargument, which a walk over a tree map cannot.",
+"src": "inductive Doc where\n  | null\n  | bool : Bool \u2192 Doc\n  | num  : String \u2192 Doc                  -- the literal exactly as written\n  | str  : String \u2192 Doc\n  | arr  : List Doc \u2192 Doc\n  | obj  : List (String \u00d7 Doc) \u2192 Doc     -- in order, repeats kept\n  deriving Repr, Inhabited",
+"mentions": []
+},
+"Doc.Input": {
+"name": "Doc.Input",
+"kind": "abbrev",
+"file": "Tatami/Doc.lean",
+"line": 24,
+"doc": "",
+"src": "abbrev Input := List Char",
+"mentions": []
+},
+"Doc.Parsed": {
+"name": "Doc.Parsed",
+"kind": "abbrev",
+"file": "Tatami/Doc.lean",
+"line": 216,
+"doc": "What a parser hands back: a value, the input left over, and the fact that\nthe leftover is shorter than what went in.\n\nThat last part has to be in the type. `pObject` recurses on whatever\n`pValue` gives back, so its termination depends on a property of\n`pValue` -- the function being defined. There is no lemma to prove\nbeforehand, because the function does not exist yet; it has to be proved\nat the same time as the definition.\n\nThe proof is a `Prop`, so it is erased at compile time. It costs nothing\nat runtime: the generated code is the same recursion either way.",
+"src": "private abbrev Parsed (s : Input) := { p : Doc \u00d7 Input // p.2.length < s.length }",
+"mentions": [
+"Doc",
+"Doc.Input"
+]
+},
+"Error": {
+"name": "Error",
+"kind": "inductive",
+"file": "Tatami/Error.lean",
+"line": 8,
+"doc": "Diagnostics.\n\nThe design note fixes what a generated module looks like; it says nothing\nabout which inputs to refuse. Every rejection below is therefore ours, and\neach says plainly what it found.",
+"src": "inductive Error where\n  | notObjectOrArray (found : String)\n  | arrayElementNotObject (index : Nat) (found : String)\n  | unsupportedAtThisStage (path : String) (found : String)\n  | typeConflict (path : String) (types : String)\n  | reservedColumnName (name : String) (column : String)\n  | reservedAccessorName (name : String) (generated : String)\n  | moduleNameClash (name : String)\n  | nestedArray (path : String)\n  | mixedElements (path : String)\n  | duplicateMember (path : String) (key : String)\n  | markingMatchedNothing (path : String)\n  | mapEntryNotSupported (path : String) (found : String)\n  | illFormedSignature (wherein : String)\n  | unusableKey (path : String) (why : String)\n  | schemaNotFromCorpus (why : String)",
+"mentions": []
+},
+"Naming": {
+"name": "Naming",
+"kind": "structure",
+"file": "Tatami/Gen.lean",
+"line": 39,
+"doc": "What the tables are called.\n\nA table's name is derived from its path -- the member names along it,\njoined -- unless the user supplied one. The root has no member names, so\nits name is always supplied or defaulted; every other table can be named\nfor the same reason, which is that a path says where a table came from\nand not what it is.\n\nA name is looked up by the table's own path, `.runs[]`. The path of the\nmember holding it, `.runs`, is accepted too: a member is a collection or\nan object and never both, so the two spellings cannot name different\ntables.",
+"src": "structure Naming where\n  /-- the root table's module name, already mangled and capitalized -/\n  root : String\n  /-- names the user gave, by the path of the table each one names -/\n  tables : List (Path \u00d7 String) := []\n  deriving Inhabited",
+"mentions": [
+"Path"
+]
+},
+"ColKind": {
+"name": "ColKind",
+"kind": "inductive",
+"file": "Tatami/Gen.lean",
+"line": 132,
+"doc": "Where a column's value comes from. The emitted code only needs to know\nwhether a column is the key; the shredder needs to know all four, because\neach is filled from somewhere different.",
+"src": "inductive ColKind where\n  | key                     -- the document's `id`, or one minted for it\n  | parent                  -- the key of the table these rows sit in\n  | position                -- the index in the array, or the map entry's name\n  | member (source : String)  -- a member of the document, by its JSON name\n  deriving Repr, DecidableEq",
+"mentions": []
+},
+"Col": {
+"name": "Col",
+"kind": "structure",
+"file": "Tatami/Gen.lean",
+"line": 143,
+"doc": "A column as it is actually emitted.\n\n`ty` is `.ref p` for a key into table `p`; what that is *stored* as depends\non `p`'s own key and so cannot be settled here.",
+"src": "structure Col where\n  name : String\n  ty : Ty\n  nullable : Bool\n  kind : ColKind\n  deriving Repr",
+"mentions": [
+"ColKind",
+"Ty"
+]
+},
+"Seen": {
+"name": "Seen",
+"kind": "inductive",
+"file": "Tatami/Infer.lean",
+"line": 16,
+"doc": "What one value contributes at a member. `null` carries no type of its\nown; it only makes the member nullable.",
+"src": "inductive Seen where\n  | null\n  | value (ty : Ty) (big : Bool)",
+"mentions": [
+"Ty"
+]
+},
+"Obs": {
+"name": "Obs",
+"kind": "structure",
+"file": "Tatami/Infer.lean",
+"line": 70,
+"doc": "What has been observed at one member. The counts separate an explicit\n`null` from an absent key -- a distinction the generated `option` cannot\ncarry, so it is kept here instead.\n\n`seen` is the *set* of types the values there had, kept in order, rather\nthan their running join. Union of sets is commutative and associative with\nnothing to prove, which is what makes the corpus fold independent of the\norder documents arrive in; the join is taken once, at the end. It also\nlets a conflict name every type involved rather than the two that happened\nto meet first.",
+"src": "structure Obs where\n  seen : List Ty := []\n  values : Nat := 0\n  nulls : Nat := 0\n  absent : Nat := 0\n  big : Bool := false\n  deriving Repr, Inhabited",
+"mentions": [
+"Ty"
+]
+},
+"TableObs": {
+"name": "TableObs",
+"kind": "structure",
+"file": "Tatami/Infer.lean",
+"line": 109,
+"doc": "What has been observed at one table: how many times an object appeared at\nthat path, and what each of its members held. The visit count is the\ndenominator for absence, and differs per table -- the root table is\nvisited once per document, a nested table once per parent that had it.\n\nNothing here records where a row came from. Since a table is identified by\nits path and nothing folds, the table it points back to and whether it is\nkeyed are functions of that path; `toSchema` reads them off it. Every field\nthat remains accumulates, so the order documents arrive in cannot matter.",
+"src": "structure TableObs where\n  visits : Nat := 0\n  members : List (String \u00d7 Obs) := []\n  /-- whether a collection's members were objects or scalars. One that is some\n      of each has no single table shape. -/\n  elemObject : Bool := false\n  elemScalar : Bool := false\n  deriving Inhabited",
+"mentions": [
+"Obs"
+]
+},
+"Tables": {
+"name": "Tables",
+"kind": "abbrev",
+"file": "Tatami/Infer.lean",
+"line": 126,
+"doc": "Kept in path order, so that two corpora differing only in the order their\ndocuments arrived produce the same list and not merely the same set.",
+"src": "abbrev Tables := List (Path \u00d7 TableObs)",
+"mentions": [
+"Path",
+"TableObs"
+]
+},
+"TyExpr": {
+"name": "TyExpr",
+"kind": "inductive",
+"file": "Tatami/Ocaml.lean",
+"line": 19,
+"doc": "The output language.\n\nNot an embedding of OCaml: it expresses only the declarations the design\nnote's generated signature contains (\u00a72.1, Step 3), and no expressions at\nall. Its purpose is to give the generator a structured codomain, so that\nproperties of the emitted code are statable about data rather than about\na string.\n\nIt grows one construct at a time as the input fragment grows.\n\nPhase 1 emits implementations as well as signatures (design note \u00a73: the\nnote shows `val a : Root.t -> int` beside `let a r = r.a`), and Phase 2 is\na *source-to-source pass over that generated code*. So the bodies have to\nbe data too, or Phase 2 is string rewriting and nothing about it can be\nstated. `Expr` below is grown to exactly what those bodies need.",
+"src": "inductive TyExpr where\n  | id\n  | int\n  | float\n  | string\n  | bool\n  | unit\n  | option : TyExpr \u2192 TyExpr\n  | list   : TyExpr \u2192 TyExpr\n  | named  : String \u2192 TyExpr\n  | qualified : String \u2192 String \u2192 TyExpr   -- a type from another module, M.t\n  | arrow  : TyExpr \u2192 TyExpr \u2192 TyExpr\n  /-- `name:int -> t`. A constructor taking seven positional arguments, several\n      of them `int`, is a constructor that gets called wrongly; labels are what\n      make `make` safe to use. -/\n  | labelled : String \u2192 TyExpr \u2192 TyExpr \u2192 TyExpr\n  deriving Repr, Inhabited",
+"mentions": []
+},
+"Expr": {
+"name": "Expr",
+"kind": "inductive",
+"file": "Tatami/Ocaml.lean",
+"line": 54,
+"doc": "Expressions, only as far as the emitted bodies reach: a projection, a\ncall into another module, and the placeholder standing where a row source\nwould be.\n\nThe accessors need nothing that computes. The loader does -- it builds a\nrow with `make`, stamps the columns the document did not carry with the\nsetters, and reads it back through the getters into a list of bound\nvalues. That is four more constructors and no more: a labelled\napplication, because `make` is labelled and an unlabelled one would be the\nvery confusion labels exist to prevent; a list, because a row of bound\nvalues is one; a `let`, because stamping is a sequence and nesting it\nwould be unreadable; and an integer, for the neutral value a derived\ncolumn holds until it is stamped.\n\nStill nothing that branches or loops. The traversal is the same for every\nschema, so it is not generated, and what is generated stays a fixed shape\nper column -- which is what keeps it checkable by reading.",
+"src": "inductive Expr where\n  | var   : String \u2192 Expr             -- r\n  | field : Expr \u2192 String \u2192 Expr      -- r.a\n  | qual  : String \u2192 String \u2192 Expr    -- B.get\n  | str   : String \u2192 Expr             -- \"...\"\n  | int   : Int \u2192 Expr                -- 0\n  | app   : Expr \u2192 List Expr \u2192 Expr   -- f x y\n  /-- `f ~a:x ~b:y`. `make` is labelled, so the call that builds a row has to\n      be too, or the labels guard nothing at the only place they are used. -/\n  | labelledApp : Expr \u2192 List (String \u00d7 Expr) \u2192 Expr\n  | list  : List Expr \u2192 Expr          -- [a; b; c]\n  /-- `let r = e in body`: a row is stamped one column at a time. -/\n  | letIn : String \u2192 Expr \u2192 Expr \u2192 Expr\n  /-- `match e with | \"a\" -> x | _ -> d`: the registry, which answers a\n      question about a table given its name. Cases are string literals and\n      there is always a default, so it is total by construction and nothing\n      about it needs to be proved exhaustive. -/\n  | matchStr : Expr \u2192 List (String \u00d7 Expr) \u2192 Expr \u2192 Expr\n  | record : List String \u2192 Expr       -- { a; b }, each field from a like-named binding\n  | update : Expr \u2192 String \u2192 Expr \u2192 Expr   -- { r with a = v }\n  deriving Repr, Inhabited",
+"mentions": []
+},
+"RecField": {
+"name": "RecField",
+"kind": "structure",
+"file": "Tatami/Ocaml.lean",
+"line": 76,
+"doc": "",
+"src": "structure RecField where\n  name : String\n  ty : TyExpr\n  deriving Repr",
+"mentions": [
+"TyExpr"
+]
+},
+"Decl": {
+"name": "Decl",
+"kind": "inductive",
+"file": "Tatami/Ocaml.lean",
+"line": 81,
+"doc": "",
+"src": "inductive Decl where\n  | abstractType : String \u2192 Decl\n  /-- `type id = Ids.root`: a name for a type declared elsewhere. Each unit\n      gives its key type such a name, so that `Root.id` stays writable while\n      the type itself lives in `Ids` and no unit depends on another for it. -/\n  | typeAlias    : String \u2192 TyExpr \u2192 Decl\n  | recordType   : String \u2192 List RecField \u2192 Decl\n  | value        : String \u2192 TyExpr \u2192 Decl\n  /-- `let a r = r.a`: an implementation. Only appears in a `.ml`. -/\n  | letValue     : String \u2192 List String \u2192 Expr \u2192 Decl\n  deriving Repr",
+"mentions": [
+"Expr",
+"RecField",
+"TyExpr"
+]
+},
+"Module": {
+"name": "Module",
+"kind": "structure",
+"file": "Tatami/Ocaml.lean",
+"line": 93,
+"doc": "",
+"src": "structure Module where\n  name : String\n  /-- the `.mli` -/\n  decls : List Decl\n  /-- the `.ml`. Well-formedness is stated of `decls` only: the signature is\n      what a consumer compiles against, and the implementation is checked by\n      OCaml against it. -/\n  impl : List Decl := []\n  /-- emit the `.ml` and no `.mli`.\n\n      Set for the loaders. The schema reader takes every `.mli` in the\n      directory for a table and reads its `val`s as columns; a loader is not a\n      table, and an `.mli` for one would show up there as a table with no\n      columns. It has nothing to state anyway -- its whole content is the\n      plumbing, and a signature would be a second copy of it. -/\n  implOnly : Bool := false\n  deriving Repr",
+"mentions": [
+"Decl"
+]
+},
+"File": {
+"name": "File",
+"kind": "structure",
+"file": "Tatami/Ocaml.lean",
+"line": 113,
+"doc": "Every module the generator emits, each of which becomes one `.mli`\ncompilation unit, in the order they must be compiled.",
+"src": "structure File where\n  modules : List Module\n  deriving Repr",
+"mentions": [
+"Module"
+]
+},
+"Seg": {
+"name": "Seg",
+"kind": "inductive",
+"file": "Tatami/Path.lean",
+"line": 4,
+"doc": "A step from an object into one of its parts.",
+"src": "inductive Seg where\n  | member : String \u2192 Seg\n  | elem                    -- into the elements of an array\n  | entry                   -- into the entries of an object marked as a map\n  deriving Repr, DecidableEq, Inhabited",
+"mentions": []
+},
+"Path": {
+"name": "Path",
+"kind": "abbrev",
+"file": "Tatami/Path.lean",
+"line": 20,
+"doc": "A position in the document, from the root down. The empty path is the\nroot object.\n\nA path identifies a table, so it is also what module names are derived\nfrom. Distinct tables have distinct paths by construction.",
+"src": "abbrev Path := List Seg",
+"mentions": [
+"Seg"
+]
+},
+"Column": {
+"name": "Column",
+"kind": "structure",
+"file": "Tatami/Schema.lean",
+"line": 6,
+"doc": "",
+"src": "structure Column where\n  /-- the JSON member name, unmangled -/\n  name : String\n  field : Field\n  deriving Repr",
+"mentions": [
+"Field"
+]
+},
+"Table": {
+"name": "Table",
+"kind": "structure",
+"file": "Tatami/Schema.lean",
+"line": 12,
+"doc": "",
+"src": "structure Table where\n  /-- the path this table came from; it is the table's identity and the\n      source of its module name -/\n  path : Path\n  /-- set when rows sit in a collection: the table they point back to.\n      Derived from `path`, not observed: a table's rows sit in exactly one\n      collection, the one its path ends in. -/\n  parent : Option Path\n  /-- rows are keyed by a string rather than positioned by an index. Also\n      derived from `path` -- true exactly when it ends in a map entry. -/\n  keyed : Bool\n  columns : List Column\n  deriving Repr",
+"mentions": [
+"Column",
+"Path"
+]
+},
+"Schema": {
+"name": "Schema",
+"kind": "abbrev",
+"file": "Tatami/Schema.lean",
+"line": 26,
+"doc": "",
+"src": "abbrev Schema := List Table",
+"mentions": [
+"Table"
+]
+},
+"Stream.Step": {
+"name": "Stream.Step",
+"kind": "inductive",
+"file": "Tatami/Stream.lean",
+"line": 91,
+"doc": "What the loop is looking at, having skipped whitespace.",
+"src": "private inductive Step where\n  | document (start stop : Nat)   -- a complete value spans these\n  | done (after : Nat)      -- the array's closing bracket\n  | separator (after : Nat) -- a comma\n  | needMore                -- the buffer does not reach far enough\n  | unexpected (byte : UInt8)",
+"mentions": []
+},
+"Ty": {
+"name": "Ty",
+"kind": "inductive",
+"file": "Tatami/Ty.lean",
+"line": 22,
+"doc": "The type of a member.\n\nA nested object does not have a type of its own: the design note turns it\ninto a table of its own and leaves the parent holding a key into it\n(\u00a72.1, Step 4). `ref` is that key, and it names the table by its path.\n\nThe design note settles the two ends of this -- a column becomes a record\nfield, a nullable column an `option` field -- but not how a member seen as\nboth an integer and a float should be typed. That ordering is ours: `bot`\nsits under everything, `int` under `float`, `uuid` under `str`, and nothing\nelse is comparable.\n\n`uuid` is a refinement of `str`, not a separate scalar: a member is typed\n`uuid` only if every value ever seen there was uuid-shaped, and a single\nordinary string widens it back. That is the same monotone widening as\n`int` to `float`, which is why it is a type rather than a marking -- more\ndata can only widen, never narrow.",
+"src": "inductive Ty where\n  | bot     -- observed, but never with a value\n  | int\n  | float\n  | uuid    -- a string, every occurrence of which was uuid-shaped\n  | str\n  | bool\n  | ref : Path \u2192 Ty      -- a nested object: a key into its table\n  | coll : Path \u2192 Ty     -- an array: no column here, the elements point back\n  deriving Repr, DecidableEq, Inhabited",
+"mentions": [
+"Path"
+]
+},
+"Field": {
+"name": "Field",
+"kind": "structure",
+"file": "Tatami/Ty.lean",
+"line": 64,
+"doc": "Nullability is a flag on the member, not one of the types above: the note\ntreats it as a property of the column, carried into OCaml as `option`.",
+"src": "structure Field where\n  ty : Ty\n  nullable : Bool\n  deriving Repr, Inhabited",
+"mentions": [
+"Ty"
+]
+},
+"Outcome": {
+"name": "Outcome",
+"kind": "structure",
+"file": "Main.lean",
+"line": 6,
+"doc": "",
+"src": "structure Outcome where\n  /-- what the tables are called, which the report needs too -/\n  naming : Naming\n  /-- every unit as (file name, contents), in compile order -/\n  units : List (String \u00d7 String)\n  /-- the same units in one text, for a terminal -/\n  ocaml : String\n  tables : Tables\n  documents : Nat",
+"mentions": [
+"Naming",
+"Tables"
+]
+}
+},
+"order": [
+"Config",
+"Doc",
+"Doc.Input",
+"Doc.Parsed",
+"Error",
+"Naming",
+"ColKind",
+"Col",
+"Seen",
+"Obs",
+"TableObs",
+"Tables",
+"TyExpr",
+"Expr",
+"RecField",
+"Decl",
+"Module",
+"File",
+"Seg",
+"Path",
+"Column",
+"Table",
+"Schema",
+"Stream.Step",
+"Ty",
+"Field",
+"Outcome"
+]
+}

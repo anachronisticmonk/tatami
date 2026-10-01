@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Tatami — pipeline and proofs</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=IBM+Plex+Sans:wght@400;500;600&family=Newsreader:opsz,wght@6..72,400;6..72,500&display=swap">
+    <script>
+      /* Stamp the theme before first paint so the page never flashes the
+         wrong one. Same key as the other two pages; localStorage throws in a
+         private window, so every touch of it is guarded. */
+      (function () {
+        var t = 'dark'
+        try { var v = localStorage.getItem('tatami-theme')
+              if (v === 'light' || v === 'dark') t = v } catch (e) {}
+        document.documentElement.setAttribute('data-theme', t)
+      })()
+    </script>
+  </head>
+  <body><div id="root"></div><script type="module" src="/src/main.jsx"></script></body>
+</html>

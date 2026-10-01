@@ -1,0 +1,21 @@
+{
+  "name": "tatami-explainer",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "description": "Visual reader for the Tatami pipeline and its Lean proofs.",
+  "scripts": {
+    "dev": "vite",
+    "build": "vite build",
+    "preview": "vite preview",
+    "extract": "python3 scripts/extract-graph.py && python3 scripts/extract-types.py && cp scripts/corpus.json src/data/corpus.json && (cd .. && lake env lean --run explainer/scripts/Stages.lean explainer/scripts/corpus.json) > src/data/stages.json"
+  },
+  "dependencies": {
+    "react": "^18.3.1",
+    "react-dom": "^18.3.1"
+  },
+  "devDependencies": {
+    "@vitejs/plugin-react": "^4.3.4",
+    "vite": "^5.4.11"
+  }
+}
