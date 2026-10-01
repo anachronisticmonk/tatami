@@ -215,22 +215,31 @@
     font-family: var(--mono); font-size: 10.5px; letter-spacing: 0.05em;
     text-transform: uppercase; color: var(--faint);
   }
+  /* Everything after the path sits in one group pushed to the right. It used
+     to be `margin-left: auto` on each control, which works for one and only
+     one: a row with both a name box and a map control put the gap in front of
+     the first and none in front of the second. */
+  .field-controls {
+    margin-left: auto; display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap;
+  }
   .field select {
-    margin-left: auto; font-family: var(--sans); font-size: 13px;
+    font-family: var(--sans); font-size: 13px;
     background: var(--surface); color: var(--ink);
     border: 1px solid var(--line); padding: 4px 8px; max-width: 100%;
   }
   .field select:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .field input[type="text"] {
-    margin-left: auto; font-family: var(--mono); font-size: 13px;
+    font-family: var(--mono); font-size: 13px;
     background: var(--surface); color: var(--ink);
     border: 1px solid var(--line); padding: 4px 8px; max-width: 14ch;
   }
+  /* wider than the root box: a derived name is every member along the path
+     joined, and truncating it hides the thing being replaced */
+  .field input.namebox { max-width: 20ch; }
+  .field input.namebox.set { border-color: var(--accent); color: var(--accent); }
   .field input[type="text"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
   .field select.set { border-color: var(--accent); color: var(--accent); }
-  .field .fixed {
-    margin-left: auto; font-family: var(--sans); font-size: 13px; color: var(--faint);
-  }
+  .field .fixed { font-family: var(--sans); font-size: 13px; color: var(--faint); }
   .field .says { font-size: 13px; color: var(--muted); margin: 7px 0 0; max-width: 80ch; }
   .field .says b { color: var(--ink); font-weight: 500; }
   .field .yields {
@@ -248,6 +257,26 @@
     background: var(--alarm-bg); padding: 9px 16px; border-bottom: 1px solid var(--line);
   }
   .cfg-bad.on { display: block; }
+  /* what the keys are, folded away until asked for: the box below is the
+     thing to look at, and a permanent legend would push it off the screen */
+  .cfg-help {
+    padding: 12px 16px 14px; border-bottom: 1px solid var(--line);
+    background: var(--sunk); font-size: 13px; color: var(--muted);
+  }
+  .cfg-help[hidden] { display: none; }
+  .cfg-help p { margin: 0 0 9px; }
+  .cfg-help pre {
+    margin: 0 0 11px; padding: 10px 12px; background: var(--well);
+    border: 1px solid var(--line); font-size: 12.5px; color: var(--ink);
+    overflow-x: auto; white-space: pre;
+  }
+  .cfg-help dl { margin: 0; }
+  .cfg-help dt { margin-top: 7px; }
+  .cfg-help dt code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  .cfg-help dt .cfg-ex { font-family: var(--mono); font-size: 12px; margin-left: 9px; opacity: .8; }
+  .cfg-help dd { margin: 1px 0 0 0; }
+  .cfg-help .cfg-foot { margin: 11px 0 0; }
+  .cfg-help code { font-family: var(--mono); font-size: 12.5px; }
 
   /* observations */
   table { border-collapse: collapse; width: 100%; font-size: 13.5px; }
@@ -348,14 +377,32 @@
       </div>
 
       <div class="pane" id="pane-shape">
-        <p class="lead">Two shapes cannot be read off the data, so Tatami never guesses them. <strong>Nothing here is set unless you set it.</strong> Each choice below says what it does to the schema.</p>
+        <p class="lead">Two shapes cannot be read off the data, so Tatami never guesses them: what to call the root, and whether an object&rsquo;s keys are data. <strong>Nothing here is set unless you set it.</strong> A name box sits beside every table too &mdash; a derived name says where a table came from rather than what it is, and <code>.runs[].jobs[]</code> is a worse name for a job than <code>job</code>. All three go into the configuration.</p>
         <div class="scroll" id="shape"></div>
       </div>
 
       <div class="pane" id="pane-config">
         <div class="cfg-head">
           <p>The same choices as a file. Pass it to the binary with <code style="font-family:var(--mono)">--config</code>; edit it here and the Shape tab follows.</p>
+          <button class="act" id="cfghelp" aria-expanded="false">&#9656; What goes in it</button>
           <button class="act" id="copycfg">Copy</button>
+        </div>
+        <div class="cfg-help" id="cfghelptext" hidden>
+          <p>An object, with three keys, all of them optional. Anything else is refused by name rather than ignored.</p>
+          <pre class="mono">{
+  "root": "repo",
+  "maps": [".users"],
+  "names": { ".runs[]": "run", ".runs[].jobs[]": "job" }
+}</pre>
+          <dl>
+            <dt><code>root</code><span class="cfg-ex">"repo"</span></dt>
+            <dd>What to call the root table. Every other table is named for the members along its path; the root has none.</dd>
+            <dt><code>maps</code><span class="cfg-ex">[".users"]</span></dt>
+            <dd>Objects whose keys are data rather than field names. Each member becomes a row keyed by its own name.</dd>
+            <dt><code>names</code><span class="cfg-ex">{ ".runs[]": "run" }</span></dt>
+            <dd>A better name for one table, by its path. The path of the member holding a collection, ".runs", names it too.</dd>
+          </dl>
+          <p class="cfg-foot">A path is written the way the Shape tab writes one: <code>.</code> is the root, <code>.a</code> a member, <code>[]</code> the elements of an array, <code>{}</code> the entries of an object marked as a map.</p>
         </div>
         <div class="cfg-bad" id="cfgbad"></div>
         <textarea class="plain" id="cfg" spellcheck="false" aria-label="Configuration"></textarea>
@@ -557,7 +604,27 @@
   var ROOT_NAME = "Root";
   function rootModuleName(n) { return n ? capitalize(mangle(n)) : "Root"; }
 
+  /* Names the user gave, by the path of the table each one names. Set once
+     per run from the config, like ROOT_NAME. Mirrors `Naming`. */
+  var GIVEN_NAMES = {};
+
+  /* A name is looked up by the table's own path, ".runs[]". The path of the
+     member holding it, ".runs", is accepted too: a member is a collection or
+     an object and never both, so the two spellings cannot name different
+     tables. Mirrors `Naming.find?`. */
+  function givenName(p) {
+    var own = pathString(p);
+    if (Object.prototype.hasOwnProperty.call(GIVEN_NAMES, own)) return GIVEN_NAMES[own];
+    if (inCollection(p)) {
+      var held = pathString(p.slice(0, p.length - 1));
+      if (Object.prototype.hasOwnProperty.call(GIVEN_NAMES, held)) return GIVEN_NAMES[held];
+    }
+    return null;
+  }
+
   function moduleName(p) {
+    var given = givenName(p);
+    if (given) return capitalize(mangle(given));
     var names = pathNames(p);
     return names.length === 0 ? ROOT_NAME : capitalize(names.map(mangle).join("_"));
   }
@@ -567,13 +634,48 @@
      from a record by looking, so it is marked. Nothing else is.
      ------------------------------------------------------------------ */
 
+  var CONFIG_KEYS = ["maps", "root", "names"];
+
   function markings(cfg) {
     cfg = cfg || {};
+    /* Refused key by key, and in the binary's words, so that a configuration
+       the binary would reject is rejected here too rather than silently
+       ignored -- an ignored marking looks exactly like one that did nothing. */
+    Object.keys(cfg).forEach(function (k) {
+      if (k === "recursive")
+        throw { msg: "recursive markings are no longer supported: a table is identified by " +
+                     "its path, so nothing folds into an ancestor" };
+      if (CONFIG_KEYS.indexOf(k) < 0)
+        throw { msg: "unknown configuration key " + k };
+    });
+
+    if (cfg.root !== undefined) {
+      if (typeof cfg.root !== "string") throw { msg: "root must be a string" };
+      if (cfg.root.trim() === "") throw { msg: "root must not be empty" };
+    }
     ROOT_NAME = rootModuleName(cfg.root);
-    if (cfg.recursive !== undefined)
-      throw { msg: "recursive markings are no longer supported: a table is identified by " +
-                   "its path, so nothing folds into an ancestor" };
-    var maps = cfg.maps || [];
+
+    var maps = cfg.maps === undefined ? [] : cfg.maps;
+    if (!Array.isArray(maps)) throw { msg: "maps must be a list" };
+    maps.forEach(function (m) {
+      if (typeof m !== "string") throw { msg: "maps must be a list of path strings" };
+      parsePath(m);
+    });
+
+    GIVEN_NAMES = {};
+    if (cfg.names !== undefined) {
+      if (cfg.names === null || typeof cfg.names !== "object" || Array.isArray(cfg.names))
+        throw { msg: "names must be an object mapping a path to a name" };
+      Object.keys(cfg.names).forEach(function (k) {
+        var n = cfg.names[k];
+        if (typeof n !== "string") throw { msg: "the name for " + k + " must be a string" };
+        if (n.trim() === "") throw { msg: "the name for " + k + " must not be empty" };
+        /* canonicalised, so ".runs[]" and a path written any other way that
+           parses to the same steps land on the same key */
+        GIVEN_NAMES[pathString(parsePath(k))] = n;
+      });
+    }
+
     return {
       isMap: function (p) { return maps.indexOf(pathString(p)) >= 0; },
       maps: maps
@@ -1005,16 +1107,23 @@
 
   /* ---------------- the markings ---------------- */
 
-  var config = { maps: [], root: "" };
+  var config = { maps: [], root: "", names: {} };
 
   function configForWire() {
     var c = {};
-    if (config.maps.length) c.maps = config.maps.slice();
     if (config.root) c.root = config.root;
+    if (config.maps.length) c.maps = config.maps.slice();
+    /* `names` has no control of its own -- the Shape tab offers a box for the
+       root and a switch for a map, and nothing for a name -- so it lives only
+       in the Config tab, and has to survive a round trip through it. */
+    if (Object.keys(config.names || {}).length) c.names = config.names;
     return c;
   }
 
-  function markingCount() { return config.maps.length + (config.root ? 1 : 0); }
+  function markingCount() {
+    return config.maps.length + (config.root ? 1 : 0) +
+           Object.keys(config.names || {}).length;
+  }
 
   /* ---------------- the Shape tab ---------------- */
 
@@ -1031,27 +1140,67 @@
     return out.sort();
   }
 
-  /* The modules that currently come from at or below a path. */
-  function modulesUnder(path, tables) {
-    return (tables || [])
-      .filter(function (t) { return t.path === path || t.path.indexOf(path) === 0; })
-      .map(function (t) { return t.module; });
+  function isTable(path, tables) {
+    return (tables || []).some(function (t) { return t.path === path; });
+  }
+
+  /* The module this row stands for, and only that one: every other table has
+     a row of its own. A marking has no table at its own path, so it is
+     answered by the entry table it produces. */
+  function moduleOf(path, tables) {
+    var own = (tables || []).filter(function (t) { return t.path === path; })[0];
+    if (own) return own.module;
+    var entry = (tables || []).filter(function (t) { return t.path === path + "{}"; })[0];
+    return entry ? entry.module : "";
   }
 
   function moduleFor(path) { return moduleName(parsePath(path)); }
 
+  /* A name may be written against the table's own path, ".runs[]", or against
+     the member holding it, ".runs" -- a member is a collection or an object
+     and never both, so the two spellings cannot name different tables, and
+     the binary accepts either. The box reads whichever one is already there
+     and writes back to that same one, so a name typed in the Config tab is
+     edited here rather than shadowed by a second entry. */
+  function nameKey(path) {
+    var names = config.names || {};
+    if (Object.prototype.hasOwnProperty.call(names, path)) return path;
+    var held = path.replace(/(\[\]|\{\})$/, "");
+    if (held !== path && Object.prototype.hasOwnProperty.call(names, held)) return held;
+    return path;
+  }
+
+  function nameOf(path) { return (config.names || {})[nameKey(path)] || ""; }
+
+  function setName(path, value) {
+    if (!config.names) config.names = {};
+    var k = nameKey(path);
+    if (value.trim() === "") delete config.names[k]; else config.names[k] = value;
+  }
+
+  function nameBox(path, tables) {
+    if (!isTable(path, tables)) return "";
+    var given = nameOf(path);
+    return '<input class="namebox' + (given ? " set" : "") + '" data-name="' + esc(path) +
+      '" type="text" spellcheck="false" placeholder="' + esc(moduleOf(path, tables)) +
+      '" value="' + esc(given) + '" aria-label="Name for the table at ' + esc(path) +
+      '" title="what to call this table. A derived name says where a table came from ' +
+      'rather than what it is.">';
+  }
+
   function shapeRow(path, tables) {
     var coll = isCollection(path);
-    var mods = modulesUnder(path, tables);
+    var own = moduleOf(path, tables);
     var opts, chosen, says, yields;
 
     if (coll) {
       chosen = "";
       opts = null;                                   // a collection is not marked
       says = "A table of its own, whose rows carry a key back to the table that holds them. " +
-             "Nothing to choose: a table is identified by its path, so the table it points " +
-             "back to and whether it is keyed both follow from that path.";
-      yields = mods.length ? "module " + mods.join(", ") : "";
+             "Nothing about its shape to choose: a table is identified by its path, so the " +
+             "table it points back to and whether it is keyed both follow from that path. " +
+             "Its name does not \u2014 that is the box.";
+      yields = own ? "module " + own : "";
     } else {
       chosen = config.maps.indexOf(path) >= 0 ? "map" : "";
       opts = [{ v: "", label: "a column per member" },
@@ -1065,8 +1214,7 @@
         says = "Each member becomes a <b>column</b>. This is the default, and right when every " +
                "document has the same members. If the names vary from document to document it " +
                "gives a column, and a module, for each one.";
-        yields = mods.length ? "module " + mods.slice(0, 4).join(", ") +
-                 (mods.length > 4 ? ", … (" + mods.length + " in all)" : "") : "";
+        yields = own ? "module " + own : "";
       }
     }
 
@@ -1080,7 +1228,7 @@
     return '<div class="field"><div class="field-top">' +
       '<code class="path">' + esc(path) + "</code>" +
       '<span class="kind">' + (coll ? "collection" : "object") + "</span>" +
-      control + "</div>" +
+      '<span class="field-controls">' + nameBox(path, tables) + control + "</span></div>" +
       '<p class="says">' + says + "</p>" +
       (yields ? '<div class="yields">now: ' + esc(yields) + "</div>" : "") +
       "</div>";
@@ -1091,8 +1239,9 @@
   function rootRow() {
     return '<div class="field"><div class="field-top">' +
       '<code class="path">.</code><span class="kind">root</span>' +
+      '<span class="field-controls">' +
       '<input id="rootname" data-root type="text" placeholder="Root" value="' +
-      esc(config.root) + '" spellcheck="false"></div>' +
+      esc(config.root) + '" spellcheck="false"></span></div>' +
       '<p class="says">The root object has no member name to be called after, so ' +
       '<b>' + esc(rootModuleName(config.root)) + '</b> is used. Name it for what a ' +
       'document <i>is</i> &mdash; every child table keys back to it.</p>' +
@@ -1101,18 +1250,42 @@
   }
 
   function renderShape(tables) {
+    /* The pane is rebuilt from scratch on every run, which lands in the
+       middle of typing: the translation is debounced, so the rebuild arrives
+       a keystroke or two behind the caret. Remember which box had it and put
+       it back. */
+    var live = document.activeElement, held = null, from = 0, to = 0;
+    if (live && shapeEl.contains(live) && live.tagName === "INPUT") {
+      held = live.hasAttribute("data-root") ? "\u0000root" : live.getAttribute("data-name");
+      from = live.selectionStart; to = live.selectionEnd;
+    }
+
     var paths = markablePaths(tables);
     shapeEl.innerHTML = rootRow() + (paths.length
       ? paths.map(function (p) { return shapeRow(p, tables); }).join("")
       : '<p class="empty">Nothing else to choose: this document has no nested objects and no collections.</p>');
+
+    if (held !== null) {
+      var back = held === "\u0000root"
+        ? shapeEl.querySelector("[data-root]")
+        : shapeEl.querySelector('[data-name="' + (window.CSS && CSS.escape ? CSS.escape(held) : held) + '"]');
+      if (back) {
+        back.focus();
+        try { back.setSelectionRange(from, to); } catch (e) { /* not a text input */ }
+      }
+    }
+
     var n = markingCount();
     $("n-shape").textContent = n ? String(n) : "";
     $("n-config").textContent = n ? "●" : "";
   }
 
   shapeEl.addEventListener("input", function (e) {
-    if (!e.target.hasAttribute("data-root")) return;
-    config.root = e.target.value.trim();
+    if (e.target.hasAttribute("data-root")) {
+      config.root = e.target.value.trim();
+    } else if (e.target.hasAttribute("data-name")) {
+      setName(e.target.getAttribute("data-name"), e.target.value);
+    } else return;
     files.forEach(function (f) { f.edited = false; });
     renderConfigText();
     run();
@@ -1134,6 +1307,15 @@
 
   /* ---------------- the Config tab ---------------- */
 
+  var cfgHelpBtn = $("cfghelp"), cfgHelpText = $("cfghelptext");
+  cfgHelpBtn.addEventListener("click", function () {
+    var open = cfgHelpText.hidden;
+    cfgHelpText.hidden = !open;
+    cfgHelpBtn.className = "act" + (open ? " on" : "");
+    cfgHelpBtn.setAttribute("aria-expanded", open ? "true" : "false");
+    cfgHelpBtn.innerHTML = (open ? "\u25be" : "\u25b8") + " What goes in it";
+  });
+
   var cfgHasFocus = false;
   cfgEl.addEventListener("focus", function () { cfgHasFocus = true; });
   cfgEl.addEventListener("blur", function () { cfgHasFocus = false; renderConfigText(); });
@@ -1147,7 +1329,7 @@
 
   cfgEl.addEventListener("input", function () {
     var text = cfgEl.value.trim();
-    if (!text) { config = { maps: [], root: "" }; cfgBad.className = "cfg-bad"; run(); return; }
+    if (!text) { config = { maps: [], root: "", names: {} }; cfgBad.className = "cfg-bad"; run(); return; }
     var parsed;
     try { parsed = JSON.parse(text); }
     catch (e) {
@@ -1162,14 +1344,14 @@
       cfgBad.className = "cfg-bad on";
       return;
     }
-    var unknown = keys.filter(function (k) { return k !== "maps" && k !== "root"; });
+    var unknown = keys.filter(function (k) { return CONFIG_KEYS.indexOf(k) < 0; });
     if (unknown.length) {
-      cfgBad.textContent = "unknown key " + unknown[0] + " — only maps and root are read";
+      cfgBad.textContent = "unknown configuration key " + unknown[0];
       cfgBad.className = "cfg-bad on";
       return;
     }
     cfgBad.className = "cfg-bad";
-    config = { maps: parsed.maps || [], root: parsed.root || "" };
+    config = { maps: parsed.maps || [], root: parsed.root || "", names: parsed.names || {} };
     files.forEach(function (f) { f.edited = false; });
     run();
   });
@@ -1472,7 +1654,7 @@
 
   document.querySelectorAll("button.chip").forEach(function (b) {
     b.addEventListener("click", function () {
-      config = { maps: [], root: "" };         // an example is a fresh start
+      config = { maps: [], root: "", names: {} };   // an example is a fresh start
       files.forEach(function (f) { f.edited = false; });
       inEl.value = EXAMPLES[b.dataset.ex];
       renderConfigText();

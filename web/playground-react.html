@@ -326,6 +326,25 @@
     background: var(--alarm-bg); padding: 9px 16px; border-bottom: 1px solid var(--line);
   }
   .cfg-bad.on { display: block; }
+  /* what the keys are, folded away until asked for: the box below is the
+     thing to look at, and a permanent legend would push it off the screen */
+  .cfg-help {
+    padding: 12px 16px 14px; border-bottom: 1px solid var(--line);
+    background: var(--sunk); font-size: 13px; color: var(--muted);
+  }
+  .cfg-help p { margin: 0 0 9px; }
+  .cfg-help pre {
+    margin: 0 0 11px; padding: 10px 12px; background: var(--well);
+    border: 1px solid var(--line); font-size: 12.5px; color: var(--ink);
+    overflow-x: auto; white-space: pre;
+  }
+  .cfg-help dl { margin: 0; }
+  .cfg-help dt { margin-top: 7px; }
+  .cfg-help dt code { font-family: var(--mono); font-size: 12.5px; color: var(--ink); }
+  .cfg-help dt .cfg-ex { font-family: var(--mono); font-size: 12px; margin-left: 9px; opacity: .8; }
+  .cfg-help dd { margin: 1px 0 0 0; }
+  .cfg-help .cfg-foot { margin: 11px 0 0; }
+  .cfg-help code { font-family: var(--mono); font-size: 12.5px; }
   /* Sunk and bordered: `textarea.plain` paints itself `--surface`, which is
      exactly the panel behind it, so the config box had no edge at all. It
      also carried `flex: 1` against a parent that was not a flex container,
@@ -573,7 +592,27 @@ var Engine = (function () {
   var ROOT_NAME = "Root";
   function rootModuleName(n) { return n ? capitalize(mangle(n)) : "Root"; }
 
+  /* Names the user gave, by the path of the table each one names. Set once
+     per run from the config, like ROOT_NAME. Mirrors `Naming`. */
+  var GIVEN_NAMES = {};
+
+  /* A name is looked up by the table's own path, ".runs[]". The path of the
+     member holding it, ".runs", is accepted too: a member is a collection or
+     an object and never both, so the two spellings cannot name different
+     tables. Mirrors `Naming.find?`. */
+  function givenName(p) {
+    var own = pathString(p);
+    if (Object.prototype.hasOwnProperty.call(GIVEN_NAMES, own)) return GIVEN_NAMES[own];
+    if (inCollection(p)) {
+      var held = pathString(p.slice(0, p.length - 1));
+      if (Object.prototype.hasOwnProperty.call(GIVEN_NAMES, held)) return GIVEN_NAMES[held];
+    }
+    return null;
+  }
+
   function moduleName(p) {
+    var given = givenName(p);
+    if (given) return capitalize(mangle(given));
     var names = pathNames(p);
     return names.length === 0 ? ROOT_NAME : capitalize(names.map(mangle).join("_"));
   }
@@ -583,13 +622,48 @@ var Engine = (function () {
      from a record by looking, so it is marked. Nothing else is.
      ------------------------------------------------------------------ */
 
+  var CONFIG_KEYS = ["maps", "root", "names"];
+
   function markings(cfg) {
     cfg = cfg || {};
+    /* Refused key by key, and in the binary's words, so that a configuration
+       the binary would reject is rejected here too rather than silently
+       ignored -- an ignored marking looks exactly like one that did nothing. */
+    Object.keys(cfg).forEach(function (k) {
+      if (k === "recursive")
+        throw { msg: "recursive markings are no longer supported: a table is identified by " +
+                     "its path, so nothing folds into an ancestor" };
+      if (CONFIG_KEYS.indexOf(k) < 0)
+        throw { msg: "unknown configuration key " + k };
+    });
+
+    if (cfg.root !== undefined) {
+      if (typeof cfg.root !== "string") throw { msg: "root must be a string" };
+      if (cfg.root.trim() === "") throw { msg: "root must not be empty" };
+    }
     ROOT_NAME = rootModuleName(cfg.root);
-    if (cfg.recursive !== undefined)
-      throw { msg: "recursive markings are no longer supported: a table is identified by " +
-                   "its path, so nothing folds into an ancestor" };
-    var maps = cfg.maps || [];
+
+    var maps = cfg.maps === undefined ? [] : cfg.maps;
+    if (!Array.isArray(maps)) throw { msg: "maps must be a list" };
+    maps.forEach(function (m) {
+      if (typeof m !== "string") throw { msg: "maps must be a list of path strings" };
+      parsePath(m);
+    });
+
+    GIVEN_NAMES = {};
+    if (cfg.names !== undefined) {
+      if (cfg.names === null || typeof cfg.names !== "object" || Array.isArray(cfg.names))
+        throw { msg: "names must be an object mapping a path to a name" };
+      Object.keys(cfg.names).forEach(function (k) {
+        var n = cfg.names[k];
+        if (typeof n !== "string") throw { msg: "the name for " + k + " must be a string" };
+        if (n.trim() === "") throw { msg: "the name for " + k + " must not be empty" };
+        /* canonicalised, so ".runs[]" and a path written any other way that
+           parses to the same steps land on the same key */
+        GIVEN_NAMES[pathString(parsePath(k))] = n;
+      });
+    }
+
     return {
       isMap: function (p) { return maps.indexOf(pathString(p)) >= 0; },
       maps: maps
@@ -1201,19 +1275,69 @@ function Modules({report, file, setFile, edits, setEdits, blank}) {
           })))));
 }
 
+/* ---- the configuration ----
+
+   Kept as the object that will be sent, rather than as a fixed record of the
+   keys this page knows about. Two things follow. A key the page does not know
+   -- a typo, or one added to the binary since -- reaches the binary and comes
+   back as its own error, instead of being dropped on the way and looking like
+   it did nothing. And a key the page does know but does not draw a control
+   for, `names`, survives a round trip through the editor. */
+
+const cfgMaps = c => Array.isArray(c.maps) ? c.maps : [];
+const cfgRoot = c => typeof c.root === 'string' ? c.root : '';
+const cfgNames = c => (c.names && typeof c.names === 'object' && !Array.isArray(c.names))
+  ? c.names : {};
+const cfgCount = c =>
+  cfgMaps(c).length + (cfgRoot(c) ? 1 : 0) + Object.keys(cfgNames(c)).length;
+
+/* Emptying a key removes it. `"root": ""` is not the same as no root at all:
+   the binary refuses an empty one, so a cleared box must delete the key
+   rather than write a blank string into it. */
+function cfgSet(c, k, v) {
+  const next = {...c};
+  if (v === '' || v === undefined || v === null || (Array.isArray(v) && !v.length)) delete next[k];
+  else next[k] = v;
+  return next;
+}
+
+const cfgText = c => JSON.stringify(c, null, 2);
+
 function Shape({report, config, setConfig}) {
   const tables = (report && report.ok && report.tables) || [];
   const paths = useMemo(() => {
     const seen = [], out = [];
     const add = p => { if (p !== '.' && seen.indexOf(p) < 0) { seen.push(p); out.push(p); } };
     tables.forEach(t => add(t.path));
-    (config.maps || []).forEach(add);
+    cfgMaps(config).forEach(add);
     return out.sort();
   }, [report, config]);
 
   const toggleMap = p => {
-    const maps = config.maps || [];
-    setConfig({...config, maps: maps.indexOf(p) >= 0 ? maps.filter(x => x !== p) : maps.concat([p])});
+    const maps = cfgMaps(config);
+    setConfig(cfgSet(config, 'maps',
+      maps.indexOf(p) >= 0 ? maps.filter(x => x !== p) : maps.concat([p])));
+  };
+
+  /* A name may be written against the table's own path, ".runs[]", or against
+     the member holding it, ".runs" -- a member is a collection or an object
+     and never both, so the two spellings cannot name different tables, and
+     the binary accepts either. The box reads whichever one is already there
+     and writes back to that same one, so a name typed in the Config tab is
+     edited here rather than shadowed by a second entry. */
+  const nameKey = p => {
+    const names = cfgNames(config);
+    if (Object.prototype.hasOwnProperty.call(names, p)) return p;
+    const held = p.replace(/(\[\]|\{\})$/, '');
+    if (held !== p && Object.prototype.hasOwnProperty.call(names, held)) return held;
+    return p;
+  };
+  const nameOf = p => cfgNames(config)[nameKey(p)] || '';
+  const setName = (p, v) => {
+    const names = {...cfgNames(config)};
+    const k = nameKey(p);
+    if (v.trim() === '') delete names[k]; else names[k] = v;
+    setConfig(cfgSet(config, 'names', Object.keys(names).length ? names : undefined));
   };
 
   return h('div', {className: 'scroll'},
@@ -1225,14 +1349,27 @@ function Shape({report, config, setConfig}) {
           h('code', {}, 'Root'), ' is only a fallback.')),
       h('input', {
         type: 'text', className: 'plain',
-        placeholder: 'Root', value: config.root || '',
-        onChange: e => setConfig({...config, root: e.target.value}),
+        placeholder: 'Root', value: cfgRoot(config),
+        onChange: e => setConfig(cfgSet(config, 'root', e.target.value)),
       })),
     paths.length === 0
       ? h('p', {className: 'lead'}, 'No nested tables yet — paste something with an array or an object in it.')
       : paths.map(p => {
-          const on = (config.maps || []).indexOf(p) >= 0;
-          const mods = tables.filter(t => t.path === p || t.path.indexOf(p) === 0).map(t => t.module);
+          const on = cfgMaps(config).indexOf(p) >= 0;
+          const table = tables.find(t => t.path === p);
+          /* the module this row stands for, and only that one: every other
+             table has a row of its own now. A marking has no table at its own
+             path, so it is answered by the entry table it produces. */
+          const own = table ? table.module
+            : (tables.find(t => t.path === p + '{}') || {}).module;
+          /* Each row does one job. A table is the thing that can be named; a
+             record path is the thing that can be marked. Once `.users` is
+             marked the table moves to `.users{}`, so the two become separate
+             rows -- and a marking on a path that already ends in a collection
+             marker names nothing, which is why the button is not offered
+             there rather than offered and refused. */
+          const canName = !!table;
+          const canMark = on || (!!table && !isCollection(p));
           return h('div', {className: 'shape-row', key: p},
             h('div', {},
               h('div', {className: 'path'}, p),
@@ -1242,39 +1379,100 @@ function Shape({report, config, setConfig}) {
                   : isCollection(p)
                     ? 'A collection, so its elements are a table of their own.'
                     : 'Read as a record. If its keys are data rather than field names, mark it a map.',
-                mods.length ? h('span', {className: 'mods'}, ' — ' + mods.join(', ')) : null)),
-            h('button', {
-              className: 'act' + (on ? ' on' : ''),
-              onClick: () => toggleMap(p),
-            }, on ? 'map ✓' : 'mark as map'));
+                own ? h('span', {className: 'mods'}, ' — ' + own) : null)),
+            canName
+              ? h('input', {
+                  type: 'text', className: 'plain',
+                  placeholder: table.module, value: nameOf(p),
+                  title: 'what to call this table. A derived name says where a table ' +
+                         'came from rather than what it is.',
+                  'aria-label': 'Name for the table at ' + p,
+                  onChange: e => setName(p, e.target.value),
+                })
+              : null,
+            canMark
+              ? h('button', {
+                  className: 'act' + (on ? ' on' : ''),
+                  onClick: () => toggleMap(p),
+                }, on ? 'map ✓' : 'mark as map')
+              : null);
         }));
 }
 
+const CONFIG_KEYS = [
+  ['root', '"repo"',
+   'What to call the root table. Every other table is named for the members along its path; the root has none.'],
+  ['maps', '[".users"]',
+   'Objects whose keys are data rather than field names. Each member becomes a row keyed by its own name.'],
+  ['names', '{ ".runs[]": "run" }',
+   'A better name for one table, by its path. The path of the member holding a collection, ".runs", names it too.'],
+];
+
+const CONFIG_SAMPLE = [
+  '{',
+  '  "root": "repo",',
+  '  "maps": [".users"],',
+  '  "names": { ".runs[]": "run", ".runs[].jobs[]": "job" }',
+  '}',
+].join('\n');
+
 function Config({config, setConfig}) {
-  const wire = {};
-  if ((config.maps || []).length) wire.maps = config.maps.slice();
-  if (config.root) wire.root = config.root;
-  const text = JSON.stringify(wire, null, 2);
+  const text = cfgText(config);
   const [draft, setDraft] = useState(null);
   const [bad, setBad] = useState('');
+  const [help, setHelp] = useState(false);
+  /* The draft is what the user typed, kept verbatim until the configuration
+     changes from somewhere else. Reformatting it on every keystroke that
+     happens to parse is what used to eat a key the moment its closing brace
+     was typed: the box was rebuilt from a record that had already dropped
+     everything but `maps` and `root`. */
+  const mine = useRef(text);
+  useEffect(() => {
+    if (text !== mine.current) { mine.current = text; setDraft(null); setBad(''); }
+  }, [text]);
   const shown = draft === null ? text : draft;
+
   return h('div', {className: 'fill'},
     h('div', {className: 'cfg-head'},
       h('p', {}, 'The same choices as a file. Pass it to the binary with ',
         h('code', {style: {fontFamily: 'var(--mono)'}}, '--config'),
         '; edit it here and the Shape tab follows.'),
+      h('button', {className: 'act' + (help ? ' on' : ''), onClick: () => setHelp(!help)},
+        (help ? '\u25be ' : '\u25b8 ') + 'What goes in it'),
       h('button', {className: 'act', onClick: () => navigator.clipboard && navigator.clipboard.writeText(shown)}, 'Copy')),
+    help
+      ? h('div', {className: 'cfg-help'},
+          h('p', {}, 'An object, with three keys, all of them optional. ' +
+            'Anything else is refused by name rather than ignored.'),
+          h('pre', {className: 'mono'}, CONFIG_SAMPLE),
+          h('dl', {},
+            CONFIG_KEYS.map(([k, ex, why]) => [
+              h('dt', {key: k}, h('code', {}, k),
+                h('span', {className: 'cfg-ex'}, ex)),
+              h('dd', {key: k + '-d'}, why),
+            ])),
+          h('p', {className: 'cfg-foot'},
+            'A path is written the way the Shape tab writes one: ',
+            h('code', {}, '.'), ' is the root, ', h('code', {}, '.a'), ' a member, ',
+            h('code', {}, '[]'), ' the elements of an array, ', h('code', {}, '{}'),
+            ' the entries of an object marked as a map.'))
+      : null,
     bad ? h('div', {className: 'cfg-bad on'}, bad) : null,
     h('textarea', {
       className: 'plain cfg-edit', spellCheck: false, value: shown,
       'aria-label': 'Configuration',
       onChange: e => {
-        setDraft(e.target.value);
+        const v = e.target.value;
+        setDraft(v);
         try {
-          const c = JSON.parse(e.target.value || '{}');
+          const c = JSON.parse(v.trim() === '' ? '{}' : v);
+          if (c === null || typeof c !== 'object' || Array.isArray(c))
+            throw new Error('the configuration must be an object');
           setBad('');
-          setConfig({maps: c.maps || [], root: c.root || ''});
-          setDraft(null);
+          /* the config this edit produces, so the effect above can tell it
+             apart from one arriving from the Shape tab or an example */
+          mine.current = cfgText(c);
+          setConfig(c);
         } catch (err) { setBad(String(err.message || err)); }
       },
     }));
@@ -1327,7 +1525,15 @@ const THEME_LABEL = {dark: 'dark', light: 'light'};
 
 function App() {
   const [src, setSrc] = useState(Engine.EXAMPLES.note);
-  const [config, setConfig] = useState({maps: [], root: ''});
+  const [config, setConfig] = useState({});
+  /* Which example is loaded, and the configuration each one was left with.
+     A marking belongs to the corpus it was made against -- a map path that
+     names nothing in the next example is an error, not a leftover -- so the
+     two travel together. Editing the JSON does not change which example this
+     is: the markings were made for that shape and should survive a tweak to
+     it. Only a chip swaps them. */
+  const [example, setExample] = useState('note');
+  const configs = useRef({});
   const [report, setReport] = useState(null);
   const [via, setVia] = useState('—');
   const [tab, setTab] = useState('modules');
@@ -1337,13 +1543,17 @@ function App() {
   const [tray, setTray] = useState(false);
   const seq = useRef(0);
 
+  const pick = (key, text) => {
+    configs.current[example] = config;
+    setExample(key);
+    setConfig(configs.current[key] || {});
+    setSrc(text); setEdits({}); setFile(0);
+  };
+
   useEffect(() => {
     const mine = ++seq.current;
-    const wire = {};
-    if (config.maps.length) wire.maps = config.maps.slice();
-    if (config.root) wire.root = config.root;
     const t = setTimeout(() => {
-      translate(src, wire).then(({via, report}) => {
+      translate(src, config).then(({via, report}) => {
         if (seq.current !== mine) return;
         setVia(via); setReport(report);
       });
@@ -1353,7 +1563,7 @@ function App() {
 
   const ok = report && report.ok;
   const nMods = ok ? (report.files || []).length : 0;
-  const nMark = config.maps.length + (config.root ? 1 : 0);
+  const nMark = cfgCount(config);
   const allText = ok ? (report.files || []).map(f =>
     edits[f.name] !== undefined ? edits[f.name] : f.ocaml).join('\n') : '';
 
@@ -1390,11 +1600,11 @@ function App() {
       h('div', {className: 'examples'},
         h('button', {
           className: 'chip' + (src.trim() === '' ? ' on' : ''),
-          onClick: () => { setSrc(''); setEdits({}); setFile(0); },
+          onClick: () => pick('blank', ''),
         }, 'Blank'),
         h('button', {
           className: 'chip' + (src === FULL_EXAMPLE ? ' on' : ''),
-          onClick: () => { setSrc(FULL_EXAMPLE); setEdits({}); setFile(0); },
+          onClick: () => pick('full', FULL_EXAMPLE),
         }, 'Full example'),
         h('button', {
           className: 'chip' + (tray ? ' on' : ''),
@@ -1404,9 +1614,11 @@ function App() {
           ? [['note', 'Nested object'], ['arrayObjs', 'Array of objects'], ['corpus', 'A corpus'],
              ['map', 'Keys that are data'], ['tree', 'A comment thread'], ['names', 'Awkward names'],
              ['nulls', 'Nulls and absence'], ['conflict', 'A type conflict']].map(([k, label]) =>
-              h('button', {key: k, className: 'chip', onClick: () => {
-                setSrc(Engine.EXAMPLES[k]); setEdits({}); setFile(0);
-              }}, label))
+              h('button', {
+                key: k,
+                className: 'chip' + (example === k ? ' on' : ''),
+                onClick: () => pick(k, Engine.EXAMPLES[k]),
+              }, label))
           : null)),
 
     h('div', {className: 'bench'},
@@ -1443,9 +1655,13 @@ function App() {
           tab === 'shape'
             ? h('div', {className: 'fill'},
                 h('p', {className: 'lead'},
-                  'Two shapes cannot be read off the data, so Tatami never guesses them. ',
+                  'Two shapes cannot be read off the data, so Tatami never guesses them: ',
+                  'what to call the root, and whether an object\u2019s keys are data. ',
                   h('strong', {}, 'Nothing here is set unless you set it.'),
-                  ' Each choice below says what it does to the schema.'),
+                  ' A name box sits beside every table too \u2014 a derived name says where a ',
+                  'table came from rather than what it is, and ',
+                  h('code', {}, '.runs[].jobs[]'), ' is a worse name for a job than ',
+                  h('code', {}, 'job'), '. All three go into the configuration.'),
                 h(Shape, {report, config, setConfig}))
             : null,
           tab === 'config' ? h(Config, {config, setConfig}) : null,
