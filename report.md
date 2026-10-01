@@ -91,7 +91,10 @@ can only be trusted as far as its author. A generated one can carry a theorem.
 ## 3. Inference in Lean 4
 
 Inference walks the documents and, for every member of every table, accumulates
-an observation record. Two things are computed.
+an observation record. Each document is walked from nothing and the results are
+merged, rather than threaded through a shared accumulator — which is what makes
+canonicity (§4.2) hold by construction rather than by a proof about the walk.
+Two things are computed.
 
 **The principal type.** For each member, the least type in the lattice that
 admits every value observed there. "Least" is doing real work: adequacy alone is
@@ -109,11 +112,55 @@ was visited. Note the shape of this: absence is not observed directly, it is
 *computed* — and computed by truncating subtraction, which is exactly where a
 soundness bug would hide. Chapter 4 is largely about closing that hole.
 
+### 3.1 What only the whole corpus can settle
+
+Neither of those can be finished while documents are still arriving, so a
+second pass runs once the fold is complete. It refuses a member whose types
+have no common type, a collection holding both objects and scalars, and a map
+marking that matched nothing; it fills in the absence counts, against each
+table's own visit total; and before any of that, it performs one rewrite.
+
+**The singleton collapse.** A real API writes a lone nested object where it
+would write an array of them if there were two — the shape PHP and most
+XML-to-JSON converters produce. The walk records the two differently: an object
+member builds a table at `.tags` and a reference column, an array member builds
+one at `.tags[]` and a collection column. So one member leaves *two* tables and
+a column whose types do not join.
+
+The collapse moves the object's rows into the element table and rewrites the
+reference to a collection. The two observations then have the same type, and
+the lattice needs no new case — there is nothing left to join. `tags` becomes
+one table, and the lone object is read as the one-element case of the array.
+
+It only reads that way because some document really did hold an array there. If
+every document had an object, `tags` stays a reference: inference never guesses
+a shape the corpus did not show it. Two neighbouring shapes are *not* this and
+are still refused — an object here and an array of **scalars** there (two
+unrelated shapes, not a singleton), and an object here and an **empty** array
+there (an empty array says nothing about which it is). Without that guard the
+two would merge into one table carrying both the object's members and the
+scalars' `value`, every one of them optional — a silent widening of exactly the
+kind the generator refuses elsewhere.
+
+The rewrite runs to a fixpoint, because collapsing an outer table can expose a
+new pair inside it: `.b.x` and `.b[].x[]` only become siblings once both sit
+under `.b[]`. Running out of fuel is safe rather than silent — an uncollapsed
+pair is still a reference and a collection at one member, so the type check
+refuses the corpus.
+
+This is a change to *what is inferred*, not only to what is accepted, so it is
+worth being plain about: a corpus that earlier versions rejected as a type
+conflict now produces a list. Nine of the theorems in chapter 4 exist to carry
+the invariants across it — that the collapse preserves the sorted order every
+table is kept in, and the counts identity nullability rests on. It adds no new
+guarantee; it keeps the five intact over a step that moves tables between
+paths. `examples/singleton-collapse/` is the worked case.
+
 ---
 
 ## 4. What is proved
 
-**223 theorems and lemmas across twelve files, zero `sorry`s.** They compose
+**231 theorems and lemmas across twelve files, zero `sorry`s.** They compose
 into a single top-level result, `pipeline_correct`, stated in five named parts
 so the guarantee can be read without opening nine files.
 
@@ -589,7 +636,7 @@ From source:
 
 ```sh
 lake build tatami                # the generator
-lake build Proofs                # the 223 theorems
+lake build Proofs                # the 231 theorems
 dune build                       # the servers and stores
 
 dune exec bin/gen_corpus.exe -- --bytes 1.5G --seed 20260914 --out corpus/ci.json

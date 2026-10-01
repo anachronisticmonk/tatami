@@ -83,7 +83,7 @@ Highlight each file as it is named.
 
 **SAY**
 
-> And it all builds. Two hundred and twenty-three theorems, and we have proved
+> And it all builds. Two hundred and thirty-one theorems, and we have proved
 > all of them in Lean4.
 
 ---
@@ -103,5 +103,5 @@ Highlight each file as it is named.
 |---|---|
 | five things | the five conjuncts of `pipeline_correct`, `Correctness.lean:148` |
 | twelve files | `ls Proofs/*.lean` |
-| 223 theorems | `theorem`/`lemma` declarations across `Proofs/`, counting the two that carry an attribute or modifier |
+| 231 theorems | `theorem`/`lemma` declarations across `Proofs/`, comments blanked first so prose naming a theorem is not counted as one. This is the figure `explainer/scripts/extract-graph.py` reports and the explainer shows, so the two cannot drift. |
 | all proved | zero `sorry` in `Proofs/` |
