@@ -85,6 +85,16 @@ many times it was explicitly `null`, and how many times it was absent
 entirely. A field is optional exactly when those counts say it was missing at
 least once.
 
+One rewrite happens once the whole corpus is in. Real APIs write a lone object
+where they would write an array of them if there were two - the shape PHP and
+most XML-to-JSON converters produce. A field that is an object in one document
+and an **array of objects** in another is read as the array, with the lone
+object as its one-element case, rather than refused as two types that do not
+join. It is only read that way because some document really did hold an array
+there; if every document had an object, the field stays a reference. An object
+against an array of *scalars*, or against an *empty* array, is still refused -
+neither says which shape was meant. See `examples/singleton-collapse/`.
+
 **3. Emit the contract (Lean).** Lean writes one `.mli` per table, plus the
 `.ml` implementations and a loader. This is generated OCaml - the plumbing of
 the data pipeline, written by a theorem prover:
@@ -175,7 +185,7 @@ A wrong `option` in the other direction never crashes at all, which is worse
 in its own way: it costs a mask, a branch, and the memory to hold
 them, on every row, forever, and nothing ever tells you.
 
-So we proved it. **223 theorems and lemmas, zero `sorry`s.** They compose into
+So we proved it. **231 theorems and lemmas, zero `sorry`s.** They compose into
 a single top-level result, `pipeline_correct`, in five named parts:
 
 | Part                       | What it says                                                                                                                                                                                                                                                    |
@@ -347,7 +357,7 @@ dune exec bin/verify.exe        # assert the JSON and the database agree
 lake build Proofs
 ```
 
-223 theorems and lemmas, zero `sorry`s. The top-level statement is
+231 theorems and lemmas, zero `sorry`s. The top-level statement is
 `pipeline_correct` in `Proofs/Correctness.lean`, which groups the five parts so
 the guarantee can be read without opening nine files.
 

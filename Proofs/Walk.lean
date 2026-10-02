@@ -126,17 +126,20 @@ theorem observeDocument_ok {cfg : Config} {d : Doc} {ts : Tables}
     (h : observeDocument cfg d = .ok ts) : TablesOk ts :=
   observe_ok cfg [] [] false d TablesOk.nil ts h
 
-/-- `inferFinish` checks the corpus and then rewrites only the absence
-    counts, so the order survives it. -/
+/-- `inferFinish` collapses, checks the corpus, and then rewrites only the
+    absence counts. The collapse is the one step that moves a table's path, and
+    it is handled separately; everything after it maps over the list without
+    touching a key, so the order survives. -/
 theorem inferFinish_ok {cfg : Config} {ts ts' : Tables} (hok : TablesOk ts)
     (h : inferFinish cfg ts = .ok ts') : TablesOk ts' := by
   unfold inferFinish at h
+  have hc : TablesOk (collapse ts) := collapse_ok hok
   obtain ⟨_, _, h1⟩ := except_bind_ok h
   obtain ⟨_, _, h2⟩ := except_bind_ok h1
   obtain ⟨_, _, h3⟩ := except_bind_ok h2
   cases h3
-  refine ⟨sortedBy_map (fun pr => by obtain ⟨p, t⟩ := pr; rfl) ts hok.1,
-          allV_map ?_ ts hok.2⟩
+  refine ⟨sortedBy_map (fun pr => by obtain ⟨p, t⟩ := pr; rfl) (collapse ts) hc.1,
+          allV_map ?_ (collapse ts) hc.2⟩
   intro pr hpr
   obtain ⟨p, t⟩ := pr
   exact ⟨sortedBy_map (fun q => by obtain ⟨k, o⟩ := q; rfl) t.members hpr.1,

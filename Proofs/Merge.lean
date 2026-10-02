@@ -101,6 +101,65 @@ theorem Tables.merge_right_comm {b x y : Tables}
 
 theorem TablesOk.nil : TablesOk [] := ⟨trivial, trivial⟩
 
+/-! ## The singleton collapse keeps the order
+
+`collapse` is the one step in `inferFinish` that changes a table's *path*, so
+it is the one step whose effect on the ordering has to be argued rather than
+read off a key-preserving `map`. It rebuilds the list by merging one relocated
+table at a time into an accumulator, so the merge carries the invariant and
+there is nothing new to prove about sortedness itself. -/
+
+theorem collapseObs_ok (S : List Path) (o : Obs) : ObsOk (collapseObs S o) := by
+  show SortedK Ty.lt _
+  unfold collapseObs
+  generalize (o.seen.map (collapseTy S)) = l
+  suffices h : ∀ (acc : List Ty), SortedK Ty.lt acc →
+      SortedK Ty.lt (l.foldl (fun acc t => unionBy Ty.lt (· == ·) acc [t]) acc) by
+    exact h [] trivial
+  induction l with
+  | nil => intro acc h; exact h
+  | cons x xs ih =>
+      intro acc h
+      exact ih _ (unionBy_sorted tyOrder acc [x] h ⟨trivial, trivial⟩)
+
+theorem collapseTable_ok {S : List Path} {t : TableObs} (h : TableObsOk t) :
+    TableObsOk (collapseTable S t) :=
+  ⟨sortedBy_map (fun q => by obtain ⟨k, o⟩ := q; rfl) t.members h.1,
+   allV_map (fun q _ => by obtain ⟨k, o⟩ := q; exact collapseObs_ok S o) t.members h.2⟩
+
+theorem collapseOnce_ok {S : List Path} {ts : Tables} (h : TablesOk ts) :
+    TablesOk (collapseOnce S ts) := by
+  unfold collapseOnce
+  -- every relocated table is in order, and the accumulator starts that way
+  have hall : ∀ pt ∈ ts.map (fun (p, t) => (collapsePath S [] p, collapseTable S t)),
+      TablesOk [pt] := by
+    intro pt hpt
+    obtain ⟨⟨p, t⟩, hmem, rfl⟩ := List.mem_map.mp hpt
+    exact ⟨⟨trivial, trivial⟩, ⟨collapseTable_ok (allV_mem h.2 hmem), trivial⟩⟩
+  generalize (ts.map (fun (p, t) => (collapsePath S [] p, collapseTable S t))) = l at hall
+  suffices hgo : ∀ (l : Tables) (acc : Tables), (∀ pt ∈ l, TablesOk [pt]) → TablesOk acc →
+      TablesOk (l.foldl (fun acc pt => Tables.merge acc [pt]) acc) by
+    exact hgo l [] hall TablesOk.nil
+  intro l
+  induction l with
+  | nil => intro acc _ hacc; exact hacc
+  | cons x xs ih =>
+      intro acc hx hacc
+      exact ih _ (fun pt hpt => hx pt (List.mem_cons_of_mem _ hpt))
+        (Tables.merge_ok hacc (hx x (List.mem_cons_self ..)))
+
+theorem collapseGo_ok : ∀ (n : Nat) {ts : Tables}, TablesOk ts → TablesOk (collapseGo n ts)
+  | 0, _, h => h
+  | n + 1, ts, h => by
+      show TablesOk (if (collapsePoints ts).isEmpty then ts
+                     else collapseGo n (collapseOnce (collapsePoints ts) ts))
+      by_cases hs : (collapsePoints ts).isEmpty = true
+      · rw [if_pos hs]; exact h
+      · rw [if_neg hs]; exact collapseGo_ok n (collapseOnce_ok h)
+
+theorem collapse_ok {ts : Tables} (h : TablesOk ts) : TablesOk (collapse ts) :=
+  collapseGo_ok ts.length h
+
 theorem TableObsOk.empty : TableObsOk ({} : TableObs) := ⟨trivial, trivial⟩
 
 /-! ## What the walk does to its observations
