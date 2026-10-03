@@ -1,0 +1,20 @@
+# One plain-English sentence each, for the theorems added since the first pass.
+EXTRA = {
+"collapse_ok": "Relocating a lone object into the element table keeps every list in sorted order — the one step that changes a table's path, so the one that has to argue it.",
+"collapseGo_ok": "Repeating the relocation until nothing more can move keeps the order at every round.",
+"collapseOnce_ok": "One round of relocation keeps the order, because the list is rebuilt by merging one table at a time and merging was already shown to keep it.",
+"collapseTable_ok": "Rewriting the types a member was seen with leaves the member names, and so their order, alone.",
+"collapseObs_ok": "The rewritten set of types is still in order: it is rebuilt by inserting one type at a time.",
+"collapse_countsFit": "Relocation never touches a count, so every column still fits inside its table's visit total.",
+"collapseGo_countsFit": "That survives repeating the relocation.",
+"collapseOnce_countsFit": "One round preserves it, because merged tables add their counts on both sides of the inequality.",
+"collapseTable_fits": "Rewriting types leaves values, nulls and absences untouched.",
+"le_refl": "Every type is below itself.",
+"le_antisymm": "Two types each below the other are the same type — so 'the least type above these' names one type, not several.",
+"mangle_not_keyword": "A generated identifier is never an OCaml keyword.",
+"mangleChars_not_keyword": "The same, before the characters are assembled into a string.",
+"coll_le": "A collection type sits below another only when they are the same collection.",
+"ref_le": "A reference type sits below another only when they point at the same table.",
+"matchesField_mono": "Widening a field's type cannot make a document stop matching it.",
+"scalarTy_seeScalar": "The specification's account of a scalar's type agrees with the one inference actually uses — the lemma that fails if the two drift apart.",
+}
