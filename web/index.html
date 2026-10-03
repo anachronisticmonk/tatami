@@ -89,6 +89,7 @@
 <header>
   <div class="crumbs">
     <a id="toplayground" href="#">&larr; Phase 1 &middot; playground</a>
+    <a id="toexplainer" href="#">explainer &middot; the proofs &rarr;</a>
     <button class="themebtn" id="themebtn">dark</button>
   </div>
   <div class="stage">Phase 2 &middot; the schema, stored and queried</div>
@@ -138,6 +139,9 @@ const $ = s => document.querySelector(s);
 (function () {
   const a = document.getElementById('toplayground');
   if (a) a.href = location.protocol + '//' + location.hostname + ':8420/';
+  /* The explainer is its own image on :8430 (explainer/Dockerfile). */
+  const e = document.getElementById('toexplainer');
+  if (e) e.href = location.protocol + '//' + location.hostname + ':8430/';
 })();
 const esc = s => String(s).replace(/[&<>]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 const cell = v => v === null || v === undefined

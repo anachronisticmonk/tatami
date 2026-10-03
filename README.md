@@ -270,6 +270,15 @@ docker run --rm -p 8000:8000 -p 8420:8420 durwasa/tatami
   it implies. `/translate` reaches the real Lean generator, not a
   reimplementation in the page.
 
+The explainer - the pipeline and what each Lean proof covers - is its own
+image, linked from the demonstration's header:
+
+```sh
+docker run --rm -p 8430:8430 durwasa/tatami-explainer
+```
+
+- **<http://localhost:8430>** - the explainer. See `explainer/README.md`.
+
 A 1,000-repo corpus is baked in, so that command needs no arguments and no
 network. The image is `linux/amd64` and `linux/arm64`; Docker picks from the
 manifest.
