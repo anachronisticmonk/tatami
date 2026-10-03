@@ -1,0 +1,4 @@
+[ { "id": 1, "name": "alpha", "meta": { "owner": "kc" },
+    "runs": { "n": 1, "ms": 12 } },
+  { "id": 2, "name": "beta",
+    "runs": [ { "n": 2, "ms": 8.5 }, { "n": 3, "ms": 4 } ] } ]
